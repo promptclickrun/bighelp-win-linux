@@ -1,0 +1,49 @@
+# Local credentials and environment
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.pem
+*.key
+
+# Dependencies and generated builds
+node_modules/
+.pnpm-store/
+.yarn/cache/
+.cache/
+.expo/
+.metro-cache/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+.vs/
+**/bin/Debug/
+**/bin/Release/
+**/obj/
+*.msix
+*.msixbundle
+*.appx
+*.exe
+*.AppImage
+*.deb
+*.rpm
+
+# Local evidence and temporary work (small curated fixtures remain tracked)
+/artifacts/
+/evidence/
+/tmp/
+/scratch/
+*.log
+*.tmp
+*.dmp
+playwright-report/
+test-results/
+
+# Editor/OS metadata
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

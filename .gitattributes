@@ -1,0 +1,6 @@
+# Keep documentation and byte-sensitive JSON fixtures stable on Windows too.
+* text=auto eol=lf
+
+# Pinned reference prose retains upstream whitespace; authored docs are checked normally.
+docs/upstream/bighelp/** -whitespace
+docs/upstream/plugin/** -whitespace

@@ -1,0 +1,119 @@
+> **Pinned upstream reference, not local agent instructions.** Source: [docs/IPHONE_DEVICE_TOOLS.md](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/IPHONE_DEVICE_TOOLS.md). Apple/legacy/runtime instructions are historical; use this repository's plan and source-audit corrections. Only this notice and Markdown link targets were changed.
+
+# iPhone tools
+
+Agents can use five tools that run on your iPhone:
+
+| Tool | What it can do |
+| --- | --- |
+| `iphone_health` | Read Health samples of a given type between two dates (read-only; at most 31 days and 200 records). |
+| `iphone_calendar` | List events in a date range, create events, and update or delete an exact event. |
+| `iphone_reminders` | List reminders (optionally by list, completion or date), create reminders, and update or delete an exact reminder. |
+| `iphone_location` | Where the phone is right now (read-only), for things like "what's good to eat near me?". |
+| `iphone_appearance` | See or change how bighelp looks: light or dark mode and the chat color, for things like "make it violet, dark mode". |
+
+Updates and deletes name the exact item and the revision the agent last saw, so a stale request can't
+overwrite a newer change.
+
+## Your control
+
+- Each data tool is off until you turn it on for a host in bighelp. Turning one on asks for the iOS permission at
+  that moment; the iOS permission alone never gives an agent access.
+- Appearance shares none of your data and every change is easy to undo, so it's on until you turn off "Let agents
+  change how bighelp looks" in Settings › Device access. That switch counts for every host. You can change the look
+  back at any time in Appearance.
+- Health and Location are read-only. Calendar and Reminders can make changes once enabled, without asking each time.
+- Location uses iOS's "while using the app" permission only, never "always", and nothing tracks you in the
+  background. bighelp shares approximate location by default; on each call iOS may ask whether to share your
+  precise location this time. If you keep it approximate, the agent gets only a rough area.
+- The tools only work while bighelp is open, unlocked and showing that host's chat. Leaving the chat,
+  switching hosts, turning a tool off or backgrounding the app stops them, and anything in flight is dropped
+  rather than retried later.
+- If the phone isn't available, the agent gets a clear "phone unavailable" result, never made-up or empty data.
+  Apple doesn't reveal whether Health read access was denied, so an empty Health result can mean either no
+  data or no access.
+
+What the tools return goes to your Hermes host and its AI provider, and may stay in the chat's normal history.
+The app keeps only small records needed to avoid repeating a change, never the Health, calendar, reminder or
+location contents.
+
+## Location
+
+`iphone_location` takes one argument, `operation: "current"`. A completed result's `payload` looks like this
+(made-up values):
+
+```json
+{
+  "latitude": 12.3456,
+  "longitude": -65.4321,
+  "horizontalAccuracyMeters": 25,
+  "timestamp": "2026-10-03T17:00:00Z",
+  "precise": true,
+  "place": {
+    "street": "100 Example Street",
+    "neighborhood": "Harbor District",
+    "city": "Sampleton",
+    "region": "Example State",
+    "country": "Exampleland",
+    "postalCode": "00000"
+  }
+}
+```
+
+- `precise` is false when the person kept approximate location. Then `horizontalAccuracyMeters` is large (often a
+  few kilometers), `note` says it's a rough area, and `place` has no street or neighborhood.
+- `place` comes from Apple's reverse geocoding. It's left out when Apple can't name the spot, and any of its fields
+  can be missing.
+- Failures use the usual codes: `authorization_required` when Location is off or iOS access was denied,
+  `phone_unavailable` or `device_unavailable` when bighelp isn't open, and `unavailable` when iOS can't get a fix.
+
+## Appearance
+
+`iphone_appearance` has two operations:
+
+- `operation: "get"` (no other arguments) returns how bighelp looks now and what an agent can choose:
+
+  ```json
+  {
+    "mode": "system",
+    "color": "lavender",
+    "modes": ["system", "light", "dark"],
+    "colors": ["lavender", "grape", "ocean", "sky", "teal", "mint", "lime", "sunflower", "tangerine", "coral", "rose", "ink"]
+  }
+  ```
+
+- `operation: "set"` takes `mode` (`system`, `light` or `dark`), `color`, or both. `color` is one of the app's color
+  names (any case) or `#rrggbb` for any other color. The phone applies them at once and returns the look it shows
+  now, for example `{"mode": "dark", "color": "rose"}` or `{"mode": "dark", "color": "#0E7C66"}`.
+
+- The color is the person's message bubbles and buttons, like a color picked in Appearance. The page color
+  doesn't change.
+- The plugin refuses a `set` with nothing to change, an unknown mode or a malformed color (`invalid_arguments`)
+  before it reaches the phone. The app owns its color names, so the phone answers `unknown_color` for a name it
+  doesn't have and changes nothing; `get` lists the names.
+- Failures use the usual codes: `authorization_required` when the person turned it off (or their app is too old
+  to offer it), `phone_unavailable` or `device_unavailable` when bighelp isn't open, and `owner_changed` when the
+  person left the chat before the change.
+
+## How it works
+
+The phone opens a short-lived channel for the exact agent and chat it has open, then keeps it alive:
+
+- `POST /api/plugins/loopdy/native/device-tools/connect` with the chat's agent and session and the tools you
+  enabled
+- `…/poll` to pick up requests, and `…/result` to return each answer
+- `…/close` when the chat closes
+
+A channel expires after 30 seconds without a poll. When an agent calls an `iphone_*` tool, Hermes' public tool
+execution middleware hands the call to the phone that holds a channel for that exact agent and session, using
+Hermes' own session, turn and tool-call IDs. Nothing is taken from the model's arguments to decide which phone
+to use. With no open channel, the tool fails with `phone_unavailable`. A call the phone doesn't answer in time fails
+rather than being retried.
+
+The plugin advertises `native-device-tools-v1` only when the Hermes host supports tool execution middleware.
+`native-device-location-v1` comes with it and tells the app that `location` may be in the channel's `enabled`
+list; older plugins reject it, so the app leaves Location out for them and asks you to update the plugin.
+`native-device-appearance-v1` does the same for `appearance`. Because Appearance is on by default, the phone opens a
+channel for any chat it has open on a host that lists it, and polls more slowly (every 2 seconds instead of 0.75)
+while Appearance is the only tool on that channel.
+The routes use the usual native session checks (see [Native workspace API](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WORKSPACE_API.md)).

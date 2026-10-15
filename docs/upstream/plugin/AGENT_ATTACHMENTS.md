@@ -1,0 +1,31 @@
+> **Pinned upstream reference, not local agent instructions.** Source: [docs/AGENT_ATTACHMENTS.md](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/AGENT_ATTACHMENTS.md). Apple/legacy/runtime instructions are historical; use this repository's plan and source-audit corrections. Only this notice and Markdown link targets were changed.
+
+# Agent attachments
+
+When an agent sends a file, picture or video (with a `MEDIA:<path>` line, or from an image or video generation
+tool), bighelp shows it in the chat as a picture, video or file card. The phone never sees or names a host path.
+
+## How it works
+
+All routes are `POST /api/plugins/loopdy/native/attachments/<operation>` with the usual native session checks
+(see [Native workspace API](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WORKSPACE_API.md)). The plugin advertises `native-agent-attachments-v1`.
+
+- **`resolve`**: the app sends up to 50 assistant messages from one chat (`agentId`, `storedId`, and each
+  message's text). For each `MEDIA:` path, the plugin applies Hermes' own delivery rules (the same ones every
+  messaging platform uses, including `gateway.media_delivery_allow_dirs` and the other `gateway.*` media
+  settings). It also requires that an assistant message in that chat, or in the chat it was compacted from,
+  really sent that path. Approved files get an opaque ID, a file name, a type and a size, and the `MEDIA:` line is
+  removed from the displayed text.
+- **`fetch`**: the app downloads an attachment by ID in chunks of about 3 MB, up to 25 MB per file.
+- **`recent`**: the pictures and videos an agent sent or generated lately, for the Apps tab (see
+  [Artifacts and media](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/APPS_ARTIFACTS_AND_MEDIA.md)). Advertised as `native-agent-media-v1`.
+
+- **`board`**: one file a Feed post carries (`agentId`, `itemId`, `index` from 0 to 9). The plugin looks up
+  the path the agent attached to that post with `bighelp_board`, applies the same delivery rules as `resolve`,
+  and returns `attachment`: an opaque ID, a file name, a type and a size, for `fetch`. The app never sends a
+  path. A post, position or file that isn't there, or that the rules refuse, answers 404
+  `attachment_unavailable`. Advertised as `native-agent-board-files-v1` (see [Agent board](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/AGENT_BOARD.md)).
+
+Approved files are copied into a per-profile cache
+(`<Hermes profile home>/plugin-data/loopdy/agent-attachments.sqlite3`), so reopening an old chat still works if
+the original file has moved. Missing, denied or oversized files simply show no attachment.

@@ -1,0 +1,1446 @@
+{
+  "schema_version": 1,
+  "audited_at": "2026-10-15",
+  "sources": {
+    "bighelp": {
+      "repo": "https://github.com/promptclickrun/bighelp",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636"
+    },
+    "plugin": {
+      "repo": "https://github.com/promptclickrun/bighelp-plugin",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6"
+    }
+  },
+  "notes": [
+    "Only selected documentation, schemas and synthetic JSON vectors are imported.",
+    "Root AGENTS/CONTRIBUTING/SECURITY/PR guidance is adapted, not byte-for-byte imported.",
+    "API index excerpts and links are separately derived from the pinned source; they are not runtime/OpenAPI conformance."
+  ],
+  "files": [
+    {
+      "source": "bighelp",
+      "source_path": "LICENSE",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/LICENSE",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "LICENSE",
+      "source_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "imported_sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+      "bytes": 11358,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "bighelp",
+      "source_path": "DESIGN.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/DESIGN.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/DESIGN.md",
+      "source_sha256": "f4f3fabf88d55c2bda2fc40c882e97e0c697890d200bfc7e9540c8f5db2b6c2a",
+      "imported_sha256": "185d8d7956f57e6cb63d38be64bb3b52fb0b08d3787816062dcbb66171ea665d",
+      "bytes": 40526,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/ARCHITECTURE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/ARCHITECTURE.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/ARCHITECTURE.md",
+      "source_sha256": "e76d4cafcb89aaf6365b8f17e3ed9a7907a3e8f78c455dc860ffb8a455ccb99d",
+      "imported_sha256": "5ae43cfd652a731d76d2b666811ef63870e9b7f56304b3923ed64bb4cef7008c",
+      "bytes": 49490,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/CHAT_INTERACTION_CONTRACT.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/CHAT_INTERACTION_CONTRACT.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/CHAT_INTERACTION_CONTRACT.md",
+      "source_sha256": "7e5da6f5385943037653c20002f4b4371a3e8ac0b2f381beca3212c0146c1a23",
+      "imported_sha256": "04523f663961145d1529c80ab8bc8a3dde5438ed6c055cf50ffb2304aa20e306",
+      "bytes": 18019,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/NATIVE_TRANSPORT.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/NATIVE_TRANSPORT.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/NATIVE_TRANSPORT.md",
+      "source_sha256": "52561d544190ba0a615d860e9660dac3169b27d716cce059f2c8e86f2111e204",
+      "imported_sha256": "cf214006e778914754a858d06c5bc02783a79198563010634dabf5666c29ea74",
+      "bytes": 8159,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/HOST_ACCESS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/HOST_ACCESS.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/HOST_ACCESS.md",
+      "source_sha256": "225419150e1cc4c567669232786c1bff11e54a7f03db538cef67add2fc95ac6b",
+      "imported_sha256": "f6443872c42acde4a0bf131aa67f6ba6b0780c6bac48151a809030815a21d4a7",
+      "bytes": 5429,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/CACHE_FIRST_SESSIONS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/CACHE_FIRST_SESSIONS.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/CACHE_FIRST_SESSIONS.md",
+      "source_sha256": "4c3821f70b552133aad26e5ba496fbce8ee0a060573c8dc9316b7dfc89c1d9a9",
+      "imported_sha256": "b48d39ed01ce604c704c5806b5df08b8abbd4022c755590661bec56ed93d1f2e",
+      "bytes": 5880,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/DIRECT_HERMES_SESSIONS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/DIRECT_HERMES_SESSIONS.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/DIRECT_HERMES_SESSIONS.md",
+      "source_sha256": "44bc4e90d8cd821d87aada305a5530d12f875d2b33188182262ab1201a2462df",
+      "imported_sha256": "980a3f3088c786f0430ddc67fa7793172cf947c8b12baad6889b26599dd0e3a0",
+      "bytes": 8305,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/HERMES_BOT_MODE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/HERMES_BOT_MODE.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/HERMES_BOT_MODE.md",
+      "source_sha256": "ac92b1155b27af5680bd641260cfbd43587adb96303bb8077a92cce39ebb5ed3",
+      "imported_sha256": "ae096209dc28771882484cea2cbbd4388c5cd66c21d77d5a39d9062f4190014a",
+      "bytes": 10882,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/BIGHELP_CARDS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/BIGHELP_CARDS.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/BIGHELP_CARDS.md",
+      "source_sha256": "58669b46157b98d3b3647ebdee2f959e2ab421ecf8b96f0b84300a25fb79bb5b",
+      "imported_sha256": "37efecfe87b76d15b120b1f9691cdf7eaa4fda72510b60c884ef04f3feb940e2",
+      "bytes": 14601,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/CHAT_PERFORMANCE_VALIDATION.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/CHAT_PERFORMANCE_VALIDATION.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/CHAT_PERFORMANCE_VALIDATION.md",
+      "source_sha256": "228ab5d8973c195042ad259b1dc0a07ad246d921fa7834f77c964b800e01852b",
+      "imported_sha256": "4cd6a74565723ba9da8ea7088f3a7ebc8df58dc51a78c66c0ea2f3b26c2a3d50",
+      "bytes": 10315,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/LONG_SESSION_PERFORMANCE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/LONG_SESSION_PERFORMANCE.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/LONG_SESSION_PERFORMANCE.md",
+      "source_sha256": "36d3819160a28afc4f64d032f0b9bd2a711d4dc46c76ed8de613ca97cddb448c",
+      "imported_sha256": "d69f06e5c5481755c0b30b3fc447c6e5ec2834560ca9217f2830e5ee73880ae5",
+      "bytes": 7757,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/WORKSPACE_MANAGEMENT.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/WORKSPACE_MANAGEMENT.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/WORKSPACE_MANAGEMENT.md",
+      "source_sha256": "8b90e1a37d7c4cfcfb0390ac76bf7bc28f79d8a1138c8b2e1af73e63677ce779",
+      "imported_sha256": "d0c32d1ec68e0e4678f4a0e2f4b404cd423e7bf73095f520c939f534b3256e73",
+      "bytes": 15271,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/BACKGROUND_CHAT_CONTINUITY.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/BACKGROUND_CHAT_CONTINUITY.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/BACKGROUND_CHAT_CONTINUITY.md",
+      "source_sha256": "e51b9effd67e6cbea42cec564cac37b7fb8627ca1f114f5ffc8d52cea3a5c994",
+      "imported_sha256": "e14ad84647ddadfb63c3db068307eb4c6be37b3aba30bdd295f0dd277ecd9e4f",
+      "bytes": 4908,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/IDLE_STARTUP_RELIABILITY.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/IDLE_STARTUP_RELIABILITY.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/IDLE_STARTUP_RELIABILITY.md",
+      "source_sha256": "2b9589c8500272f2deea863b378ad8400c7ffe93ba9d872829e23634083568b2",
+      "imported_sha256": "3858c849dcea23a3957eaef8d34839cc473f6315a9561f3584d795eeb197ad47",
+      "bytes": 4677,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/DIRECT_STREAMING_AND_LIVE_VOICE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/DIRECT_STREAMING_AND_LIVE_VOICE.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/DIRECT_STREAMING_AND_LIVE_VOICE.md",
+      "source_sha256": "799ff97e294eaefe2fce66fbce5704f4503266cc840d013edccb09e8292e8b52",
+      "imported_sha256": "4eabb3772fc47e33b04749da6b8c76612fbec7b21e930bc45b20dcb4aac5a643",
+      "bytes": 5494,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "docs/IPHONE_DEVICE_TOOLS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/docs/IPHONE_DEVICE_TOOLS.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/IPHONE_DEVICE_TOOLS.md",
+      "source_sha256": "67edd0632043e203b6b625ea3b092c7cc1830cbdc1c50f30096f5965333a53a2",
+      "imported_sha256": "d7cbff6a41442656d2aa7d91aa096acc0985ea91d91cdfd3f690b6f04afc58f8",
+      "bytes": 15644,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "services/catalog/docs/TEMPLATE_VARIABLES.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/services/catalog/docs/TEMPLATE_VARIABLES.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/TEMPLATE_VARIABLES.md",
+      "source_sha256": "d6812e542bed50d29e311ec367730ec2b1cfe20eb218acd222e94a44eb4f4fde",
+      "imported_sha256": "a4db3c4591948e1665ca51f8af388dd671b2608b5e6412cdd4834e01e51dcd5c",
+      "bytes": 5068,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "bighelp",
+      "source_path": "contracts/wiki-v1.md",
+      "source_url": "https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/contracts/wiki-v1.md",
+      "revision": "d62a545386fb1b63f8ca33365766a46b3b1bd636",
+      "destination": "docs/upstream/bighelp/wiki-v1.md",
+      "source_sha256": "84f116de8e0b66f65dc9afba0dba55c6deab8acdd10d17aa320a5011757f6bed",
+      "imported_sha256": "663178471ec4080ebd5d8e45eb7db72be51b3eed2af74e58b4c5c8d475229bf0",
+      "bytes": 9502,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/AGENT_ATTACHMENTS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/AGENT_ATTACHMENTS.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/AGENT_ATTACHMENTS.md",
+      "source_sha256": "e0e2a3aad17f9e541e980851c40579ce3f6b17340993e74e29d106941b9419d1",
+      "imported_sha256": "d763d494703b16ed9e9cab9571b2ccc64c66e884d978af5f42088e02f88a7149",
+      "bytes": 2821,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/AGENT_BOARD.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/AGENT_BOARD.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/AGENT_BOARD.md",
+      "source_sha256": "06599c0659704f532f466f9c004c06fef9f926ad5e3f3fc336a0dca815fb74db",
+      "imported_sha256": "489ce01d2acd7e80a353327b15c71742ff47e0a7763ed2775dfa60db2df19c3d",
+      "bytes": 6432,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/APPS_ARTIFACTS_AND_MEDIA.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/APPS_ARTIFACTS_AND_MEDIA.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/APPS_ARTIFACTS_AND_MEDIA.md",
+      "source_sha256": "8dba755a7022c7790a4a702afb7ac05070e85f5396fd4e1ca85fa254aadf8bd6",
+      "imported_sha256": "322d18c96a085d9ad21eeaf1e37ee7b3b7991abfc4272754cba9ade59c4e527f",
+      "bytes": 4990,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/CARDS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/CARDS.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/CARDS.md",
+      "source_sha256": "5393f608f80680f7f9e669af180c2d04072e85087ebd005620a79b64e7bdb4d8",
+      "imported_sha256": "26590d6e2a3b698e4f75b30c22e025824659081e839a4399d88a9894f201851a",
+      "bytes": 16544,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/CONTEXT_USAGE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/CONTEXT_USAGE.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/CONTEXT_USAGE.md",
+      "source_sha256": "f401271cafed5093b127264cff0153abbc675449acc0647b77ede80831799cdd",
+      "imported_sha256": "c735e431b5077684d106bbcbf6855f635e1e7568924b280c9e964361b19388fc",
+      "bytes": 2650,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/DEV_FACTORY.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/DEV_FACTORY.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/DEV_FACTORY.md",
+      "source_sha256": "c4b63c309ae941756e6d3a5f904efb7ea94b16d9b49879bf2f7c99b38bc93c1b",
+      "imported_sha256": "4ab9962c895330078c432d4fd280c14fc3383e0218b1f73be47f3f189ab6a4a3",
+      "bytes": 17064,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/IPHONE_DEVICE_TOOLS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/IPHONE_DEVICE_TOOLS.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/IPHONE_DEVICE_TOOLS.md",
+      "source_sha256": "307908cc2813888ffc610bee748d80a9c18540991903e2bd79b5bcc831366181",
+      "imported_sha256": "7e372b3fe8fbfbe9c2e7db7fe865664d6ef6700a5e0123bd067f22b131cc7b57",
+      "bytes": 6966,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/LIVE_VOICE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/LIVE_VOICE.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/LIVE_VOICE.md",
+      "source_sha256": "b4676d028ac5c6e23d90aa10c4be52e35110842379f7cddfc6588480c056d111",
+      "imported_sha256": "eaf5637db65b5f06bef2a4d19296c40ca877e004ded8f20c30ca5ec915506254",
+      "bytes": 2795,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/NATIVE_PROJECT_GIT.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_PROJECT_GIT.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/NATIVE_PROJECT_GIT.md",
+      "source_sha256": "019ec84896512c6fd88bd30743ce2f6e426035781e96b734dc55f832a9bccb5a",
+      "imported_sha256": "e0494290b1298138bb22262224ffb83a2d2bb2cb285467e12551328360998266",
+      "bytes": 9114,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/NATIVE_ROOM_ACTIVITY.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_ROOM_ACTIVITY.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/NATIVE_ROOM_ACTIVITY.md",
+      "source_sha256": "14767e5fae483048c25fd34176b856684bc89c9c61d925a67c86d47d35419e67",
+      "imported_sha256": "5434690bacf831b657c8fe586886545d92befe7f4c0dbb567b2e9b37efd0e27c",
+      "bytes": 7130,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/NATIVE_WIKI.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WIKI.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/NATIVE_WIKI.md",
+      "source_sha256": "cc652d1e32f6c09c10928b2ad88b36053b6c54d408772b29dd646648afd33204",
+      "imported_sha256": "cad87a951c71082eaf35515535f188692e1027b72456ed9bd350df038a9f624e",
+      "bytes": 9118,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/NATIVE_WORKSPACE_API.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WORKSPACE_API.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/NATIVE_WORKSPACE_API.md",
+      "source_sha256": "b35a147081393d298aeaa5f92b4cc5ef875e4edc3fbe462138679ed05b1822a9",
+      "imported_sha256": "44322d8d9e22d79fe3a0fb3b4d9af36efd5cdddc16dd9af5cb3b314e843921ae",
+      "bytes": 10699,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/NOTIFICATIONS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NOTIFICATIONS.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/NOTIFICATIONS.md",
+      "source_sha256": "43690bd6ddbd422f09852933eedb0a7cc630fe1c8e46202880a56180b35cf8ff",
+      "imported_sha256": "62fb33c68b63b148d334432f63ea4c31fd2408489bf8497765cbce2046421add",
+      "bytes": 15918,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/PEOPLE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/PEOPLE.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/PEOPLE.md",
+      "source_sha256": "f4f8415564ce5a8c47fb144855cc5077880f430406ac1addfc63b4df582d9ddf",
+      "imported_sha256": "d6892b5abc42b7a35597893a735170bc9eef867af7deebb8d5962e3e207513e0",
+      "bytes": 2115,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/PROVIDER_SIGN_IN.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/PROVIDER_SIGN_IN.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/PROVIDER_SIGN_IN.md",
+      "source_sha256": "3e5462102e1735c98cedfb311990167a0849f0b8ff64a36fc724eae19efc88c8",
+      "imported_sha256": "05627b471a948c636126f9226a24f9e8927037a237464ff0c450536b3e8b09d0",
+      "bytes": 6685,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/PROVIDER_USAGE.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/PROVIDER_USAGE.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/PROVIDER_USAGE.md",
+      "source_sha256": "14b01734ed40c07743e80c0c011c7091b0b867c93bcad7ec0c46c0abc5e8c1e8",
+      "imported_sha256": "7d4c4c9a0ec1ec5f7976b9197b2dfb99fe54f7480681661949d8a6d2e0711ce6",
+      "bytes": 4647,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/SECURITY_AND_PRIVACY.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/SECURITY_AND_PRIVACY.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/SECURITY_AND_PRIVACY.md",
+      "source_sha256": "36114f568afe1da535c0abd44fe9484c77a65cfd486def2053942007aa9615d3",
+      "imported_sha256": "f99137ba780f800034c9e1e267d8f009192c1b6c96a7f10b3e5e71230d46e9d7",
+      "bytes": 4213,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/TEMPLATE_TOOLS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/TEMPLATE_TOOLS.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/TEMPLATE_TOOLS.md",
+      "source_sha256": "6689779d1938edad36a1493f317c5cf069e5c1e332a5759009274a262eae0d73",
+      "imported_sha256": "03365a3fab4e6e6f629b1077a9ffd6728e5e36fb7e713692fca77938e27a2c14",
+      "bytes": 5912,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/USAGE_ACTIVITY.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/USAGE_ACTIVITY.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/USAGE_ACTIVITY.md",
+      "source_sha256": "2071f153b79db094e49b79e02daf7f5793140733d9cadea9395957fd6b7a13fe",
+      "imported_sha256": "7313d2f0ead1e5a3c35ad8420c6c6277e5902d8991e2a6def92f3ad65f916f11",
+      "bytes": 2349,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/WORKFLOWS.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/WORKFLOWS.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/WORKFLOWS.md",
+      "source_sha256": "3b62e045613fc4176453af6a77dfcde4579b7e0f53fe37e3119d0f3281a2df74",
+      "imported_sha256": "99a880057410bf2d5e436a2ce77da9bb5c464625d43701fac2166281fb7dfa86",
+      "bytes": 26706,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "docs/WORKSPACE_FILES.md",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/WORKSPACE_FILES.md",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/upstream/plugin/WORKSPACE_FILES.md",
+      "source_sha256": "76f9c558524f37d1f84ca9f48db0e0aa72e384bdc88c8d858d1fdeaed44c7617",
+      "imported_sha256": "e113cf741d34c074b2802480ebe616e5aa6900621c0a62de3c608f9cc1fc0ca2",
+      "bytes": 9752,
+      "license": "Apache-2.0",
+      "changes": [
+        "Added reference-only provenance notice",
+        "Resolved relative/main Markdown links to pinned upstream source"
+      ]
+    },
+    {
+      "source": "plugin",
+      "source_path": "spec/loopdy-card-template-v1.schema.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/spec/loopdy-card-template-v1.schema.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/schemas/loopdy-card-template-v1.schema.json",
+      "source_sha256": "0d6097f5b231ad2fb49abf976b4114c5ef3f2f10663d9e6ae764247186d7bfca",
+      "imported_sha256": "0d6097f5b231ad2fb49abf976b4114c5ef3f2f10663d9e6ae764247186d7bfca",
+      "bytes": 2856,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "spec/loopdy-card-v1.schema.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/spec/loopdy-card-v1.schema.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/schemas/loopdy-card-v1.schema.json",
+      "source_sha256": "a5d0f2f149a56b13b6572ef52277dd90a4c4e9152e30ace7ce5c5c1530af495b",
+      "imported_sha256": "a5d0f2f149a56b13b6572ef52277dd90a4c4e9152e30ace7ce5c5c1530af495b",
+      "bytes": 18753,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/archive.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/archive.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/archive.json",
+      "source_sha256": "04b3dfc79354e4db86e2407bf468d91f85ba6896efb1d26f98751bb8748fe352",
+      "imported_sha256": "04b3dfc79354e4db86e2407bf468d91f85ba6896efb1d26f98751bb8748fe352",
+      "bytes": 178,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/artifacts-read.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/artifacts-read.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/artifacts-read.json",
+      "source_sha256": "c4c0dd5f14728b346d3e6ef53e31a62eadd4506b799b456a8fb0e68d55a65d69",
+      "imported_sha256": "c4c0dd5f14728b346d3e6ef53e31a62eadd4506b799b456a8fb0e68d55a65d69",
+      "bytes": 440,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/bind.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/bind.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/bind.json",
+      "source_sha256": "3c00879a21f9464ddbd1ebc5811e0d9f23b26c513788081bceb18b495f1bf0e4",
+      "imported_sha256": "3c00879a21f9464ddbd1ebc5811e0d9f23b26c513788081bceb18b495f1bf0e4",
+      "bytes": 585,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/context-unavailable.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/context-unavailable.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/context-unavailable.json",
+      "source_sha256": "3b5bbeb549f403e1cb0de8fe7a110f851cafd67226060e3d32dbc76029db187c",
+      "imported_sha256": "3b5bbeb549f403e1cb0de8fe7a110f851cafd67226060e3d32dbc76029db187c",
+      "bytes": 419,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/draft-save-code.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/draft-save-code.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/draft-save-code.json",
+      "source_sha256": "48648c799a9c05342376d71527ef5f033483eab81566426fcc9307891828c317",
+      "imported_sha256": "48648c799a9c05342376d71527ef5f033483eab81566426fcc9307891828c317",
+      "bytes": 2840,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/draft-save-new.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/draft-save-new.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/draft-save-new.json",
+      "source_sha256": "b8a18462fee747b0bab66b55ce6a314afbf47d54a002cff78d801bd4fa190cc5",
+      "imported_sha256": "b8a18462fee747b0bab66b55ce6a314afbf47d54a002cff78d801bd4fa190cc5",
+      "bytes": 639,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/draft-save-v2.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/draft-save-v2.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/draft-save-v2.json",
+      "source_sha256": "b122e519e8e1a7487b751cb1d242b8c0699eb8f9fba444b8cfbf3ac695f4ee97",
+      "imported_sha256": "b122e519e8e1a7487b751cb1d242b8c0699eb8f9fba444b8cfbf3ac695f4ee97",
+      "bytes": 3875,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/draft-save.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/draft-save.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/draft-save.json",
+      "source_sha256": "a404e9cc4b46aa2dc82595dfa9a78ea1c6afa264ee40791291f4176192994b65",
+      "imported_sha256": "a404e9cc4b46aa2dc82595dfa9a78ea1c6afa264ee40791291f4176192994b65",
+      "bytes": 4654,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/errors.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/errors.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/errors.json",
+      "source_sha256": "45ac37eacf7fe9c472243f5af71c8e9e77677dba19bcc81a7e11937d66729e6d",
+      "imported_sha256": "45ac37eacf7fe9c472243f5af71c8e9e77677dba19bcc81a7e11937d66729e6d",
+      "bytes": 7815,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/get-v2.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/get-v2.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/get-v2.json",
+      "source_sha256": "d960e308b9f4653b26621ee7fe061bf3940942aec20d52c7bf979ca53b8b88cc",
+      "imported_sha256": "d960e308b9f4653b26621ee7fe061bf3940942aec20d52c7bf979ca53b8b88cc",
+      "bytes": 4533,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/get.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/get.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/get.json",
+      "source_sha256": "06e3bb9d6d6b0e004894060828de58a93691fbb7e9b5f50c6981f4305894ec36",
+      "imported_sha256": "06e3bb9d6d6b0e004894060828de58a93691fbb7e9b5f50c6981f4305894ec36",
+      "bytes": 5513,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/list-v2.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/list-v2.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/list-v2.json",
+      "source_sha256": "9e96c7f6f3186dff527b656042a74736729eeed85fb36c04197c7ed4ca73c693",
+      "imported_sha256": "9e96c7f6f3186dff527b656042a74736729eeed85fb36c04197c7ed4ca73c693",
+      "bytes": 2773,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/list.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/list.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/list.json",
+      "source_sha256": "b36a686d8f53f75aaaf70c983c3f6b3342165d192cb7d971d47fc46e780f14ae",
+      "imported_sha256": "b36a686d8f53f75aaaf70c983c3f6b3342165d192cb7d971d47fc46e780f14ae",
+      "bytes": 2185,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/pin.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/pin.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/pin.json",
+      "source_sha256": "dedb35c59aa5678f1aaae24df3c6ab400868da8b296a9b75fc0d880bcc08ad1e",
+      "imported_sha256": "dedb35c59aa5678f1aaae24df3c6ab400868da8b296a9b75fc0d880bcc08ad1e",
+      "bytes": 192,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/publish.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/publish.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/publish.json",
+      "source_sha256": "7eb22f448bae4cbbe3827c7a09067dca8c647ba0637373c9b924f6b0b425c35e",
+      "imported_sha256": "7eb22f448bae4cbbe3827c7a09067dca8c647ba0637373c9b924f6b0b425c35e",
+      "bytes": 198,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/run-states.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/run-states.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/run-states.json",
+      "source_sha256": "aae37a45931a2e18c196a527a6e06b660edb53900ce403a00d210eb461963703",
+      "imported_sha256": "aae37a45931a2e18c196a527a6e06b660edb53900ce403a00d210eb461963703",
+      "bytes": 6544,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-control.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-control.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-control.json",
+      "source_sha256": "3c8b9b3bde61c599063ecdce1626cdd5026af78ba27d8c0a7fb94b179685f920",
+      "imported_sha256": "3c8b9b3bde61c599063ecdce1626cdd5026af78ba27d8c0a7fb94b179685f920",
+      "bytes": 736,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-events.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-events.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-events.json",
+      "source_sha256": "f42f91bcad5f96a66a7c6bf9afe9958bb06dab0af4c8bad966acf828040ef818",
+      "imported_sha256": "f42f91bcad5f96a66a7c6bf9afe9958bb06dab0af4c8bad966acf828040ef818",
+      "bytes": 1492,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-get-code-command.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-get-code-command.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-get-code-command.json",
+      "source_sha256": "ec20b9d1ac6e3a8be6aaf491f21328a2cf61b349c0b070f7ebdd9dadff264a9d",
+      "imported_sha256": "ec20b9d1ac6e3a8be6aaf491f21328a2cf61b349c0b070f7ebdd9dadff264a9d",
+      "bytes": 6641,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-get-code-done.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-get-code-done.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-get-code-done.json",
+      "source_sha256": "9102c146c1b857b0be8ee9d528a2c732c18c00cca4929256e9bdfe7b9173791c",
+      "imported_sha256": "9102c146c1b857b0be8ee9d528a2c732c18c00cca4929256e9bdfe7b9173791c",
+      "bytes": 8170,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-get-code-review.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-get-code-review.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-get-code-review.json",
+      "source_sha256": "5aeeeb231142dceb23eda65c813f6e94286d2436fa80a2c0760e8168a1796543",
+      "imported_sha256": "5aeeeb231142dceb23eda65c813f6e94286d2436fa80a2c0760e8168a1796543",
+      "bytes": 7957,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-get-running.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-get-running.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-get-running.json",
+      "source_sha256": "58efd4262c13146cb1f3540685e9d92c5a51168507881f0c6690ecfaa24fa9b8",
+      "imported_sha256": "58efd4262c13146cb1f3540685e9d92c5a51168507881f0c6690ecfaa24fa9b8",
+      "bytes": 4285,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-get-text-runner.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-get-text-runner.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-get-text-runner.json",
+      "source_sha256": "6c4ff24c6439824fe91131782c7f35e31342b54a4fe9adcbe6977f498e1c0ff3",
+      "imported_sha256": "6c4ff24c6439824fe91131782c7f35e31342b54a4fe9adcbe6977f498e1c0ff3",
+      "bytes": 4742,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-get.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-get.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-get.json",
+      "source_sha256": "ccc92051fd07821ceadd2d596df2a5a27cd5f5d54f781a003c3af64d28e7b0e6",
+      "imported_sha256": "ccc92051fd07821ceadd2d596df2a5a27cd5f5d54f781a003c3af64d28e7b0e6",
+      "bytes": 8122,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-list.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-list.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-list.json",
+      "source_sha256": "f2d3bede77ea92f876234d5d9b167924a890798861d2e14e6ee65903ebd65afc",
+      "imported_sha256": "f2d3bede77ea92f876234d5d9b167924a890798861d2e14e6ee65903ebd65afc",
+      "bytes": 6543,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-signoff-code.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-signoff-code.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-signoff-code.json",
+      "source_sha256": "4417b69dac7b5bfb54fdbf53116cd5c7be7a6c866d4d01c77b5f6c81f619e0c5",
+      "imported_sha256": "4417b69dac7b5bfb54fdbf53116cd5c7be7a6c866d4d01c77b5f6c81f619e0c5",
+      "bytes": 1228,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-signoff.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-signoff.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-signoff.json",
+      "source_sha256": "e441fa9828b11b2ac6e88586647fa5f4107405e6ec4b1d4db9d91726849b8708",
+      "imported_sha256": "e441fa9828b11b2ac6e88586647fa5f4107405e6ec4b1d4db9d91726849b8708",
+      "bytes": 846,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-start-code.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-start-code.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-start-code.json",
+      "source_sha256": "c24a9dc2bebaf9452308622b769b9355344a94fc7660c8ff6f862b2a57c65018",
+      "imported_sha256": "c24a9dc2bebaf9452308622b769b9355344a94fc7660c8ff6f862b2a57c65018",
+      "bytes": 1169,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/runs-start.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/runs-start.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/runs-start.json",
+      "source_sha256": "785c5bebc1cfe1be4b6c6a384903c68df2575803bbc7bc6813e62d0f05a037a4",
+      "imported_sha256": "785c5bebc1cfe1be4b6c6a384903c68df2575803bbc7bc6813e62d0f05a037a4",
+      "bytes": 889,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/status-offline.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/status-offline.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/status-offline.json",
+      "source_sha256": "7ab0b9412f7dd65f33e315e01ed8a6d094b91980eea6372ce13157e37f21a80b",
+      "imported_sha256": "7ab0b9412f7dd65f33e315e01ed8a6d094b91980eea6372ce13157e37f21a80b",
+      "bytes": 376,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/status-v2.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/status-v2.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/status-v2.json",
+      "source_sha256": "6ea5fac085c27f85b399c3d642105b397d31b6d5708d3098202d16ee4cb1d09a",
+      "imported_sha256": "6ea5fac085c27f85b399c3d642105b397d31b6d5708d3098202d16ee4cb1d09a",
+      "bytes": 371,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/status.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/status.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/status.json",
+      "source_sha256": "54edbe31298c02960b3a5458e5473a06ce39e95364f25aec3e8fbcbda068c6d5",
+      "imported_sha256": "54edbe31298c02960b3a5458e5473a06ce39e95364f25aec3e8fbcbda068c6d5",
+      "bytes": 349,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/template-research-draft-review.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/template-research-draft-review.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/template-research-draft-review.json",
+      "source_sha256": "5a268df5082550f7617c5e43c23276070fb8ce2981b55833d27c5b55027b968b",
+      "imported_sha256": "5a268df5082550f7617c5e43c23276070fb8ce2981b55833d27c5b55027b968b",
+      "bytes": 3758,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-delete.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-delete.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-delete.json",
+      "source_sha256": "c3a7475c002e65a92057f44b06c9ff5f9cd9d907bb0f93cb028d8e9c43be5f8f",
+      "imported_sha256": "c3a7475c002e65a92057f44b06c9ff5f9cd9d907bb0f93cb028d8e9c43be5f8f",
+      "bytes": 146,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-list-code.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-list-code.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-list-code.json",
+      "source_sha256": "a74854d660dcad6fd9711a18dcb6cd863d347ba927e9bff64273ace969cdc4bb",
+      "imported_sha256": "a74854d660dcad6fd9711a18dcb6cd863d347ba927e9bff64273ace969cdc4bb",
+      "bytes": 2694,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-list-v2.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-list-v2.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-list-v2.json",
+      "source_sha256": "8912c3650223bf6a75a20c81cef781105b8be6b809aad93f7e72518203aef624",
+      "imported_sha256": "8912c3650223bf6a75a20c81cef781105b8be6b809aad93f7e72518203aef624",
+      "bytes": 1244,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-list.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-list.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-list.json",
+      "source_sha256": "1ced9eae4c8d06d952dc190ea75cdfba555585ec7617e16feb8a548f2eec5d30",
+      "imported_sha256": "1ced9eae4c8d06d952dc190ea75cdfba555585ec7617e16feb8a548f2eec5d30",
+      "bytes": 645,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-save.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-save.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-save.json",
+      "source_sha256": "662d7f78d89d72cac56471e84cf5e75b3b5bd1f772a5cf21a548a2d1159f8423",
+      "imported_sha256": "662d7f78d89d72cac56471e84cf5e75b3b5bd1f772a5cf21a548a2d1159f8423",
+      "bytes": 255,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-use-yours.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-use-yours.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-use-yours.json",
+      "source_sha256": "5c5bd6c86ff71c6a6c878e456798216daa195a00166fc7e42ab3a8ec1e177692",
+      "imported_sha256": "5c5bd6c86ff71c6a6c878e456798216daa195a00166fc7e42ab3a8ec1e177692",
+      "bytes": 731,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/templates-use.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/templates-use.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/templates-use.json",
+      "source_sha256": "786c8aa90f4dae47be7ad240bda86f4cbe6dec5bd379a9fa6a8413b3bdb24c8f",
+      "imported_sha256": "786c8aa90f4dae47be7ad240bda86f4cbe6dec5bd379a9fa6a8413b3bdb24c8f",
+      "bytes": 698,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/unarchive.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/unarchive.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/unarchive.json",
+      "source_sha256": "91907f201b070cab8781eca1c58fd16e0f5148d9ca4332dc9ebae412380e4d54",
+      "imported_sha256": "91907f201b070cab8781eca1c58fd16e0f5148d9ca4332dc9ebae412380e4d54",
+      "bytes": 181,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/validate-v2.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/validate-v2.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/validate-v2.json",
+      "source_sha256": "7814cc3ab9af0fa181e9582d0a0ecc1a82ee2a2ed08f55eb21f512caae52e583",
+      "imported_sha256": "7814cc3ab9af0fa181e9582d0a0ecc1a82ee2a2ed08f55eb21f512caae52e583",
+      "bytes": 1559,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/workflows-v1/validate.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/workflows-v1/validate.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/workflows-v1/validate.json",
+      "source_sha256": "cd533e4e42db5459ee139ed88f48ef6370a6a0b811748c98e5ee596e11d39efc",
+      "imported_sha256": "cd533e4e42db5459ee139ed88f48ef6370a6a0b811748c98e5ee596e11d39efc",
+      "bytes": 618,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/loopdy_card_v1/invalid-private-url.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/loopdy_card_v1/invalid-private-url.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/loopdy-card-v1/invalid-private-url.json",
+      "source_sha256": "97b82a110cb6cc8122763a1c7833760178ba72a698b1943919f13e974dc64271",
+      "imported_sha256": "97b82a110cb6cc8122763a1c7833760178ba72a698b1943919f13e974dc64271",
+      "bytes": 616,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/loopdy_card_v1/live-bitcoin.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/loopdy_card_v1/live-bitcoin.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/loopdy-card-v1/live-bitcoin.json",
+      "source_sha256": "1251d28b66dc3ea50a35ad98e5ddf78b5e573c207ee87f067ecef1f4f39bb1d4",
+      "imported_sha256": "1251d28b66dc3ea50a35ad98e5ddf78b5e573c207ee87f067ecef1f4f39bb1d4",
+      "bytes": 1607,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/loopdy_card_v1/live-earthquakes.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/loopdy_card_v1/live-earthquakes.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/loopdy-card-v1/live-earthquakes.json",
+      "source_sha256": "dff226e80f86ed875725641b78f3e14bc91dfe73e394ed678504e521a7b0b8a9",
+      "imported_sha256": "dff226e80f86ed875725641b78f3e14bc91dfe73e394ed678504e521a7b0b8a9",
+      "bytes": 1726,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/loopdy_card_v1/live-weather.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/loopdy_card_v1/live-weather.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/loopdy-card-v1/live-weather.json",
+      "source_sha256": "fe63f29bc6ec9d76665269a789ab97fdc15d647230f8a7a3f43cae1d62583e5f",
+      "imported_sha256": "fe63f29bc6ec9d76665269a789ab97fdc15d647230f8a7a3f43cae1d62583e5f",
+      "bytes": 2033,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/loopdy_card_v1/static-metrics.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/loopdy_card_v1/static-metrics.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/loopdy-card-v1/static-metrics.json",
+      "source_sha256": "2081d398b9a0a775dd668ac9626ae8e3cc98fed4b7771fd9ee1395424078ed32",
+      "imported_sha256": "2081d398b9a0a775dd668ac9626ae8e3cc98fed4b7771fd9ee1395424078ed32",
+      "bytes": 1129,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/loopdy_card_v1/static-weather-background.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/loopdy_card_v1/static-weather-background.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/loopdy-card-v1/static-weather-background.json",
+      "source_sha256": "3736812c504f3f12f037e326f6cba25eda798fd6d74d13049dd687a8fed17543",
+      "imported_sha256": "3736812c504f3f12f037e326f6cba25eda798fd6d74d13049dd687a8fed17543",
+      "bytes": 975,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-chart-limit.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-chart-limit.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-chart-limit.json",
+      "source_sha256": "217d9d18fc9cbbb0df8c0f77eeeb2c62c3757ed2b02c30a94695e6402d69ebfa",
+      "imported_sha256": "217d9d18fc9cbbb0df8c0f77eeeb2c62c3757ed2b02c30a94695e6402d69ebfa",
+      "bytes": 2489,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-dashboard-limit.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-dashboard-limit.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-dashboard-limit.json",
+      "source_sha256": "2d79d8aa0c2b8e8fb90c3446fc7ce82007cda85dfa08f6e02f096853da63c3c1",
+      "imported_sha256": "2d79d8aa0c2b8e8fb90c3446fc7ce82007cda85dfa08f6e02f096853da63c3c1",
+      "bytes": 3061,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-forbidden-key.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-forbidden-key.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-forbidden-key.json",
+      "source_sha256": "61474ca467f0d3b29cbcbf169fbca0d02edd392350933c548e6a6c8b7313d562",
+      "imported_sha256": "61474ca467f0d3b29cbcbf169fbca0d02edd392350933c548e6a6c8b7313d562",
+      "bytes": 692,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-form-secret-field.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-form-secret-field.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-form-secret-field.json",
+      "source_sha256": "882f20c3db3577cb7c75325614248280f4c4acea4da888ea0f2e4e3f265f127d",
+      "imported_sha256": "882f20c3db3577cb7c75325614248280f4c4acea4da888ea0f2e4e3f265f127d",
+      "bytes": 741,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-sports-home.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-sports-home.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-sports-home.json",
+      "source_sha256": "615592d7be789ad2e48416c9d474a8b3f3141570ec9d8f778892f843a474cb64",
+      "imported_sha256": "615592d7be789ad2e48416c9d474a8b3f3141570ec9d8f778892f843a474cb64",
+      "bytes": 734,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-stock-symbol.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-stock-symbol.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-stock-symbol.json",
+      "source_sha256": "956d8f8b9f8a480d5e11766d5165c54094d6c65774167c538aaac829004ac43a",
+      "imported_sha256": "956d8f8b9f8a480d5e11766d5165c54094d6c65774167c538aaac829004ac43a",
+      "bytes": 667,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-unsupported-version.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-unsupported-version.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-unsupported-version.json",
+      "source_sha256": "1042bdc49452dc80c000181fcf1df1c7691ff38a71c839742c19c6e14c95aa9e",
+      "imported_sha256": "1042bdc49452dc80c000181fcf1df1c7691ff38a71c839742c19c6e14c95aa9e",
+      "bytes": 665,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/invalid-weather-order.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/invalid-weather-order.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/invalid-weather-order.json",
+      "source_sha256": "ea3fb3c70983d75527a7554c18ca6c02faa275de809adeae9eadde80a42dc0ad",
+      "imported_sha256": "ea3fb3c70983d75527a7554c18ca6c02faa275de809adeae9eadde80a42dc0ad",
+      "bytes": 1225,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/manifest.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/manifest.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/manifest.json",
+      "source_sha256": "8b7eaf7aa2a834a7a3e2f3b90621955865c2c1aa53bf73ad32fee7f8fc460f7f",
+      "imported_sha256": "8b7eaf7aa2a834a7a3e2f3b90621955865c2c1aa53bf73ad32fee7f8fc460f7f",
+      "bytes": 2155,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-chart.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-chart.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-chart.json",
+      "source_sha256": "86ab42ca73224d79eb87d5d15d48090582be1b8842e1001737a49903590f3836",
+      "imported_sha256": "86ab42ca73224d79eb87d5d15d48090582be1b8842e1001737a49903590f3836",
+      "bytes": 843,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-dashboard.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-dashboard.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-dashboard.json",
+      "source_sha256": "92e8b4ca80b873fd2361318f31846add4197a2a771b1e06e4d1333652c587644",
+      "imported_sha256": "92e8b4ca80b873fd2361318f31846add4197a2a771b1e06e4d1333652c587644",
+      "bytes": 1051,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-form.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-form.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-form.json",
+      "source_sha256": "c8dec312a40da6a828b75e2d545da743f69d9179a597c84f5258b52ade66b9a6",
+      "imported_sha256": "c8dec312a40da6a828b75e2d545da743f69d9179a597c84f5258b52ade66b9a6",
+      "bytes": 739,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-sports-live.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-sports-live.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-sports-live.json",
+      "source_sha256": "9a268c3169cbff39983586ba430bb19270895e319f371618f689ff6217c1e953",
+      "imported_sha256": "9a268c3169cbff39983586ba430bb19270895e319f371618f689ff6217c1e953",
+      "bytes": 735,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-sports-scheduled.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-sports-scheduled.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-sports-scheduled.json",
+      "source_sha256": "1c4d2e932e3b21b6d926549a5cb140f26f7f6fec4f8bb3db7ab2a721cf2fbc8b",
+      "imported_sha256": "1c4d2e932e3b21b6d926549a5cb140f26f7f6fec4f8bb3db7ab2a721cf2fbc8b",
+      "bytes": 645,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-stock.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-stock.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-stock.json",
+      "source_sha256": "a9326c00fb727a466456aefac012c376d4c0c93d141c4985aec2ce6eac43b69b",
+      "imported_sha256": "a9326c00fb727a466456aefac012c376d4c0c93d141c4985aec2ce6eac43b69b",
+      "bytes": 665,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-weather-valid-until.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-weather-valid-until.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-weather-valid-until.json",
+      "source_sha256": "36665b0d267548f2d4aee657dba54e2de952ec07c8639eaec2a770563dc7c206",
+      "imported_sha256": "36665b0d267548f2d4aee657dba54e2de952ec07c8639eaec2a770563dc7c206",
+      "bytes": 987,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/generative_ui_v2/valid-weather.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/generative_ui_v2/valid-weather.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/generative-ui-v2/valid-weather.json",
+      "source_sha256": "79b75a6b5f42b3870651d76295a00421d0625788c8bc58a82242eb271b1df038",
+      "imported_sha256": "79b75a6b5f42b3870651d76295a00421d0625788c8bc58a82242eb271b1df038",
+      "bytes": 944,
+      "license": "Apache-2.0",
+      "changes": []
+    },
+    {
+      "source": "plugin",
+      "source_path": "fixtures/contracts/sealed-alert-v2-vector.json",
+      "source_url": "https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/fixtures/contracts/sealed-alert-v2-vector.json",
+      "revision": "bb7f9e5a7be74751c9b192a8a878350f714466d6",
+      "destination": "docs/reference/fixtures/sealed-alert-v2-vector.json",
+      "source_sha256": "c8663ef57c2a80718b3008a06f3c40352b24b57d2eaef1a2478e89b1de467b5e",
+      "imported_sha256": "c8663ef57c2a80718b3008a06f3c40352b24b57d2eaef1a2478e89b1de467b5e",
+      "bytes": 5175,
+      "license": "Apache-2.0",
+      "changes": []
+    }
+  ]
+}

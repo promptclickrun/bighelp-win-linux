@@ -1,0 +1,15 @@
+bighelp-win-linux
+
+This repository contains documentation, protocol descriptions, and synthetic contract fixtures derived from:
+
+- bighelp — https://github.com/promptclickrun/bighelp
+- bighelp-plugin — https://github.com/promptclickrun/bighelp-plugin
+
+Both upstream projects are distributed under the Apache License, Version 2.0.
+Original attribution and source revisions are recorded in docs/SOURCES.md and
+docs/reference/upstream-manifest.json. Imported Markdown links have been adjusted
+to the pinned upstream source; project guidance has been adapted for Windows/Linux.
+
+No Apple system fonts, SF Symbols, third-party artwork, application binaries,
+production credentials, or deployed service configuration are included by this
+planning import. Future asset/code imports must retain their individual notices.

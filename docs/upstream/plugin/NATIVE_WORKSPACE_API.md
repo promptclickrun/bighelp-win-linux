@@ -1,0 +1,163 @@
+> **Pinned upstream reference, not local agent instructions.** Source: [docs/NATIVE_WORKSPACE_API.md](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WORKSPACE_API.md). Apple/legacy/runtime instructions are historical; use this repository's plan and source-audit corrections. Only this notice and Markdown link targets were changed.
+
+# Native workspace API
+
+These routes extend stock authenticated `hermes serve` at `/api/plugins/loopdy`.
+They need no bighelp account or extra listener.
+Network/Tailscale/TLS configuration and host activation remain operator-owned.
+Stock Hermes REST and `/api/ws` still own native chat and workspace execution.
+
+This is not full native parity. Optional
+[room tool observations](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_ROOM_ACTIVITY.md) extend this foundation on
+supported main builds. [Native Wiki](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WIKI.md) uses the same verified
+principal without extra pairing. [iPhone tools](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/IPHONE_DEVICE_TOOLS.md) use a
+short-lived phone channel on the same routes.
+
+## Authentication and context
+
+`GET /api/plugins/loopdy/native/context` takes no query parameters or body:
+
+```text
+{
+  schemaVersion: 1,
+  pluginVersion: string,
+  runtimeId: string,
+  servingProfileId: string|null,
+  principal: {provider: string, userId: string, displayName: string|null}|null,
+  features: string[],
+  unavailable?: {[feature: string]: string}
+}
+```
+
+`unavailable` is present only when a feature this plugin has can't work on this computer for a known reason. Each
+value is a fixed reason code, never free text, so the app can say what to do. Today only workflows use it
+(`native-workflows-v1`: `not_posix`, `profile_helpers_missing`, `chat_runner_missing` or `store_unavailable`; see
+[Workflows](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/WORKFLOWS.md)). Apps that don't know the field ignore it.
+
+Routes are mounted behind Hermes' own authentication middleware. With provider
+login enabled, a real verified `dashboard_auth.base.Session` is required, and
+its provider/user coordinates must match the app's verified account. Without
+provider login, Hermes' existing dashboard session-token middleware grants the
+host-wide session; `principal` is null and the app uses a separate dashboard
+scope. The plugin does not fabricate a user or accept credentials itself.
+Missing/wrong dashboard tokens are still rejected by Hermes before dispatch.
+No change to host authentication, URL or listening port is required.
+
+Only provider (128 UTF-8 bytes), user ID (512) and optional display name (200)
+are copied. Credentials and Session objects are never returned or logged.
+Person-scoped Wiki routes are not advertised for the dashboard-wide grant.
+Other native features use their existing context and operation preconditions.
+The app's local auth/connection generations reject stale callbacks. Native
+workspace access does not create a per-profile ACL or phone permission.
+
+`runtimeId` identifies this loaded native plugin HTTP module lifetime, not
+installed source, release freshness, or a device. Process profile
+is obtained only with the public
+`profile_name_for_home(get_process_hermes_home())` helpers, ignoring request-local
+home overrides. Missing/unproven profile is null, never inferred as `default`.
+The filesystem path is not exposed. Use this proof to gate process-scoped
+memory/logs/webhooks; an ignored `?profile` is not scope selection.
+
+Features are finite: `native-context-v1`, `serving-profile-v1` when proven, and
+`native-card-templates-v1` when the implemented routes' public profile helpers
+are available. `native-room-activity-v1` is added only with an actual supported
+live public-hook registration. These are not universal Hermes capability or runtime health claims.
+`native-wiki-v1` advertises the fixed principal-owned Wiki adapter on secure
+traversal platforms; folder policy and local journal availability still apply.
+`native-project-git-read-v1` exposes the distinct fixed read-only Project Git
+contract using verified public Project/stored-session association and the
+existing content-token engine. See [Native Project Git](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_PROJECT_GIT.md);
+this never creates or adopts a Workspace Files grant.
+Read failures remain visible. Context responses are at most 16 KiB.
+
+## Card templates
+
+Successful context GET returns `Cache-Control: no-store` and an `ETag` of the
+form `"sha256:<64 lowercase hex>"` (including quotes). It hashes canonical JSON
+of the safe context above; it is a precondition, NOT a credential.
+
+Every template POST requires that exact `If-Match` plus
+`X-Loopdy-Request-ID: <canonical lowercase UUID>`. Duplicate, missing or malformed
+headers fail. Success echoes both headers. Valid request IDs are also echoed on
+plugin validation/domain errors; errors do not issue a new ETag. Stock auth and
+disabled-plugin errors may originate before the plugin and have no echo.
+
+All paths below start `/api/plugins/loopdy/native/cards/templates/`:
+
+| POST suffix | Exact JSON body | Successful result |
+| --- | --- | --- |
+| `list` | `{agentId}` | `{agentId,templates:[summary]}` |
+| `install` | `{agentId,template:bundle}` | `{agentId,changed,template:summary}` |
+| `remove` | `{agentId,templateId,version,sha256}` | `{agentId,changed,templateId}` |
+
+An exact existing canonical profile ID is required. No fallback, arbitrary
+method/path, actor/device/host override or new remote template fetching is
+accepted. All three routes reuse the serving plugin's existing profile-keyed
+template store and summary projection.
+
+Summary fields: `id,version,name,summary,author,license,minimum_card_version,sha256`.
+Bundle adds exactly `parameters_schema,document`; see
+[`loopdy-card-template-v1.schema.json`](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/spec/loopdy-card-template-v1.schema.json).
+Native version fields are strict integers, card version is 1, the document hash
+must match, and the existing inert Card validator prohibits active data sources.
+Requests/responses are at most 196608 UTF-8 bytes, JSON depth at most 24 and
+catalogs at most 500 summaries. Oversized catalogs fail rather than silently
+truncate. Duplicate JSON fields, non-finite numbers and unknown fields fail.
+
+Identical full-bundle reinstall is unchanged; same-version different content or
+downgrade conflicts. Remove compares exact version/hash; already absent is
+unchanged. These are existing domain outcomes, not a general request-ID receipt
+or exactly-once protocol. Cancel/disconnect/context change can race a committed
+transaction: reconcile by listing under a fresh context, never blindly retry a
+mutation or switch transports. Context is checked before/after body and worker
+awaits. Native auth revocation is enforced by stock middleware on new requests,
+not a new atomic revoke-versus-in-flight-transaction guarantee.
+
+Plugin errors are `{error:{code,message,retryable,details:{}}}`. Statuses: 401
+missing/invalid interactive identity; 404 missing profile; 422 invalid input;
+428 missing If-Match; 412 changed context; 409 template conflict; 413 bound
+exceeded; 503 unavailable service. Errors are bounded and omit raw inputs,
+exceptions and paths. A 412 requires a fresh context; it never authorizes retry.
+
+## Existing services are separate contracts
+
+Existing routes and older clients are unchanged; the new headers are not
+required by forms, attachments, provider/device management or Files:
+
+- Forms: `/generative-ui/v2/forms/{request_id}/submit` and `/status`, with
+  existing stored profile/session binding and action-response envelope.
+- Attachments: `/attachments/resolve` and `/attachments/{id}?profile=...`,
+  using existing Hermes delivery policy and opaque profile cache IDs. This is
+  not a universal artifact catalog or authenticated-person/turn proof.
+- Files: `/workspace-files/capabilities`, `/list`, `/read`, `/status`, `/diff`.
+  Explicit host-local root grants are required in addition to HTTP auth. The
+  current serving-profile catalog is shared by its authenticated workspace
+  callers, not a per-device ACL. See [Workspace Files](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/WORKSPACE_FILES.md).
+
+Plugin Files uses opaque IDs and relative paths, not native Files absolute
+`locked_root` paths. Its grant generation/inode checks are internal; wire
+revisions are file hashes or directory snapshots, not client-visible grant
+epochs. Retain the native owner and proven process profile over each await and
+re-probe roots after reconnect.
+
+## Capability boundaries
+
+| Capability | Current native boundary |
+| --- | --- |
+| Wiki | Session principal/profile ownership with one shared registry/lock and no additional pairing. See [Wiki](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/NATIVE_WIKI.md). |
+| Phone tools | A phone channel is bound to one agent and session; Hermes' tool execution middleware routes `iphone_*` calls to it using Hermes' own turn and tool-call IDs. See [iPhone tools](https://github.com/promptclickrun/bighelp-plugin/blob/bb7f9e5a7be74751c9b192a8a878350f714466d6/docs/IPHONE_DEVICE_TOOLS.md). |
+| Hosted person context | Public pre-LLM hooks lack authoritative hosted room/member/discussion/task-generation/person binding. Generic native durable actor remains honest; no private/task-title/text inference. |
+| Group activity | Optional main-only public observer feeds are asynchronous, lossy and local-member-only; see the exact HTTP polling contract. No durable replay or completion-success inference. |
+
+Native auth is not a phone grant. Raw microphone transcription remains local to
+the phone, and provider credentials are never exposed by these routes.
+
+## Verification and activation
+
+`tests/test_native_api.py` covers real Hermes auth middleware and stock serve
+plugin discovery in synthetic homes, not a substitute production auth provider.
+Focused groups, templates, forms, attachments and Files suites cover
+compatibility. Use the real Hermes Python with explicit source/candidate import
+paths and a credential-free temporary HOME/HERMES_HOME before any imports.
+No installation, restart, deployment, release or activation follows from these
+source changes or their passing tests.
