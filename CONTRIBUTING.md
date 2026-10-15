@@ -1,6 +1,6 @@
 # Contributing
 
-Start with [AGENTS.md](AGENTS.md) and the [implementation plan](docs/IMPLEMENTATION_PLAN.md). This private repository currently contains a source-backed conversion plan, not a runnable application.
+Start with [AGENTS.md](AGENTS.md) and the [implementation plan](docs/IMPLEMENTATION_PLAN.md). This private repository contains the conversion plan and a dependency-free executable contract foundation, not yet a runnable desktop application.
 
 ## Contracts
 
@@ -14,11 +14,11 @@ Start with [AGENTS.md](AGENTS.md) and the [implementation plan](docs/IMPLEMENTAT
 1. Agree on the change and its acceptance criteria. Approve architecture and visual mocks before implementation.
 2. Use a focused branch and issue after the initial repository bootstrap.
 3. Add a failing focused test for a defect or a protocol vector for a new boundary. Use synthetic data.
-4. Validate shared contracts and the affected renderer on actual supported OS versions. A Linux web-renderer test does not prove RNW behavior.
+4. Validate shared contracts and the affected renderer on actual supported OS versions. A shared-renderer test on one OS does not prove the other OS integration.
 5. Update documentation and the parity matrix when behavior or support changes.
 6. Remove temporary outputs, commit, rebase onto current `main`, and open a non-draft PR.
 
-Runtime commands and CI will be added only after the platform proof is approved. Do not copy Apple's `xcodebuild`, XcodeGen, signing, or TestFlight workflow into this project.
+Contract test commands are in README.md. Desktop build tooling and CI await the dependency/platform proof. Do not copy Apple's `xcodebuild`, XcodeGen, signing, or TestFlight workflow into this project.
 
 ## Pull request expectations
 

@@ -1,20 +1,20 @@
 # Decisions before implementation
 
-Status: proposals, **not approved choices**. The user requested a comprehensive plan and repository setup, not an application implementation or deployment.
+Status: implementation authorized on 2026-10-15. D1, the initial D2 qualification matrix, and D3 are approved below. Dependencies, product visuals, providers, packaging, and release choices remain gated.
 
-## D1 — What “React Native on Linux” means (blocking)
+## D1 — Shared desktop renderer (approved)
 
-**Recommend:** native React Native Windows; React Native Web in Electron on Linux. The same RN component model/domain code is shared, but Linux controls render through the web.
+**Approved:** React Native Web inside Electron on **both Windows and Linux**. Neither platform uses React Native Windows or native Linux widgets. Share the renderer and domain layer; qualify OS integration separately.
 
-Alternatives: RN Web/Electron on both (simpler consistent renderer, less native), or a funded native Linux-renderer effort (higher support risk). The Phase 0 proof must validate RNW text/virtualization/media/accessibility before committing to the split.
+Alternatives not selected: split native Windows/web Linux renderers, or a funded native Linux-renderer effort. The Phase 0 proof must validate text, virtualization, media, and accessibility in the shared renderer on each OS.
 
-**Approval needed:** accept the Linux web-rendered desktop shell, or require genuinely native Linux rendering and re-estimate.
+The original split-renderer recommendation is superseded. No React Native Windows dependency is required by this choice.
 
 ## D2 — Supported platforms (blocking for build qualification)
 
 **Proposed first release:** Windows 11 x64; Ubuntu 24.04 LTS x64, with Wayland and X11 tested. Add one current Fedora/KDE or GNOME lane after the proof. ARM64, Windows 10, Flatpak, and additional distributions are separate qualification commitments, not automatic exclusions forever.
 
-**Approval needed:** required OS versions/architectures/distribution formats. A Windows build needs a real Windows runner; this macOS planning session cannot certify it.
+**Approved initial qualification:** Windows 11 x64 and Ubuntu 24.04 LTS x64, including Wayland and X11. Expand after the proof. Distribution formats remain open. A macOS development run cannot certify these targets.
 
 ## D3 — Notifications when the app is “closed” (blocking for parity claim)
 
@@ -22,7 +22,7 @@ The current Apple/BuzzKit/APNs setup is not a verified Windows/Linux solution. E
 
 **Recommend:** optional tray/background operation with explicit autostart and lock-safe behavior; keep direct Hermes chat entirely independent. If necessary, add a separately reviewed host-only desktop notification enrollment/subscription capability to the plugin. No new production service deployment without permission.
 
-**Approval needed:** is an explicitly enabled background process acceptable, or must alerts arrive after every process has exited? The latter needs a Windows delivery/activation design and a Linux-specific service strategy; it is not one ready-made cross-platform API.
+**Approved:** opt-in tray/background operation; **no alerts after fully quitting**. Closing a window is distinct from quitting. Autostart remains an explicit opt-in. Enrollment and OS delivery still require proof.
 
 ## D4 — Calendar, reminders, location, and person identity (blocking for those rows)
 
@@ -60,4 +60,4 @@ No live host, Bighelp cloud, signed release, daily-driver data, or Apple deploym
 
 ## Next conversation
 
-Start with **D1**. Once the platform interpretation is agreed, approve P0 and resolve its support/security/notification proofs before creating product code. The other decisions stay visible; none is silently assumed settled by a successful repository bootstrap.
+P0 has begun with a dependency-free executable domain contract slice. See [P0 evidence](P0_EVIDENCE.md). Exact dependencies and static product mocks need approval before their implementation. This is not full P0 acceptance.
