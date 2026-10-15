@@ -1,0 +1,21 @@
+/* ---------- D · hybrid: C's rail + context list, B's bottom tab bar ---------- */
+/* The rail picks what the list shows; the bottom bar belongs to the open agent only. */
+.d-body{flex:1;min-height:0;display:grid;grid-template-columns:76px 300px 1fr}
+.d-body.is-narrow{grid-template-columns:68px 1fr}
+.d-body.is-narrow .d-list{display:block;border-right:0}
+.d-main{min-width:0;display:flex;flex-direction:column}
+.d-rail{overflow:hidden}
+.rail-sep{display:block;height:1px;background:var(--line);margin:6px 10px}
+.d-head-btns{display:flex}
+.d-list-note{display:flex;align-items:center;gap:8px;margin:0 4px 8px;padding:6px 10px;border-radius:10px;
+  background:var(--warn-bg);color:var(--warn-ink);border:1px solid var(--warn-line);font-size:12px}
+.d-list-note .ic{width:16px;height:16px}
+.fn-ic{width:32px;height:32px;flex:none;display:grid;place-items:center;border-radius:10px;background:var(--act-soft);color:var(--act)}
+.fn-ic .ic{width:18px;height:18px}
+.caption-row .ph-tag{margin-left:auto}
+.ph-tag{font-size:11px;font-weight:700;color:var(--muted);border:1px dashed var(--muted);border-radius:6px;padding:1px 6px;white-space:nowrap}
+.d-ph{margin:24px;padding:20px 24px;border:1px dashed var(--muted);border-radius:16px;color:var(--muted);max-width:60ch}
+.d-ph p{margin:0 0 6px}.d-ph b{color:var(--ink)}
+.d-bar{border-top:1px solid var(--line);padding-top:6px}
+.d-main .composer{padding-bottom:10px}
+.d-main .conn-banner{margin:4px auto 0;max-width:760px;width:calc(100% - 32px);border:1px solid var(--warn-line);border-radius:12px}
