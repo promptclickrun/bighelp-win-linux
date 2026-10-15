@@ -42,7 +42,9 @@ No continuous loaders/pulse/weather effects under this workspace's motion policy
 
 **Structural direction picked (2026-10-15):** after reviewing A/B/C, Colt chose "the pinned menu … on the bottom like in mockup B" with "the nav rail and separate chat/agent/function list of mockup C". `docs/design/p0-alternatives/d-hybrid.html` (mock D) records that combination. A global rail picks the context list (Chats / Agents / a function's own list). The open agent's Chat/Feed/Ideas/Goals/Files tabs sit below the composer and do not duplicate the rail. There is one Settings, and no Companion pet row. The rail is a deliberate navigation deviation from the shipping sidebar, and it is accepted as part of this pick.
 
-**Still not approved:** D's rendered details (rail order, widths, spacing, bar styling, narrow behaviour), the Workflows/function page bodies, which are static placeholders, and every other parity exception above (fonts, glyphs, surfaces, motion). Full visual parity is not accepted. The mocks use synthetic content and have not been compared with screenshots of the shipping app. Real UI work still waits for refinement review of D.
+**Direction confirmed (2026-10-15):** after reviewing the rendered hybrid D sheet, Colt said, "In general, yes I agree with the direction." Use D as the visual direction for the first implementation slice; another broad layout-selection round is not required. This is general direction approval, not pixel-level acceptance or proof of native behavior.
+
+**Still not approved or verified:** exact rail order, widths, spacing, narrow interaction details, Workflows/function page bodies (static placeholders), and unrelated parity exceptions (fonts, glyphs, surfaces, motion). Full visual parity is not accepted. The mocks use synthetic content and have not been compared with shipping-app screenshots. The separate D6 dependency approval gate remains in force.
 
 ## D6 — Runtime dependencies and storage (after proof)
 
