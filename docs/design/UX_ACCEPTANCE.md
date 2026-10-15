@@ -8,8 +8,8 @@ Static mocks are proposals, not evidence of native behavior. This checklist inco
 - Preserve one navigation and one Settings. Everyday controls remain outside Nerd Mode. Preserve per-agent Chat, Feed, Ideas, Goals and Files. Sources: `docs/upstream/bighelp/DESIGN.md:58-69,268-291,392-396`.
 - Keep the composer outside a recycled list. Drafts stay editable during connection recovery. Preserve IME composition, caret, selection and undo. Sources: `docs/upstream/bighelp/CHAT_INTERACTION_CONTRACT.md:26`, `docs/upstream/bighelp/CACHE_FIRST_SESSIONS.md:11`.
 - An unacknowledged send is unknown, not failed. Reconcile first; never automatically resend. Explicit duplicate-risk confirmation is required before a new attempt. Sources: `packages/domain/chat-contract.ts`, `docs/upstream/bighelp/CACHE_FIRST_SESSIONS.md:42`.
-- Window close, navigation and tray mode do not stop execution. Only explicit Stop does. Sources: `docs/DECISIONS.md`, `docs/upstream/bighelp/HERMES_API.md:113`.
-- Retire stale approvals and secret prompts on ownership changes. Do not duplicate decisions across windows or default-focus Approve. Source: `docs/upstream/bighelp/HERMES_API.md:89-95`.
+- Window close, navigation and tray mode do not stop execution. Only explicit Stop does. Sources: `docs/DECISIONS.md`, `docs/contracts/HERMES_API.md:113`.
+- Retire stale approvals and secret prompts on ownership changes. Do not duplicate decisions across windows or default-focus Approve. Source: `docs/contracts/HERMES_API.md:89-95`.
 - Recent catalog activity and replayed events are not proof that an agent is running. Never invent progress or successful tool outcomes. Source: `docs/upstream/bighelp/DIRECT_HERMES_SESSIONS.md:56-57,72-74`.
 - Replace continuous upstream loading animations with still status. Real screen-reader acceptance needs Narrator/UIA and Orca/AT-SPI; HTML semantics alone do not prove it. Source: `docs/parity/VISUAL_PARITY.md:88-90`.
 
