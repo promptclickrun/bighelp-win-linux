@@ -1,6 +1,6 @@
 # Functional parity matrix
 
-Baseline: [Bighelp Mac Catalyst 2.4.0 (122)](../SOURCES.md). **Every target implementation is currently not started.** This matrix records intended coverage, not shipped support. Windows and Linux share the requirement unless a platform replacement/gap is called out.
+Baseline: [Bighelp Mac Catalyst 2.4.0 (122)](../SOURCES.md). **No target feature is qualified or shipped.** A dependency-free ownership/send contract proof supporting F06/F12/F13 has started; see [P0 evidence](../P0_EVIDENCE.md). It does not implement those complete features. Windows and Linux share the requirement unless a platform replacement/gap is called out.
 
 Disposition: **Port** = same task/contract; **Adapt** = OS-specific equivalent needed; **Gate** = feature/host-dependent; **Retain only** = compatibility contract, no new visible product; **Exclude** = not applicable to shipping Mac parity. Phases refer to the [plan](../IMPLEMENTATION_PLAN.md).
 

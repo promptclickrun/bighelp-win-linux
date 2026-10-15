@@ -2,7 +2,7 @@
 
 Private planning and implementation repository for a React Native desktop companion to [Hermes](https://github.com/NousResearch/hermes-agent), targeting the functional and visual behavior of [Bighelp](https://github.com/promptclickrun/bighelp) on macOS.
 
-**Status: planning only. No app has been scaffolded, built, or released.** Architecture choices below are proposals awaiting approval.
+**Status: Phase 0 started.** The first executable ownership/send-state contracts are implemented. No desktop app has been built or released. See [evidence and remaining gates](docs/P0_EVIDENCE.md).
 
 ## Start here
 
@@ -25,14 +25,14 @@ Audited on **2026-10-15**:
 
 The real Mac app is **`BighelpCatalyst`**, built from `Bighelp/`. `BighelpMac/` is a fixture-only prototype, not the parity target. Older documentation sometimes describes retired behavior; the audit records those discrepancies.
 
-## Proposed platform approach
+## Approved platform approach
 
-Share strict TypeScript domain logic, protocol validation, feature stores, and React Native UI. Use **React Native Windows** on Windows and **React Native Web inside Electron** on Linux. The latter is a packaged desktop app with web-rendered controls, not a native Linux React Native renderer. This choice, including the Linux interpretation of “React Native,” needs approval before implementation.
+Use **React Native Web inside Electron on both Windows and Linux**, as approved on 2026-10-15. Share TypeScript domain logic and the renderer; keep networking, credentials, and OS capabilities behind finite privileged operations. Initial qualification targets are Windows 11 x64 and Ubuntu 24.04 LTS x64 (Wayland and X11).
 
 No Hermes runtime, model server, account system, or notification cloud will be duplicated here. Chat connects directly to the user's existing authenticated Hermes host. No production service or daily-driver app was modified during this audit.
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md). No runtime install/build/test commands exist yet. Do not invent a successful build or test result for this planning repository.
+Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md). Run the dependency-free contract tests with `node --experimental-strip-types --test tests/*.test.mjs` (tested on Node 22.23.0). This executes TypeScript by stripping types, not by type-checking it. Desktop build commands await dependency approval and platform proof.
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). The repository is private; that does not remove the obligations attached to borrowed material.

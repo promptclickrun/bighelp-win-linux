@@ -14,9 +14,9 @@ This combines the current Bighelp behavior with proposed Windows/Linux platform 
 | Optional catalog/notification services | Public assets or separately authorized delivery | Native host credentials, automatic host selection, chat availability gate |
 | AI/media providers | Only what the chosen host/provider route explicitly needs | Arbitrary local secrets or an unannounced billing fallback |
 
-Windows native modules and Linux Electron IPC must expose **finite operations**, with validated input/output and owner leases. A bridge such as `request(url,headers,body)` or `run(command)` is not acceptable to UI components. Treat generated content as hostile data even inside a trusted app renderer.
+The approved shared Electron main/preload boundary on Windows and Linux must expose **finite operations**, with validated input/output and owner leases. A bridge such as `request(url,headers,body)` or `run(command)` is not acceptable to UI components. Treat generated content as hostile data even inside a trusted app renderer.
 
-Electron proposal: packaged local UI, context isolation and sandbox enabled, Node integration off, restrictive CSP, no remote navigation or downloaded code, explicit external-URL allowlists and permission handlers. Validate sender/frame identity and every IPC payload. Do not disable web security to make host APIs work: privileged HTTP/WS is the solution to custom headers/CORS.
+Electron security requirements (not yet proven): packaged local UI, context isolation and sandbox enabled, Node integration off, restrictive CSP, no remote navigation or downloaded code, explicit external-URL allowlists and permission handlers. Validate sender/frame identity and every IPC payload. Do not disable web security to make host APIs work: privileged HTTP/WS is the solution to custom headers/CORS.
 
 ## 2. Identity and lifetime rules
 

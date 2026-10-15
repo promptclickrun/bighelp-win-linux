@@ -2,7 +2,7 @@
 
 **Date:** 2026-10-15
 
-**State:** proposed; source audit complete, runtime/design approval pending
+**State:** Phase 0 started; shared RN Web/Electron architecture, initial OS matrix, and opt-in background lifecycle approved. Dependencies and product design remain gated. See [P0 evidence](P0_EVIDENCE.md).
 
 **Target:** the shipping Mac Catalyst app, Bighelp 2.4.0 (122), not the `BighelpMac` prototype
 
@@ -12,16 +12,15 @@
 
 Build a desktop **client**, not another Hermes implementation. Reuse the existing host authentication, JSON-RPC gateway, stock REST routes, Bighelp plugin, other Hermes plugins, declarative cards, catalog data, and licensed brand assets. Translate Swift behavior into a typed, renderer-independent TypeScript core; rewrite presentation and OS integration.
 
-Recommended, subject to the first technical proof:
+Approved architecture, subject to technical qualification:
 
-- **Windows:** React Native Windows, its supported new-architecture/WinAppSDK route, with small native modules where needed.
-- **Linux:** React Native Web in a locked-down Electron shell. Shared React Native components render through React DOM here; this is **not native Linux widgets**.
+- **Windows and Linux:** React Native Web in a locked-down Electron shell on both. Shared components render through React DOM; neither target uses native React Native widgets.
 - **Shared:** contracts, bounded codecs, session/event state, capability gating, feature stores, inert card model, design tokens, fixtures, and most ordinary components.
 - **Platform-specific:** privileged networking and secrets, native editor/timeline details, audio/WebRTC, dialogs, notifications, app lifecycle, accessibility, window chrome, and packaging.
 
 Do not promise a shared-code percentage before proving the hard screens. Desktop input and long-chat behavior matter more than eliminating every platform-specific component.
 
-**Approval blockers:** Linux rendering approach, background notification model, calendar/reminders integration policy, supported OS/CPU matrix, and the desktop font/visual exceptions. See [DECISIONS.md](DECISIONS.md).
+**Remaining approval blockers:** exact dependencies/storage, calendar/reminders integration policy, packaging, and desktop font/visual exceptions. See [DECISIONS.md](DECISIONS.md).
 
 ## 2. What the audit established
 
@@ -68,8 +67,8 @@ Platform replacements such as notifications and device data are **tracked gaps**
 
 | Approach | Advantages | Costs / risks | Recommendation |
 |---|---|---|---|
-| RN Windows + RN Web/Electron Linux | Honors native RN on Windows; mature Linux desktop shell; shares React Native component/domain code | Two renderers; RNW media/editor modules and accessibility need proof; Electron memory/security upkeep | **Preferred**, pending proof and approval of web-rendered Linux UI |
-| RN Web/Electron on both | One renderer, consistent graphics/editor/WebRTC behavior, simpler test tooling | Neither OS uses native RN widgets; greater idle footprint; changes interpretation of the request | Fallback only if explicitly approved |
+| RN Windows + RN Web/Electron Linux | Honors native RN on Windows; mature Linux desktop shell; shares React Native component/domain code | Two renderers; RNW media/editor modules and accessibility need proof; Electron memory/security upkeep | Not selected; superseded by shared Electron approval |
+| RN Web/Electron on both | One renderer, consistent graphics/editor/WebRTC behavior, simpler test tooling | Neither OS uses native RN widgets; greater idle footprint; changes interpretation of the request | **Selected on 2026-10-15**, pending platform qualification |
 | RN Windows + native/community Linux renderer | Native drawing on both; no browser shell on Linux | Linux ecosystem/support and native modules unproven; may require owning a renderer fork | Do not choose for parity delivery without a funded feasibility project |
 
 A Tauri/WebKitGTK Linux shell is another potential shell, not a native React Native renderer. Lower bundle size is attractive, but WebRTC/audio, media codecs, WebKit versions, file handling, and desktop accessibility vary across distributions. Prefer a predictable Electron runtime for the first parity proof; revisit only with measured evidence.
@@ -80,11 +79,11 @@ Do not pin arbitrary “latest” versions now. Phase 0 must record an exact com
 
 ## 5. Proposed component boundaries
 
-Proposed directories below are **not yet created**:
+Target structure below is mostly proposed. Only the initial `packages/domain/` and top-level contract tests have been created:
 
 ```text
-apps/windows/               RNW host, native modules, packaging
-apps/linux/                 Electron main/preload + RN Web renderer
+apps/desktop/               Shared Electron main/preload + RN Web renderer
+                            OS-specific adapters and packaging beneath this shell
 packages/contracts/         Wire schemas, finite operation definitions, fixtures
 packages/hermes-client/     Authentication/session/event state and typed clients
 packages/domain/            Feature stores, ownership, send journals, projections
@@ -102,9 +101,9 @@ tests/desktop/              Renderer and packaged-app interaction tests
 4. **Transport/platform boundary:** owns authenticated HTTP/WS, proxy credentials, OS secret store, file handles, audio devices, browser callbacks, and controlled notifications.
 5. **Hermes host/plugin:** owns sessions, prompts, tool execution, approvals, schedules, workflows, repositories, and authoritative history.
 
-On Linux, privileged work belongs in Electron main or an isolated worker behind validated preload IPC; renderers receive opaque handles and safe results. Disable Node integration, enable context isolation/sandboxing, restrict navigation and permissions, and load only packaged UI. A compromised renderer must not gain a generic `fetch`, filesystem, or shell bridge.
+On both platforms, privileged work belongs in Electron main or an isolated worker behind validated preload IPC; renderers receive opaque handles and safe results. Disable Node integration, enable context isolation/sandboxing, restrict navigation and permissions, and load only packaged UI. A compromised renderer must not gain a generic `fetch`, filesystem, or shell bridge.
 
-On Windows, keep token handling and exact-origin HTTP/WS in a native adapter. The JS/domain contract can be shared without moving bearer secrets into component state. API distinctions stay explicit; don't build a single permissive “call any Hermes method” component API.
+On Windows, keep token handling and exact-origin HTTP/WS in the privileged Electron adapter. The JS/domain contract can be shared without moving bearer secrets into component state. API distinctions stay explicit; don't build a single permissive “call any Hermes method” component API.
 
 ### State model
 
@@ -155,20 +154,20 @@ Maintain source pointers and fixture hashes. When upstream changes, review contr
 
 ## 8. Implementation phases and deliverables
 
-Effort below is **engineer-weeks**, not calendar promises. Estimates include implementation and focused testing, assume the recommended split renderer, and exclude unapproved cloud services/native Windows-host backend work.
+Effort below is **engineer-weeks**, not calendar promises. Estimates include implementation and focused testing and exclude unapproved cloud services/native Windows-host backend work. They were made for the original split renderer and need re-baselining after the shared-shell proof.
 
 ### P0 — approval and platform proof (2–3 engineer-weeks)
 
 **Inputs:** approve architecture options and support matrix; no production host access.
 
 - Bootstrap only after approval; pin compatible toolchain and dependencies.
-- Prove RNW release build on Windows and RN Web packaged Linux build on Ubuntu/Wayland and an X11 session.
+- Prove packaged RN Web/Electron builds on Windows 11 x64 and Ubuntu 24.04 LTS x64 with Wayland and X11.
 - Prove exact-origin HTTP/WS with custom headers, refusal of redirects, binary frames, ticket rotation, cancellation, secure secret storage, and an external-browser loopback callback.
-- Prove long virtualized chat with selectable Markdown, an IME-capable persistent composer, expanded tools, prepend anchoring, and keyboard navigation in both renderers.
+- Prove long virtualized chat with selectable Markdown, an IME-capable persistent composer, expanded tools, prepend anchoring, and keyboard navigation on both target operating systems.
 - Prove SVG/first-party artwork, controlled audio recording/playback, WebRTC offer/answer, notifications while running, OS scaling, and accessible names/focus.
-- Choose database, schema validator, Markdown parser, list strategy, audio/WebRTC module, and packaging tools from measured evidence. RNW support must be verified, not inferred from Android/iOS support.
+- Choose database, schema validator, Markdown parser, list strategy, audio/WebRTC module, and packaging tools from measured evidence. Desktop support must be verified on each OS, not inferred from Android/iOS support.
 
-**Exit:** two packaged test apps with synthetic data; dependency/compatibility ledger; risk results; user selects architecture. A failure in editor, media, accessibility, or socket policy blocks expansion, not merely a future bug ticket.
+**Exit:** two packaged test apps with synthetic data; dependency/compatibility ledger; risk results; approved architecture validated. A failure in editor, media, accessibility, or socket policy blocks expansion, not merely a future bug ticket.
 
 ### P1 — contracts, ownership, secure persistence (3–4)
 
@@ -263,7 +262,7 @@ Effort below is **engineer-weeks**, not calendar promises. Estimates include imp
 - Do not assume `/native/alerts/listen` works unenrolled: it requires active notification grants and registered recipient keys.
 - Prove existing enrollment can support a desktop recipient without Apple delivery. If it cannot, design/review a small versioned host-only desktop subscription capability in the **plugin repo**, with scoped grants, recipient-key binding, retention, revocation, and replay rules. Do not invent a production endpoint in this client.
 - Offer explicitly enabled tray/background operation and autostart for alerts while windows are closed. Separate “close window,” “keep running,” “lock,” “sleep,” and “quit.” Device tools/microphone close on lock regardless of notification policy.
-- Full process-exited push is a separate product decision: Windows requires delivery/activation integration; Linux has no one universal equivalent to APNs. An optional background helper is the recommended cross-platform route, but requires approval and installation/lifecycle work.
+- Full Quit ends client alert delivery. No fully-exited push service or hidden background helper is in the approved scope. Retire notification callbacks before shutdown; do not cancel accepted remote Hermes work.
 - Keep cloud notification keys and Apple bundle identities out of this app. No production notification-service changes without authorization.
 
 **Exit:** agreed background definition demonstrated on each OS, including offline/lock/wake/quit, no duplicates, signed/sealed payload validation where used, quiet hours, revocation, and stale-link checks. Until then, notification parity is explicitly incomplete.
@@ -303,11 +302,11 @@ Exercise multi-client ownership, stream interruption, server restart, auth refre
 
 ### Renderer/OS tests
 
-Windows: packaged RNW on Windows 11 x64 initially; Narrator/UI Automation, 100/125/150/200% scaling, high contrast, IME, mouse/keyboard, minimized/locked/wake. ARM64 is a separate signed-build/hardware gate.
+Windows: packaged RN Web/Electron on Windows 11 x64 initially; Narrator/UI Automation, 100/125/150/200% scaling, high contrast, IME, mouse/keyboard, minimized/locked/wake. ARM64 is a separate signed-build/hardware gate.
 
 Linux: Ubuntu 24.04 LTS x64 and one additional current distribution/desktop after approval; Wayland and X11; GNOME/KDE Secret Service/notification behavior; Orca/AT-SPI, fractional scaling, IME, audio devices, and restrictive portals. Flatpak adds separate portal/sandbox testing if selected.
 
-Portable UI automation may use Playwright for the Linux web renderer; it does not replace native packaged-app tests or Windows UI Automation. Never assume mobile Detox coverage proves RNW.
+Portable UI automation may use Playwright for the shared web renderer; it does not replace packaged-app tests, Windows UI Automation, or Linux accessibility checks.
 
 ### Performance and visual gates
 
@@ -328,4 +327,4 @@ Visual evidence must cover light/dark, the agreed font, scaled text/buttons, com
 
 ## 11. Approval checkpoint
 
-Before any application code, choose the Linux route and background behavior in [DECISIONS.md](DECISIONS.md). Then run P0, review its findings, approve static visual mocks, and turn the phases into small issues/PRs. The current repository intentionally stops at this comprehensive integration/conversion plan.
+The shared Electron route, background behavior, and initial OS matrix are approved in [DECISIONS.md](DECISIONS.md). P0 has started with executable domain contracts. Complete the dependency/platform proofs and approve static visual mocks before expanding into product UI. Track each slice in a focused issue/PR; see [P0 evidence](P0_EVIDENCE.md).
