@@ -2,7 +2,8 @@
 """Generate the P0 static desktop mock alternatives (self-contained HTML).
 
 Usage: python3 build.py <output-dir>
-Writes index.html, a-sidebar.html, b-stage.html, c-rail.html. No network, no dependencies.
+Writes index.html, a-sidebar.html, b-stage.html, c-rail.html, d-hybrid.html. No network, no dependencies.
+A/B/C are the original explorations; D is the hybrid revision (C rail + context list, B bottom tab bar).
 """
 import sys
 import pathlib
@@ -35,6 +36,7 @@ G = {
     "search": '<circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5"/>',
     "down": '<path d="m6.5 9.5 5.5 5.5 5.5-5.5"/>',
     "right": '<path d="m9.5 6 6 6-6 6"/>',
+    "left": '<path d="m14.5 6-6 6 6 6"/>',
     "question": '<circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.6a2.5 2.5 0 1 1 3.6 2.2c-.8.4-1.2 1-1.2 1.9"/><circle cx="12" cy="16.8" r=".6"/>',
     "offline": '<path d="m3.5 3.5 17 17M8.6 16.2a4.8 4.8 0 0 1 6.3-.4M5.2 12.6a9.6 9.6 0 0 1 4.3-2.4M18.8 12.6a9.6 9.6 0 0 0-2.6-1.8"/><circle cx="12" cy="19.5" r=".6"/>',
     "copy": '<rect x="8.5" y="8.5" width="11.5" height="11.5" rx="2"/><path d="M15.5 8.5V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7.5a2 2 0 0 0 2 2h2.5"/>',
@@ -215,10 +217,11 @@ SETTINGS_ROWS = [
 ]
 
 
-def settings_list(variant):
+def settings_list(variant, pet=True):
+    """Settings rows; pet=False drops the unresolved Apple-only Companion pet row (used by D)."""
     groups = "".join('<ul class="set-group">' + "".join(
         f'<li><a href="#" class="set-row">{ic(i, "ic set-ic")}<span><b>{esc(t)}</b><small>{esc(s)}</small></span>{ic("right", "ic chev")}</a></li>'
-        for i, t, s in g) + '</ul>' for g in SETTINGS_ROWS)
+        for i, t, s in g if pet or i != "pet") + '</ul>' for g in SETTINGS_ROWS)
     nerd_switch = ('<ul class="set-group"><li><label class="set-row switch-row">'
                    f'{ic("nerd", "ic set-ic")}<span><b>Nerd Mode</b><small>Show host tools, logs and technical detail</small></span>'
                    '<input type="checkbox" role="switch" checked aria-describedby="nerd-note"><i class="switch" aria-hidden="true"></i></label></li></ul>')
@@ -315,6 +318,122 @@ def alt_c(theme, os_name, width, height, state, view):
     return f'{titlebar(os_name)}<div class="c-body">{rail}{col}{main}</div>'
 
 
+# ---------- alternative D: hybrid (C's rail + context list, B's bottom tab bar) ----------
+# The rail is the one global navigation and picks what the context list shows: chats, agents, or the
+# selected function's own list. The bottom bar holds the selected agent's destinations only; it is not
+# a second copy of the rail and it is absent when no agent is open (function pages).
+D_RAIL = [("chat", "Chats"), ("agents", "Agents"), None, ("projects", "Projects"), ("kanban", "Kanban"),
+          ("workflows", "Workflows"), ("clock", "Scheduled"), ("usage", "Usage")]
+
+D_AGENTS = [("juniper", "Everyday help"), ("otto", "Research and errands"), ("marigold", "Home and groceries")]
+
+# Synthetic workflow names only. Status words make no claim about runs, results or cost.
+D_WORKFLOWS = [("Weekly grocery list", "Runs when you ask"), ("Meeting notes to checklist", "Runs when you ask"),
+               ("Trip packing list", "Paused")]
+
+D_SETTINGS = ["You", "Assistants", "Appearance", "Chat", "Voice", "Notifications", "Hosts", "Permissions",
+              "Help & feedback"]
+
+
+def placeholder_tag(text="Static placeholder"):
+    return f'<span class="ph-tag">{esc(text)}</span>'
+
+
+def d_rail(state, active):
+    off = state == "offline"
+    items = []
+    for it in D_RAIL:
+        if it is None:
+            items.append('<span class="rail-sep" role="separator"></span>')
+            continue
+        i, l = it
+        cur = l == active
+        items.append(f'<a href="#" class="rail-item{" is-active" if cur else ""}"{" aria-current=\"page\"" if cur else ""}>'
+                     f'{ic(i)}<span>{l}</span></a>')
+    return (f'<nav class="c-rail d-rail" aria-label="Places"><span class="c-mark">{NOODLE}</span>{"".join(items)}'
+            f'<span class="fill"></span>'
+            f'<a href="#" class="rail-item">{ic("lock")}<span>Vault</span></a>'
+            f'<a href="#" class="rail-item host{" off" if off else ""}" title="Home computer · {"Offline" if off else "Connected"}">'
+            f'{ic("host")}<i class="dot {"off" if off else "on"}"></i><span>Home</span></a>'
+            f'<a href="#" class="rail-item{" is-active" if active == "Settings" else ""}"'
+            f'{" aria-current=\"page\"" if active == "Settings" else ""} title="Settings (Ctrl+,)">{ic("settings")}<span>Settings</span></a></nav>')
+
+
+def d_list(kind, state):
+    """The context list column; its content follows the rail selection."""
+    off_note = ('<p class="d-list-note">' + ic("offline") + '<span>Offline · showing copies saved on this device</span></p>'
+                if state == "offline" else "")
+    if kind == "Chats":
+        rows = "".join(
+            f'<a href="#" class="c-row{" is-active" if n == 0 else ""}"{" aria-current=\"true\"" if n == 0 else ""}>{orb(a, 32)}'
+            f'<span><b>{esc(t)}</b><small>{AGENTS[a][0]} · {esc(p)}</small></span></a>'
+            for n, (a, t, p) in enumerate(RECENTS))
+        return (f'<section class="c-list d-list" aria-label="Chats"><div class="c-list-head"><h2>Chats</h2>'
+                f'<span class="d-head-btns"><button class="btn-icon" aria-label="New group chat" title="New group chat">{ic("group")}</button>'
+                f'<button class="btn-icon" aria-label="New chat (Ctrl+N)" title="New chat (Ctrl+N)">{ic("compose")}</button></span></div>'
+                f'{off_note}<label class="search">{ic("search")}<input placeholder="Search chats" aria-label="Search chats"></label>'
+                f'<div class="caption-row"><span class="caption">Today</span></div>{rows}</section>')
+    if kind == "Agents":
+        rows = "".join(
+            f'<a href="#" class="c-row{" is-active" if n == 0 else ""}"{" aria-current=\"true\"" if n == 0 else ""}>{orb(a, 36)}'
+            f'<span><b>{AGENTS[a][0]}</b><small>{esc(d)}</small></span></a>' for n, (a, d) in enumerate(D_AGENTS))
+        return (f'<section class="c-list d-list" aria-label="Agents"><div class="c-list-head"><h2>Agents</h2>'
+                f'<button class="btn-icon" aria-label="Add agent" title="Add agent">{ic("plus")}</button></div>'
+                f'{off_note}<label class="search">{ic("search")}<input placeholder="Search agents" aria-label="Search agents"></label>'
+                f'<div class="caption-row"><span class="caption">On Home computer</span></div>{rows}</section>')
+    if kind == "Workflows":
+        rows = "".join(
+            f'<a href="#" class="c-row{" is-active" if n == 0 else ""}"{" aria-current=\"true\"" if n == 0 else ""}>'
+            f'<span class="fn-ic">{ic("workflows")}</span><span><b>{esc(t)}</b><small>{esc(d)}</small></span></a>'
+            for n, (t, d) in enumerate(D_WORKFLOWS))
+        return (f'<section class="c-list d-list" aria-label="Workflows"><div class="c-list-head"><h2>Workflows</h2>'
+                f'<button class="btn-icon" aria-label="New workflow" title="New workflow">{ic("plus")}</button></div>'
+                f'{off_note}<div class="caption-row"><span class="caption">Yours</span>{placeholder_tag("Synthetic names")}</div>{rows}</section>')
+    # Settings
+    return (f'<section class="c-list d-list" aria-label="Settings sections"><div class="c-list-head"><h2>Settings</h2></div>'
+            + "".join(f'<a href="#" class="c-sec{" is-active" if s == "Appearance" else ""}">{esc(s)}</a>' for s in D_SETTINGS)
+            + '<div class="c-nerd"><span class="nerd-tag">Nerd Mode</span><a href="#" class="c-sec">System</a>'
+              '<a href="#" class="c-sec">Hermes tools</a></div></section>')
+
+
+def d_chat(state, back=None, dot="Feed"):
+    """Selected agent's chat: header, transcript, pinned composer, then the agent's bottom tab bar."""
+    back_btn = (f'<button class="btn-icon" aria-label="Back to {back}" title="Back to {back}">{ic("left")}</button>'
+                if back else "")
+    banner = offline_banner() if state == "offline" else ""
+    return (f'<main class="d-main">'
+            f'<div class="chat-head">{back_btn}{orb("juniper", 32)}<div class="who"><b>Juniper</b><small>{subline(state)}</small></div>'
+            f'<span class="fill"></span>'
+            f'<button class="btn-icon" aria-label="New chat with Juniper" title="New chat with Juniper">{ic("compose")}</button>'
+            f'<button class="btn-icon" aria-label="Chat menu">{ic("more")}</button></div>'
+            f'{banner}<div class="scroll transcript b-col">{transcript(state)}</div>'
+            f'{composer(state, "b-col")}'
+            f'<nav class="tabs bar d-bar" aria-label="Juniper">' + "".join(
+                f'<a href="#" class="tab{" is-active" if l == "Chat" else ""}"{" aria-current=\"page\"" if l == "Chat" else ""}>'
+                f'{ic(i)}<span>{l}</span>{"<i class=\"unseen\" aria-label=\"new\"></i>" if l == dot else ""}</a>'
+                for i, l in TABS) + '</nav></main>')
+
+
+def alt_d(theme, os_name, width, height, state, view):
+    narrow = width < 900
+    if view == "settings":
+        main = (f'<main class="d-main"><div class="page-head"><h2>Settings</h2></div>'
+                f'<div class="scroll">{settings_list("d", pet=False)}</div></main>')
+        return f'{titlebar(os_name)}<div class="d-body">{d_rail(state, "Settings")}{d_list("Settings", state)}{main}</div>'
+    if view == "workflows":
+        main = (f'<main class="d-main"><div class="page-head"><h2>Weekly grocery list</h2>{placeholder_tag()}</div>'
+                f'<div class="d-ph"><p><b>Workflow page goes here.</b></p>'
+                f'<p>This mock only shows where a function\'s own list lives. The workflow page itself is not designed here, '
+                f'and no agent tab bar appears because no agent is open.</p></div></main>')
+        return f'{titlebar(os_name)}<div class="d-body">{d_rail(state, "Workflows")}{d_list("Workflows", state)}{main}</div>'
+    if narrow and view == "list":
+        return f'{titlebar(os_name)}<div class="d-body is-narrow">{d_rail(state, "Chats")}{d_list("Chats", state)}</div>'
+    if narrow:
+        return f'{titlebar(os_name)}<div class="d-body is-narrow">{d_rail(state, "Chats")}{d_chat(state, back="Chats")}</div>'
+    kind = "Agents" if view == "agents" else "Chats"
+    return f'{titlebar(os_name)}<div class="d-body">{d_rail(state, kind)}{d_list(kind, state)}{d_chat(state)}</div>'
+
+
 # ---------- frames ----------
 def frame(builder, theme, os_name, w, h, state, view, label):
     os_label = "Windows 11 frame" if os_name == "windows" else "Ubuntu GNOME frame"
@@ -345,9 +464,21 @@ ALTS = {
                       ("dark", "windows", 1280, 800, "offline", "chat", "Chat · host offline, draft kept"),
                       ("light", "linux", 720, 1080, "unknown", "settings", "Settings · Nerd Mode on"),
                       ("dark", "linux", 720, 780, "unknown", "chat", "Narrow chat · list folds away")]),
+    "d": dict(file="d-hybrid.html", name="D · Hybrid: rail, list, bottom tabs", builder=alt_d,
+              thesis="The picked combination: C's labelled rail chooses the list beside it (Chats, Agents, or a function's "
+                     "own list), and B's Chat/Feed/Ideas/Goals/Files bar sits under the message box for the open agent.",
+              frames=[("light", "windows", 1280, 800, "unknown", "chats", "Rail: Chats · send outcome unknown"),
+                      ("dark", "windows", 1280, 800, "offline", "chats", "Rail: Chats · host offline, draft still editable"),
+                      ("light", "linux", 1280, 800, "connected", "agents", "Rail: Agents · list of agents, Juniper open"),
+                      ("dark", "windows", 1280, 800, "connected", "workflows", "Rail: Workflows · function list, no agent tab bar (placeholder page)"),
+                      ("light", "windows", 1280, 1000, "connected", "settings", "Rail: Settings · one Settings, Nerd Mode on, no pet row"),
+                      ("dark", "linux", 720, 780, "offline", "list", "Narrow · rail picks Chats, list takes the page"),
+                      ("light", "linux", 720, 780, "offline", "chat", "Narrow · chat with Back to Chats, offline draft editable")]),
 }
 
 CSS = (pathlib.Path(__file__).parent / "mock.css").read_text()
+# D-only rules live apart so the A/B/C explorations render byte-for-byte as they did before D.
+D_CSS = (pathlib.Path(__file__).parent / "d-hybrid.css").read_text()
 
 CONTRACT = """<!--
 THESIS: Bighelp on Windows/Linux is the shipping Catalyst app's world (cream/graphite pages, lavender actions,
@@ -368,7 +499,7 @@ def page(key):
     return (f'<!doctype html><html lang="en"><head><meta charset="utf-8">'
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:">'
-            f'<title>{esc(a["name"])} — Bighelp Windows/Linux P0 mock</title><style>{CSS}</style></head>'
+            f'<title>{esc(a["name"])} — Bighelp Windows/Linux P0 mock</title><style>{CSS}{D_CSS if key == "d" else ""}</style></head>'
             f'<body class="doc">{CONTRACT}<header class="doc-head"><p class="doc-back"><a href="index.html">All alternatives</a> · {others}</p>'
             f'<h1>{esc(a["name"])}</h1><p class="doc-lede">{esc(a["thesis"])}</p>'
             f'<p class="doc-warn">Static mock with synthetic content. Window frames are drawn approximations, not OS or shipping-app screenshots. '
@@ -383,8 +514,10 @@ def index():
             f'<meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; style-src \'unsafe-inline\'; img-src data:">'
             f'<title>Bighelp Windows/Linux — P0 visual alternatives</title><style>{CSS}</style></head>'
-            f'<body class="doc">{CONTRACT}<header class="doc-head"><h1>Bighelp for Windows and Linux: three arrangements</h1>'
-            f'<p class="doc-lede">Same tokens, content and states in each. Pick an arrangement; colours, glyphs and fonts are not the question here.</p>'
+            f'<body class="doc">{CONTRACT}<header class="doc-head"><h1>Bighelp for Windows and Linux: arrangements</h1>'
+            f'<p class="doc-lede">Same tokens, content and states in each. A, B and C were the first explorations. '
+            f'D is the revision built from the parts that were picked: C\'s rail and list, B\'s bottom tab bar. '
+            f'Colours, glyphs and fonts are not the question here.</p>'
             f'<p class="doc-warn">Static, synthetic, not published anywhere. Nothing here is a screenshot of the shipping app.</p></header>'
             f'<ul class="alt-list">{cards}</ul>'
             f'<section class="doc-note"><h2>Shown in every alternative</h2><ul>'
