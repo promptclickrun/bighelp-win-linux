@@ -40,8 +40,10 @@ All three use the same tokens, synthetic content and states, so only the arrange
   #1C1A19 and #F3ECE6 incoming bubbles. Dark mode uses #121110 / #1E1C1B / #292624 and cream text. Actions are lavender
   (#7B52E0 light, #C9B6FF dark). Outgoing bubbles are #7B52E0 with white text. Ember #FF8A7A is used only in chrome
   marks and the unseen dot.
-- Navigation order follows the shipping Catalyst/iPad menu and the sidebar rules in
-  `docs/upstream/bighelp/CHAT_INTERACTION_CONTRACT.md`. It does not follow the BighelpMac fixture.
+- Navigation order is a proposal derived from the current iPhone/iPad menu in the pinned `DESIGN.md`.
+  The exact shipping Mac sidebar order has not been captured. The old root-navigation list in
+  `CHAT_INTERACTION_CONTRACT.md` is retired; current-navigation corrections take precedence.
+  These mocks do not follow the BighelpMac fixture.
 - Fonts follow `docs/DECISIONS.md`: Segoe UI on Windows and Noto Sans on Linux, both through CSS font stacks only.
   Nothing is bundled or downloaded.
 - Settings groups follow the Catalyst Settings list. Hermes sits under Nerd Mode, as the upstream design describes.
@@ -51,16 +53,19 @@ All three use the same tokens, synthetic content and states, so only the arrange
 
 | | A · Sidebar desk | B · Agent stage | C · Rail and list |
 | --- | --- | --- | --- |
-| Parity with shipping | Highest. It matches Catalyst on the Mac. | High. It matches the shared iPad structure. | Lowest. It needs a recorded parity exception. |
+| Parity with shipping | Closest to documented desktop structure; screenshot parity unverified. | iPad-derived; the overlay menu needs an explicit desktop-sidebar exception. | Needs a recorded navigation parity exception. |
 | Wide use of space | The menu and recents are always visible, and the chat is still roomy. | The conversation is centred at ≤760px, which leaves a lot of empty page at 1280. | Densest. Switching chats is one click. |
 | Narrow (≤900px) | The sidebar collapses behind a title-bar button, and the tabs move to their own row. | It barely changes. This is the layout's natural size. | The list folds away, so the rail must carry chat switching (unresolved). |
 | Agent identity | Small orb in the header. | Large avatar. It is the strongest character moment. | Small orb, plus pinned faces in the list. |
 | Settings | Replaces the main pane, while the sidebar stays. | Modal sheet over the chat. | Section column plus a detail pane. It is the most desktop-native. |
 | Risk | Sidebar width and resize persistence need specifying. | A modal for Settings may be heavier than the task needs. Menu discoverability depends on ☰. | Divergent IA doubles the parity matrix work. The rail's labels are tight at 76px. |
 
-The recommendation is A. It keeps the shipping navigation and Settings intact and fits wide desktop windows. B is the
-fallback if character matters more than visible navigation. Choose C only if the plan is changed to allow a
-desktop-specific information architecture. This is a judgement for the reviewer, not a decision record.
+The recommendation is A because it is closest to the documented desktop structure and fits wide windows.
+This is not verified shipping-app parity. B and C remain exploratory alternatives requiring recorded
+exceptions, not equally compliant implementation choices. Desktop sidebar resize bounds and persistence
+already have upstream guidance (`DESIGN.md:393-396`); implementations must preserve it rather than invent
+new bounds. Companion pet is an unresolved Apple-only row shown in these exploratory mocks, not an
+approved desktop feature. Product visuals remain gated on an explicit choice and disposition of these gaps.
 
 ## Local checks run
 
