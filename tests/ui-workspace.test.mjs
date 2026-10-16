@@ -22,6 +22,8 @@ async function harness(entry, name, initial) {
     useState(initial) { const i=cursor++; if (!(i in slots)) slots[i]=typeof initial==='function'?initial():initial;
       return [slots[i], next => { const result=typeof next==='function'?next(slots[i]):next; if (!Object.is(result,slots[i])) {slots[i]=result;changed=true;} }]; },
     useEffect(effect,deps) { const i=cursor++, old=slots[i]; if (!old || deps.some((dep,j)=>!Object.is(dep,old.deps[j]))) effects.push(()=>{old?.cleanup?.();slots[i]={deps,cleanup:effect()};}); },
+    // Module-level contexts (host.tsx) load with the column; the pages under test never read one.
+    createContext(value) { return {Provider:'Provider', value}; },
   };
   const element=(type,props)=>({type,props}); const module={exports:{}};
   new Function('require','module','exports',await compiled(entry))(name=>{

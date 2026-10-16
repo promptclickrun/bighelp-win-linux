@@ -322,3 +322,35 @@ test('deleting the open chat leaves it, selects nothing and re-reads the catalog
   assert.ok(f.calls.indexOf('session.close') < f.calls.indexOf('DELETE /api/sessions/gone'));
 });
 
+test('real React markup: day captions, agent names, one New chat control and no group chat button', async () => {
+  const { build } = await import('esbuild');
+  const { createRequire } = await import('node:module');
+  const result = await build({ stdin: { contents: `
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { ContextList } from './packages/ui/components/ContextList.tsx';
+import { ThemeProvider } from './packages/ui/theme.tsx';
+import { PALETTES } from './packages/ui/tokens.ts';
+export function render(props) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}><ContextList {...props} /></ThemeProvider>); }
+`, resolveDir: process.cwd(), loader: 'tsx' }, jsx: 'automatic', bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false });
+  const compiled = { exports: {} };
+  new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
+  const now = Date.now(), day = 24 * 60 * 60 * 1000;
+  const agents = [{ id: 'a', name: 'Juniper', summary: '', color: 'teal' }, { id: 'b', name: 'Otto', summary: '', color: 'blue' }];
+  const data = { sample: false, host: { label: 'Synthetic computer', state: 'connected' }, workflows: [], agents, chats: [
+    { id: 'c2', agentId: 'a', title: 'Groceries', preview: 'List saved', transcript: [], updatedAt: now - 40 * day },
+    { id: 'c1', agentId: 'b', title: 'Projector <b>options</b>', preview: 'Two rentals', transcript: [], updatedAt: now }] };
+  const base = { place: 'chats', data, selectedChatId: null, selectedAgentId: null, nerdMode: false, settingsSection: null, narrow: false,
+    onOpenChat() {}, onOpenAgent() {}, onSettingsSection() {} };
+  const html = compiled.exports.render({ ...base, onNewChat() {} });
+  assert.match(html, />Today</); assert.match(html, />Older</);
+  assert.ok(html.indexOf('Projector') < html.indexOf('Groceries'), 'newest first');
+  assert.match(html, /Otto · Two rentals/);
+  assert.match(html, /&lt;b&gt;options&lt;\/b&gt;/); assert.doesNotMatch(html, /<b>options/);
+  assert.doesNotMatch(html, /group chat/i);
+  assert.match(html, /aria-label="New chat"[^>]*aria-haspopup="menu"/);
+  const single = compiled.exports.render({ ...base, data: { ...data, agents: [agents[0]] }, onNewChat() {} });
+  assert.match(single, /aria-label="New chat with Juniper"/);
+  assert.match(compiled.exports.render(base), /aria-label="New chat. Needs a connected computer"/);
+  assert.doesNotMatch(html + single, /More for /, 'no row actions until Hermes confirms it supports them');
+});
