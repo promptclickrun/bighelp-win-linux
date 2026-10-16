@@ -9,7 +9,7 @@ import { boundedHttp } from '../packages/platform/http-transport.ts';
 const owner = Object.freeze({ hostId: 'host-one', principalId: 'principal-one', profileId: 'agent', authGeneration: 1, connectionGeneration: 2 });
 const identity = Object.freeze({ kind: 'provider', providerId: 'test-provider', userId: 'test-user' });
 const etag = `"sha256:${'a'.repeat(64)}"`;
-const requestId = '01234567-89ab-cdef-0123-456789abcdef';
+const requestId = '01234567-89ab-4def-8123-456789abcdef';
 const context = () => ({ body: { schemaVersion: 1, pluginVersion: 'synthetic', runtimeId: 'runtime-one', servingProfileId: 'default',
   principal: { provider: identity.providerId, userId: identity.userId, displayName: 'Synthetic' },
   features: ['native-context-v1', 'serving-profile-v1', 'native-agent-board-v1'] }, etag, cacheControl: 'no-store' });

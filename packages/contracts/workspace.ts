@@ -92,9 +92,11 @@ export function workspaceETag(value: unknown): string {
   if (!/^"sha256:[0-9a-f]{64}"$/u.test(tag)) return invalid();
   return tag;
 }
+// The plugin refuses anything but a lowercase RFC 4122 version 1-5, variant 8-b
+// UUID (native_api.py _REQUEST_ID); crypto.randomUUID() makes version 4.
 export function workspaceRequestId(value: unknown): string {
   const id = identifier(value, 36);
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(id)) return invalid();
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(id)) return invalid();
   return id;
 }
 export function parseWorkspaceOwner(value: unknown): WorkspaceOwner {

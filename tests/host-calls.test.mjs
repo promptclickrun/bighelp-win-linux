@@ -21,7 +21,7 @@ test('feature routes accept fixed API paths and refuse traversal, secrets and ga
   for (const update of [{ method: 'TRACE' }, { maxBytes: 0 }, { maxBytes: 5 * 1024 * 1024 }, { body: '{}' },
     { method: 'POST', body: 'not json' }, { method: 'POST', body: '"text"' }, { query: { 'Bad-Key': 'x' } },
     { query: { profile: 'a\nb' } }, { headers: { Authorization: 'x' } },
-    { native: { etag: `"sha256:${'a'.repeat(64)}"`, requestId: '01234567-89ab-cdef-0123-456789abcdef' } }]) {
+    { native: { etag: `"sha256:${'a'.repeat(64)}"`, requestId: '01234567-89ab-4def-8123-456789abcdef' } }]) {
     assert.throws(() => parseHttpOperation(route(update)));
   }
 });
@@ -31,7 +31,7 @@ test('feature routes carry exact headers, method, body and correlation', async (
   const policy = createTransportPolicy({ endpoint: 'https://hermes.example', authentication: { kind: 'dashboard', token: 'synthetic' } }, {
     isCurrent: () => true, now: () => 0, socket: async () => ({ close() {} }),
     http: async plan => { seen.push(plan); return { status: 200, url: plan.url, redirected: false, body: { ok: true },
-      headers: { 'x-loopdy-request-id': '01234567-89ab-cdef-0123-456789abcdef' } }; },
+      headers: { 'x-loopdy-request-id': '01234567-89ab-4def-8123-456789abcdef' } }; },
   });
   const signal = new AbortController().signal;
   await policy.request(route({ method: 'PUT', path: '/api/cron/jobs/job1', query: { profile: 'a b' }, body: '{"name":"x"}' }), signal);
@@ -40,13 +40,13 @@ test('feature routes carry exact headers, method, body and correlation', async (
   assert.equal(seen[0].headers['Content-Type'], 'application/json');
   assert.equal(seen[0].headers['X-Hermes-Session-Token'], 'synthetic');
   assert.equal(seen[0].redirect, 'error');
-  const native = { etag: `"sha256:${'a'.repeat(64)}"`, requestId: '01234567-89ab-cdef-0123-456789abcdef' };
+  const native = { etag: `"sha256:${'a'.repeat(64)}"`, requestId: '01234567-89ab-4def-8123-456789abcdef' };
   const result = await policy.request(route({ method: 'POST', path: '/api/plugins/loopdy/native/board/feedback', body: '{}', native }), signal);
   assert.equal(seen[1].headers['If-Match'], native.etag);
   assert.equal(seen[1].headers['X-Loopdy-Request-ID'], native.requestId);
   assert.equal(result.requestId, native.requestId);
   await assert.rejects(policy.request(route({ method: 'POST', path: '/api/plugins/loopdy/native/board/feedback', body: '{}',
-    native: { ...native, requestId: 'fedcba98-7654-3210-fedc-ba9876543210' } }), signal));
+    native: { ...native, requestId: 'fedcba98-7654-4210-9edc-ba9876543210' } }), signal));
 });
 
 test('host error details are short, single-line and never markup', async () => {

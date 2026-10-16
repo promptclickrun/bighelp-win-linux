@@ -23,15 +23,27 @@ export const HTTP_TIMEOUT_MS = 20000;
 export const LONG_HTTP_TIMEOUT_MS = 15 * 60 * 1000;
 export type HttpResult = Readonly<{ body: unknown; status?: number; etag?: string; requestId?: string; cacheControl?: string }>;
 // Status plus, at most, one short plain-text host explanation. Never a transport
-// error, URL, headers or raw body.
+// error, URL, headers or raw body. code is the bighelp plugin's fixed error
+// identifier ("board_item_unavailable") when the reply carried one; never free text.
 export class HttpStatusError extends Error {
   readonly status: number;
   readonly detail: string;
-  constructor(status: number, detail = '') {
+  readonly code: string;
+  constructor(status: number, detail = '', code = '') {
     super('Host request refused');
     if (!Number.isInteger(status) || status < 100 || status > 599) throw new TypeError('Invalid HTTP status');
-    this.name = 'HttpStatusError'; this.status = status; this.detail = safeDetail(detail);
+    this.name = 'HttpStatusError'; this.status = status; this.detail = safeDetail(detail); this.code = errorCodeText(code);
   }
+}
+function errorCodeText(value: unknown): string {
+  return typeof value === 'string' && /^[a-z][a-z0-9_]{0,63}$/u.test(value) ? value : '';
+}
+// The plugin's error envelope: {error: {code, message, retryable, details}}.
+function errorCode(body: unknown): string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+  const error = (body as Record<string, unknown>).error;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return '';
+  return errorCodeText((error as Record<string, unknown>).code);
 }
 // Host validation messages help people fix input ("Invalid cron expression").
 // Keep a bounded single line; drop anything that looks like markup.
@@ -190,8 +202,23 @@ const ROUTE_METHODS: readonly RouteMethod[] = Object.freeze(['GET', 'POST', 'PUT
 // Credential flows, gateway lifecycle, raw configuration and environment secrets
 // have dedicated reviewed paths or are out of scope for feature clients.
 const DENIED_ROUTES = /^\/api\/(?:auth|gateway|env|ops|hermes\/update)(?:\/|$)|^\/api\/config\/raw(?:\/|$)|^\/api\/ws(?:\/|$)/u;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+// The plugin's canonical request ID (native_api.py _REQUEST_ID): lowercase, RFC
+// 4122 version 1-5 and variant 8-b, as crypto.randomUUID() makes. A looser ID
+// is refused with 422 after the request was sent.
+export const NATIVE_REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const UUID = NATIVE_REQUEST_ID;
 const NATIVE_ETAG = /^"sha256:[0-9a-f]{64}"$/u;
+// Proxies that compress a reply rewrite its ETag: Cloudflare Tunnel marks it weak
+// (W/"sha256:…") and Caddy's encode adds the coding inside the quotes
+// ("sha256:…-gzip"). It names the same context. Only these exact wrappers are
+// removed (DirectHermesNativeContext.swift contextTag); requests send the clean tag.
+export function canonicalNativeETag(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 96) return null;
+  const tag = value.startsWith('W/') ? value.slice(2) : value;
+  const coded = /^("sha256:[0-9a-f]{64})-(?:gzip|zstd|br|deflate)"$/u.exec(tag);
+  const clean = coded ? `${coded[1]}"` : tag;
+  return NATIVE_ETAG.test(clean) ? clean : null;
+}
 function routePath(value: unknown): string {
   const path = text(value, 2048);
   if (!/^\/api(?:\/(?:[A-Za-z0-9_.~:@-]|%[0-9A-F]{2})+)+$/u.test(path) || DENIED_ROUTES.test(path)) throw new TypeError('Invalid route');
@@ -273,8 +300,7 @@ export function parseHttpOperation(value: unknown): HttpOperation {
       if (agentId.trim() !== agentId) throw new TypeError('Invalid agent identity');
       const etag = text(input.etag, 73);
       const requestId = text(input.requestId, 36);
-      if (!/^"sha256:[0-9a-f]{64}"$/u.test(etag)
-          || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(requestId)) {
+      if (!NATIVE_ETAG.test(etag) || !UUID.test(requestId)) {
         throw new TypeError('Invalid native preconditions');
       }
       return Object.freeze({ kind: input.kind, agentId, etag, requestId });
@@ -288,7 +314,7 @@ function checkResponse(value: unknown, plan: HttpPlan): Record<string, unknown> 
   if (response.redirected !== false || response.url !== plan.url) throw new Error('Redirect or destination mismatch');
   if (typeof response.status !== 'number' || !Number.isInteger(response.status)
       || response.status < 100 || response.status > 599) throw new Error('Host request failed');
-  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status, errorDetail(response.body));
+  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status, errorDetail(response.body), errorCode(response.body));
   return response;
 }
 
@@ -318,7 +344,7 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       return checkResponse(response, request);
     } catch (error) {
       // Never return the adapter's URL/header-bearing exception or cause.
-      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status, error.detail);
+      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status, error.detail, error.code);
       throw new Error('Host request failed or retired');
     }
   }
@@ -364,15 +390,15 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       if (operation.native) {
         const headers = record(response.headers ?? {});
         if (headers['x-loopdy-request-id'] !== operation.native.requestId) throw new Error('Native response correlation mismatch');
-        const etag = typeof headers.etag === 'string' && NATIVE_ETAG.test(headers.etag) ? headers.etag : undefined;
+        const etag = canonicalNativeETag(headers.etag) ?? undefined;
         return Object.freeze({ body: response.body, status: response.status as number, requestId: operation.native.requestId, ...(etag ? { etag } : {}) });
       }
       return Object.freeze({ body: response.body, status: response.status as number });
     }
     if (operation.kind === 'nativeContext' || operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
       const headers = record(response.headers);
-      const etag = text(headers.etag, 73);
-      if (!/^"sha256:[0-9a-f]{64}"$/u.test(etag)) throw new Error('Invalid native response ETag');
+      const etag = canonicalNativeETag(headers.etag);
+      if (etag === null) throw new Error('Invalid native response ETag');
       if (operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
         if (etag !== operation.etag || headers['x-loopdy-request-id'] !== operation.requestId) {
           throw new Error('Native response correlation mismatch');
