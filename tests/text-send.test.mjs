@@ -17,7 +17,7 @@ function fixture(overrides = {}) {
 test('writes both barriers before exactly one finite prompt.submit', async () => {
   const f = fixture();
   assert.equal((await f.send()).phase, 'accepted');
-  assert.deepEqual(f.calls, ['prepared', 'dispatched', { jsonrpc: '2.0', id: 'req-a', method: 'prompt.submit', params: { session_id: 'runtime-a', profile: 'alpha', text: 'Hello 👋' } }, 'accepted']);
+  assert.deepEqual(f.calls, ['prepared', 'dispatched', { jsonrpc: '2.0', id: 'req-a', method: 'prompt.submit', params: { session_id: 'runtime-a', profile: 'alpha', text: 'Hello 👋', queued: true } }, 'accepted']);
   await assert.rejects(f.send(), /already consumed/);
 });
 for (const failPhase of ['prepared', 'dispatched']) {

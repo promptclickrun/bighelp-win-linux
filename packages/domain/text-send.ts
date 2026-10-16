@@ -3,7 +3,9 @@ import type { Owner, SendIntent } from './chat-contract.ts';
 
 export type TextRequest = Readonly<{
   jsonrpc: '2.0'; id: string; method: 'prompt.submit';
-  params: Readonly<{ session_id: string; profile: string; text: string }>;
+  // queued:true makes a busy session queue the message instead of redirecting or
+  // interrupting the live turn (Hermes _handle_busy_submit; the Mac always sends it).
+  params: Readonly<{ session_id: string; profile: string; text: string; queued: true }>;
 }>;
 export type TextIntent = SendIntent & Readonly<{ request: TextRequest }>;
 // Trusted in-memory snapshot recovery, not a durable-record decoder.
@@ -28,9 +30,10 @@ function record(value: unknown): value is Record<string, unknown> {
 
 // Decoded-frame classifier only, not a raw JSON parser. A future transport must
 // enforce framing bounds and reject duplicate critical keys before decoding.
+// "queued" is a durable acceptance behind a running turn (written at accept time).
 export function classifyReceipt(value: unknown, requestId: string): 'streaming' | 'unknown' {
   if (!record(value) || value.jsonrpc !== '2.0' || value.id !== requestId
-    || 'error' in value || !record(value.result) || value.result.status !== 'streaming') return 'unknown';
+    || 'error' in value || !record(value.result) || (value.result.status !== 'streaming' && value.result.status !== 'queued')) return 'unknown';
   return 'streaming';
 }
 
@@ -49,7 +52,7 @@ export function createTextSend(
   if (typeof input.text !== 'string' || !input.text.isWellFormed()) throw new TypeError('Invalid text');
   const request: TextRequest = Object.freeze({
     jsonrpc: '2.0', id: input.requestId, method: 'prompt.submit',
-    params: Object.freeze({ session_id: owner.runtimeId, profile: owner.profileId, text: input.text }),
+    params: Object.freeze({ session_id: owner.runtimeId, profile: owner.profileId, text: input.text, queued: true }),
   });
   const original: SendIntent = Object.freeze({ id: input.id, owner, phase: 'editing' });
   let consumed = false;

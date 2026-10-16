@@ -3,11 +3,18 @@
 // appears only in a development run with --fixture-preview.
 
 export type Delivery = 'pending' | 'unknown';
+// running: live call; done/failed: classified by Hermes's own failure rule;
+// stopped: the turn ended before a result; recorded: saved history without an outcome.
+export type ToolState = 'running' | 'done' | 'failed' | 'stopped' | 'recorded';
 export type TranscriptItem =
   | Readonly<{ kind: 'day'; id: string; label: string }>
   | Readonly<{ kind: 'message'; id: string; direction: 'in' | 'out'; paragraphs: readonly string[];
-      bullets?: readonly string[]; delivery?: Delivery }>
-  | Readonly<{ kind: 'tool'; id: string; label: string; detail: string }>;
+      bullets?: readonly string[]; delivery?: Delivery; streaming?: boolean; at?: number; turn?: string;
+      attachments?: readonly string[] }>
+  | Readonly<{ kind: 'tool'; id: string; label: string; detail: string; name?: string; state?: ToolState;
+      durationMs?: number; input?: string; output?: string; turn?: string }>
+  | Readonly<{ kind: 'reasoning'; id: string; text: string; turn?: string; streaming?: boolean }>
+  | Readonly<{ kind: 'notice'; id: string; tone: 'info' | 'warn' | 'error'; text: string; turn?: string }>;
 
 export type AgentView = Readonly<{ id: string; name: string; summary: string; color: string }>;
 export type ChatView = Readonly<{

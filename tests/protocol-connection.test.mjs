@@ -10,7 +10,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const failure = kind => error => error?.kind === kind;
 const event = (type, payload = {}, extra = {}) => ({ jsonrpc: '2.0', method: 'event', params: { type, payload, ...extra } });
 const textRequest = (id = 'send-1', owner = baseOwner) => ({ jsonrpc: '2.0', id, method: 'prompt.submit',
-  params: { session_id: owner.runtimeId, profile: owner.profileId, text: 'Synthetic hello' } });
+  params: { session_id: owner.runtimeId, profile: owner.profileId, text: 'Synthetic hello', queued: true } });
 // This intentionally does not claim a valid approval/clarification answer shape.
 // Registered synthetic handlers either defer or explicitly refuse the method.
 const refusal = async () => ({ error: { code: -32601, message: 'Synthetic handler has no prompt UI' } });

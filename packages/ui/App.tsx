@@ -21,6 +21,8 @@ import { InteractiveRequests } from './components/InteractiveRequests.tsx';
 import { EMPTY_DATA } from './view-model.ts';
 import type { ViewData } from './view-model.ts';
 import { agentById, chatById, composerStatus } from './view-model.ts';
+import type { AppCommand } from '../../apps/desktop/src/shared/links.ts';
+import { CHAT_SEARCH_ID, COMPOSER_ID } from './ids.ts';
 
 // Full sentences, so nothing reads as "Usage aren't built yet".
 const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
@@ -66,6 +68,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
     const chat = id ? chatById(props.data, id) : null;
     if (chat && !suppressNavigation.current) dispatch({ type: 'openChat', chatId: chat.id, agentId: chat.agentId });
   }, [props.snapshot?.selectedChatId, generation]);
+  // Application menu shortcuts (Ctrl+N, Ctrl+K, Ctrl+, and Ctrl+L).
+  const commandTarget = useRef<(command: AppCommand) => void>(() => {});
+  useEffect(() => typeof props.api?.onCommand === 'function' ? props.api.onCommand(command => commandTarget.current(command)) : undefined, [props.api]);
   const { width } = useWindowDimensions();
   const system = useColorScheme();
   const narrow = width < LAYOUT.narrowBreakpoint;
@@ -126,11 +131,28 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   let detail: JSX.Element;
   const agentId = state.place === 'chats' ? (chatById(data, state.selectedChatId)?.agentId ?? null) : state.selectedAgentId;
   const agent = agentById(data, agentId);
+  commandTarget.current = command => {
+    if (command === 'focusComposer') { document.getElementById(COMPOSER_ID)?.focus(); return; }
+    if (command === 'settings') { leaveChat(); dispatch({ type: 'place', place: 'settings' }); return; }
+    if (command === 'search') {
+      leaveChat(); dispatch({ type: 'place', place: 'chats' });
+      setTimeout(() => document.getElementById(CHAT_SEARCH_ID)?.focus(), 0); return;
+    }
+    const target = agent ?? data.agents[0];
+    if (target && api && snapshot?.status === 'connected' && act) {
+      navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, target.id)); });
+    }
+  };
   if (showsAgentTabs(state) && agent) {
     const chat = state.place === 'chats' ? chatById(data, state.selectedChatId) : null;
     const draftKey = chat?.id ?? `new:${agent.id}`;
     detail = (
       <Conversation agent={agent} chat={chat} host={data.host} tab={state.agentTab} sample={data.sample}
+        options={snapshot?.preferences ? { showReasoning: snapshot.preferences.showReasoning, foldFinishedTurns: snapshot.preferences.foldFinishedTurns,
+          enterToSend: snapshot.preferences.enterToSend, busyMode: snapshot.preferences.busyMode, nerdMode } : undefined}
+        turn={snapshot?.turn && snapshot.selectedChatId === chat?.id ? snapshot.turn : undefined} liveTurn={snapshot?.turn?.key ?? null}
+        actions={api ? { openLink: url => { void api.openLink(url); }, copy: text => api.copyText(text) } : {}}
+        onCheckHistory={api && snapshot && chat && act ? () => { void act(api.openChat(snapshot.generation, chat.id)); } : undefined}
         board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?
           <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}

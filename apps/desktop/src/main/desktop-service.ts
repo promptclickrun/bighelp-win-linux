@@ -7,10 +7,14 @@ import { transitionSend } from '../../../../packages/domain/chat-contract.ts';
 import type { Owner } from '../../../../packages/domain/chat-contract.ts';
 import type { JsonValue, JsonObject, RpcEvent, RpcServerRequest, ServerReply } from '../../../../packages/contracts/rpc.ts';
 import { jsonObject } from '../../../../packages/contracts/rpc.ts';
-import { decodeProfiles, decodeSessionList, decodeSessionReceipt, decodeSessionHistory } from '../../../../packages/contracts/session.ts';
+import { decodeProfiles, decodeSessionList, decodeSessionReceipt } from '../../../../packages/contracts/session.ts';
+import { decodeRestHistory, decodeRpcHistory, HISTORY_LIMITS } from '../../../../packages/contracts/history.ts';
+import { EMPTY_LIVE, addOutgoing, afterHistory, reduceLive } from '../../../../packages/domain/live-turn.ts';
+import type { LiveTurn } from '../../../../packages/domain/live-turn.ts';
 import { parseInteractivePrompt, encodeInteractiveAnswer } from '../../../../packages/contracts/prompts.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
 import type { Gateway } from '../../../../packages/hermes-client/gateway.ts';
+import { GatewayOperationError } from '../../../../packages/hermes-client/gateway.ts';
 import { createCanonicalChatClient } from '../../../../packages/hermes-client/canonical-chat.ts';
 import type { CanonicalState } from '../../../../packages/contracts/canonical-chat.ts';
 import { createWorkspaceClient } from '../../../../packages/hermes-client/workspace.ts';
@@ -48,6 +52,9 @@ function journal(value: JsonValue | undefined): JsonObject[] {
   return entries;
 }
 
+// A refusal with words the person can act on; anything else gets generic copy.
+class UserFacingError extends Error {}
+
 export function createDesktopService(adapters: Readonly<{
   repository: Repository | null; connect: (options: ConnectOptions) => Promise<Gateway>;
   onChange: (snapshot: DesktopSnapshot) => void;
@@ -76,21 +83,33 @@ export function createDesktopService(adapters: Readonly<{
   let running = false, sending = false, navigating = false, reconciled = false;
   let notice = adapters.repository ? '' : 'Secure storage is unavailable. Unlock your system key store to connect.';
   let drafts: Record<string, string> = Object.create(null);
-  let stream = '', streamId = '', lastSequence: number | null = null;
+  let lastSequence: number | null = null;
+  // Saved history of the open chat, plus rows of live turns not yet saved.
+  let base: readonly TranscriptItem[] = [];
+  let live: LiveTurn = EMPTY_LIVE;
+  let publishTimer: ReturnType<typeof setTimeout> | undefined;
   let turnBookends = 0;
   let historyRevision = 0;
-  let acceptedSend: { intent: TextIntent; key: string; bookend: number; settlement?: Promise<void> } | null = null;
+  // Accepted sends awaiting a live terminal bookend and saved history. Several can
+  // be pending when messages are queued behind a running turn.
+  type AcceptedSend = { intent: TextIntent; key: string; bookend: number; settlement?: Promise<void> };
+  let acceptedSends: AcceptedSend[] = [];
   const prompts = new Map<string, PendingPrompt>();
   const revisions = new Map<string, number>();
   let writes = Promise.resolve();
   const canSend = () => status === 'connected' && !!owner && !!gateway?.exclusiveSubmit && !!adapters.repository
     && reconciled && !running && !sending && !navigating;
+  // While a reply runs, a send steers, queues or interrupts per Settings → Chat.
+  const canSendBusy = () => status === 'connected' && !!owner && !!gateway?.exclusiveSubmit && !!adapters.repository
+    && reconciled && running && !sending && !navigating;
   function snapshot(): DesktopSnapshot {
-    return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend(), notice,
+    return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend() || canSendBusy(), notice,
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
-      preferences });
+      preferences, turn: { key: live.turn, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt } });
   }
-  const publish = () => adapters.onChange(snapshot());
+  const publish = () => { clearTimeout(publishTimer); publishTimer = undefined; adapters.onChange(snapshot()); };
+  // Streaming text arrives many times a second; coalesce those updates.
+  const publishSoon = () => { publishTimer ??= setTimeout(publish, 50); };
   function save(key: string, value: unknown): Promise<void> {
     const captured = safeJson(value);
     const result = writes.then(async () => {
@@ -130,8 +149,8 @@ export function createDesktopService(adapters: Readonly<{
   function retire(clear = false) {
     if (liveRecovery) recovered = { binding: liveBinding, scope: {hostId, principalId}, data: liveRecovery.data };
     liveRecovery = null;
-    navigation = null; navigationIds = null; ++hostGeneration; ++generation; owner = null; acceptedSend = null; reconciled = false; running = false; sending = false; navigating = false;
-    ++workspaceRevision; workspace = null; identity = null;
+    navigation = null; navigationIds = null; ++hostGeneration; ++generation; owner = null; acceptedSends = []; reconciled = false; running = false; sending = false; navigating = false;
+    ++workspaceRevision; workspace = null; identity = null; base = []; live = EMPTY_LIVE; clearTimeout(publishTimer); publishTimer = undefined;
     clearPrompts(); const old = gateway; gateway = undefined; old?.close(); status = 'disconnected';
     if (clear) { recovered = null; data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
     else if (recovered) data = offlineDisplay(recovered.data);
@@ -144,12 +163,30 @@ export function createDesktopService(adapters: Readonly<{
   function requireChat(chatId: string) {
     if (!owner || selectedChatId !== chatId || owner.storedSessionId !== chatId) throw Error('Chat changed'); return owner;
   }
+  // REST rows carry tool results; the RPC projection is the fallback for older
+  // hosts, unusual IDs or a page beyond the response bound.
+  async function readHistory(captured: Owner, connection: Gateway): Promise<readonly TranscriptItem[]> {
+    if (/^[A-Za-z0-9_.:-]+$/u.test(captured.storedSessionId) && captured.storedSessionId !== '.' && captured.storedSessionId !== '..') {
+      try {
+        const response = await connection.requestHttp({ kind: 'route', method: 'GET', path: `/api/sessions/${encodeURIComponent(captured.storedSessionId)}/messages`,
+          query: { profile: captured.profileId, order: 'latest', limit: '500', include_compacted: 'true', inline_images: 'false' },
+          maxBytes: HISTORY_LIMITS.responseBytes });
+        return decodeRestHistory(response.body);
+      } catch { if (owner !== captured || gateway !== connection) throw Error('Chat changed'); }
+    }
+    return decodeRpcHistory(await connection.operation({ kind: 'sessionHistory', profile: captured.profileId, runtimeId: captured.runtimeId }));
+  }
+  function applyTranscript(chatId: string) {
+    const items = [...base, ...live.items];
+    const last = [...items].reverse().find(item => item.kind === 'message' && item.paragraphs.join('').trim());
+    updateChat(chatId, chat => ({ ...chat, transcript: items,
+      preview: last?.kind === 'message' ? last.paragraphs.join(' ').replace(/\s+/gu, ' ').slice(0, 160) : chat.preview }));
+  }
   async function history(captured: Owner, connection: Gateway) {
     const revision = ++historyRevision;
-    const messages = decodeSessionHistory(await connection.operation({ kind: 'sessionHistory', profile: captured.profileId, runtimeId: captured.runtimeId }));
+    const items = await readHistory(captured, connection);
     if (owner !== captured || gateway !== connection || revision !== historyRevision) return;
-    const accepted = acceptedSend;
-    if (accepted && !running && turnBookends > accepted.bookend) {
+    for (const accepted of acceptedSends.filter(entry => !running && turnBookends > entry.bookend)) {
       // Only a known accepted send with a live terminal bookend can complete.
       // Recovered/unknown records are never promoted merely by seeing history.
       accepted.settlement ??= (async () => {
@@ -158,14 +195,18 @@ export function createDesktopService(adapters: Readonly<{
         await commitIntent(accepted.key, { ...transitionSend(terminal, { type: 'historyVerified' }, captured), request: terminal.request });
       })();
       await accepted.settlement;
-      if (acceptedSend === accepted) acceptedSend = null;
+      acceptedSends = acceptedSends.filter(entry => entry !== accepted);
       if (owner !== captured || gateway !== connection || revision !== historyRevision) return;
     }
-    updateChat(captured.storedSessionId, chat => ({ ...chat, transcript: messages.map(row => ({ kind: 'message', id: row.id,
-      direction: row.role === 'user' ? 'out' : 'in', paragraphs: [row.text] })), preview: messages.at(-1)?.text.slice(0, 160) ?? '' }));
+    base = items; live = afterHistory(live);
+    applyTranscript(captured.storedSessionId);
     const authoritative = data.chats.find(chat => chat.id === captured.storedSessionId && chat.agentId === captured.profileId);
-    if (authoritative) liveRecovery?.history(authoritative);
+    if (authoritative) liveRecovery?.history({ ...authoritative, transcript: base });
     reconciled = true; publish();
+  }
+  function agentName(profile: string): string { return data.agents.find(agent => agent.id === profile)?.name ?? 'Your agent'; }
+  function alert(kind: DesktopAlert['kind'], chatId: string, profile: string, text: string) {
+    try { adapters.notify?.(Object.freeze({ kind, chatId, agentName: agentName(profile), text: text.slice(0, 600) })); } catch { /* Alerts never affect chat state. */ }
   }
   function event(event: RpcEvent, current: number) {
     if (shuttingDown || current !== hostGeneration || !owner || event.params.session_id !== owner.runtimeId) return;
@@ -176,35 +217,35 @@ export function createDesktopService(adapters: Readonly<{
       if (lastSequence !== null && sequence > lastSequence + 1) { reconciled = false; notice = 'Some updates were missed. Reopen this chat to check its saved history.'; }
       lastSequence = sequence;
     }
-    const type = event.params.type, payload = event.params.payload;
+    const type = String(event.params.type);
+    // Hermes sends a bare message.start; an absent payload is an empty one.
+    const payload = event.params.payload === undefined ? {} : event.params.payload;
     if (!jsonObject(payload)) return;
-    if (['message.start', 'message.delta', 'message.complete', 'message.interim', 'session.reclaimed', 'error'].includes(String(type))
+    if (['message.start', 'message.delta', 'message.complete', 'message.interim', 'session.reclaimed', 'error'].includes(type)
       || (type === 'session.info' && typeof payload.running === 'boolean')) ++historyRevision;
     if (type === 'session.reclaimed') { retire(); notice = 'Another client took over this session. Reconnect to continue.'; publish(); return; }
-    if (type === 'message.start') { running = true; stream = ''; streamId = `stream:${randomUUID()}`; }
-    if (type === 'message.delta' || type === 'message.complete' || type === 'message.interim') {
-      if (typeof payload.text === 'string') {
-        stream = type === 'message.delta' ? stream + payload.text : payload.text;
-        if (Buffer.byteLength(stream) > 1024 * 1024) { retire(); notice = 'This response exceeds the display limit. Reopen its saved history.'; publish(); return; }
-        if (!streamId) streamId = `stream:${randomUUID()}`;
-        running = true;
-        const item: TranscriptItem = { kind: 'message', id: streamId, direction: 'in', paragraphs: [stream] };
-        updateChat(captured.storedSessionId, chat => ({ ...chat, transcript: [...chat.transcript.filter(row => row.id !== streamId), item] }));
-      }
-      if (type !== 'message.delta') { stream = ''; streamId = ''; }
+    const wasRunning = running;
+    live = reduceLive(live, type, payload, Date.now());
+    if (type === 'message.start' || type === 'message.delta') running = true;
+    if (type === 'session.title' && typeof payload.title === 'string' && payload.session_id === captured.storedSessionId) {
+      const title = payload.title.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]+/gu, ' ').trim().slice(0, 200);
+      if (title) updateChat(captured.storedSessionId, chat => ({ ...chat, title }));
     }
-    if (type === 'error' || (type === 'message.complete' && payload.status === 'error')) {
-      notice = 'Hermes reported a problem. Check the conversation before trying again.';
-    }
+    applyTranscript(captured.storedSessionId);
     if (type === 'session.info' && typeof payload.running === 'boolean') {
       running = payload.running;
       if (!running && connection) {
         ++turnBookends;
         reconciled = false;
+        if (wasRunning) {
+          const reply = [...live.items].reverse().find(item => item.kind === 'message' && item.direction === 'in');
+          alert(live.failure ? 'failed' : 'reply', captured.storedSessionId, captured.profileId,
+            live.failure ?? (reply?.kind === 'message' ? reply.paragraphs.join(' ') : ''));
+        }
         void history(captured, connection).catch(() => { if (owner === captured) { notice = 'Could not check saved history. Reopen the chat before sending.'; publish(); } });
       }
     }
-    publish();
+    if (type === 'message.delta' || type === 'reasoning.delta' || type === 'session.usage' || type === 'thinking.delta') publishSoon(); else publish();
   }
   async function request(request: RpcServerRequest, signal: AbortSignal, current: number): Promise<ServerReply> {
     if (shuttingDown || current !== hostGeneration || !owner || signal.aborted) return { error: { code: -32000, message: 'Session unavailable' } };
@@ -221,6 +262,8 @@ export function createDesktopService(adapters: Readonly<{
       };
       prompts.set(request.id, { prompt, resolve: reply => { signal.removeEventListener('abort', cancel); resolve(reply); }, cancel });
       signal.addEventListener('abort', cancel, { once: true }); publish();
+      if (owner) alert(prompt.kind === 'approval' ? 'approval' : 'question', owner.storedSessionId, owner.profileId,
+        prompt.kind === 'approval' ? prompt.description ?? prompt.command ?? '' : prompt.questions[0]?.question ?? '');
     });
   }
   async function restoreOffline(host: HostInput, current: number) {
@@ -318,7 +361,7 @@ export function createDesktopService(adapters: Readonly<{
   async function open(profile: string, storedSessionId?: string, canonical = false, requestId?: string, initiatingGeneration = generation) {
     if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
     const connection = gateway, current = hostGeneration;
-    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSend = null; clearPrompts(); ++generation;
+    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSends = []; clearPrompts(); ++generation;
     navigation = requestId ? {requestId, initiatingGeneration, generation} : null; publish();
     // Ordinary/saved-chat supersession admits no more entries from the older
     // canonical initiating generation, so its tombstones can be retired.
@@ -351,7 +394,9 @@ export function createDesktopService(adapters: Readonly<{
         ? { kind: 'sessionCreate', profile } : { kind: 'sessionResume', profile, storedSessionId }), profile);
       if (!isCurrent()) return;
       if (data.chats.some(chat => chat.id === receipt.storedSessionId && chat.agentId !== profile)) throw Error('Ambiguous session identity');
-      selectedChatId = receipt.storedSessionId; running = receipt.running; lastSequence = null; stream = ''; streamId = '';
+      selectedChatId = receipt.storedSessionId; running = receipt.running; lastSequence = null;
+      base = data.chats.find(chat => chat.id === receipt.storedSessionId)?.transcript.filter(item => item.kind !== 'notice') ?? [];
+      live = receipt.running ? Object.freeze({ ...EMPTY_LIVE, running: true, turn: 'live:resumed', status: 'Working' }) : EMPTY_LIVE;
       const captured: Owner = { hostId, principalId, profileId: profile, storedSessionId: receipt.storedSessionId, runtimeId: receipt.runtimeId,
         authGeneration: current, connectionGeneration: generation };
       owner = captured;
@@ -385,7 +430,7 @@ export function createDesktopService(adapters: Readonly<{
     }
     if (action.kind === 'cancelNavigation') {
       if (navigation?.requestId === action.requestId && navigation.initiatingGeneration === action.generation) {
-        navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSend = null;
+        navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSends = [];
         clearPrompts(); navigating = false; running = false; reconciled = false; publish();
       }
       return;
@@ -461,7 +506,18 @@ export function createDesktopService(adapters: Readonly<{
     if (action.kind === 'interrupt') {
       await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId }); return;
     }
-    if (!canSend()) throw Error('Chat is not ready');
+    if (running) {
+      if (!canSendBusy()) throw new UserFacingError('Wait a moment, then send again.');
+      if (preferences.busyMode === 'steer') { await steer(captured, connection, action.chatId, action.text); return; }
+      if (preferences.busyMode === 'interrupt') {
+        let stopped = false;
+        try { const reply = await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId }); stopped = jsonObject(reply) && reply.status === 'interrupted'; }
+        catch { stopped = false; }
+        if (!stopped) throw new UserFacingError("The current reply couldn't be stopped. Your message is still in the box.");
+        if (owner !== captured) return;
+      }
+      // queue (or after interrupt): prompt.submit with queued:true, journaled below.
+    } else if (!canSend()) throw Error('Chat is not ready');
     sending = true; let dispatchAttempted = false;
     const intentKey = `journal:${scope(captured.profileId, action.chatId)}`, draftKey = `draft:${scope(captured.profileId, action.chatId)}`;
     const draftRevision = revisions.get(draftKey) ?? null;
@@ -472,20 +528,52 @@ export function createDesktopService(adapters: Readonly<{
         commit: intent => commitIntent(intentKey, intent), submit: request => { dispatchAttempted = true; bookendAtDispatch = turnBookends; return connection.submitText(request); },
       })();
       if (owner !== captured) return;
-      const pending: TranscriptItem = { kind: 'message', id: result.id, direction: 'out', paragraphs: [action.text],
-        delivery: result.phase === 'accepted' ? 'pending' : 'unknown' };
-      updateChat(action.chatId, chat => ({ ...chat, transcript: [...chat.transcript, pending] }));
+      live = addOutgoing(live, result.id, action.text, result.phase === 'accepted' ? 'pending' : 'unknown');
+      applyTranscript(action.chatId);
       if (result.phase === 'accepted') {
-        acceptedSend = { intent: result, key: intentKey, bookend: bookendAtDispatch };
+        acceptedSends = [...acceptedSends, { intent: result, key: intentKey, bookend: bookendAtDispatch }];
         const cleared = await clearSentDraft(draftKey, draftRevision, action.text);
         if (owner !== captured) return;
         if (cleared) drafts = { ...drafts, [action.chatId]: '' };
-        if (turnBookends === bookendAtDispatch) { running = true; notice = 'Hermes accepted your message.'; }
+        if (running) notice = 'Queued. It runs when the current reply finishes.';
+        else if (turnBookends === bookendAtDispatch) { running = true; notice = ''; }
         else { await history(captured, connection); }
       } else { reconciled = false; notice = 'Not sure this arrived. Reopen the chat to check saved history. Nothing will be resent automatically.'; }
     } catch (error) {
       if (owner === captured && dispatchAttempted) { reconciled = false; notice = 'The send outcome could not be saved. Reopen the chat to check history before sending again.'; }
       throw error;
+    } finally { if (owner === captured) { sending = false; publish(); } }
+  }
+  // Steer adds the message to the reply in progress. It is not a new turn, so it
+  // is not journaled; a lost reply keeps the draft and says so, never resends.
+  async function steer(captured: Owner, connection: Gateway, chatId: string, text: string) {
+    const draftKey = `draft:${scope(captured.profileId, chatId)}`, draftRevision = revisions.get(draftKey) ?? null;
+    const id = `steer:${randomUUID()}`;
+    sending = true; publish();
+    try {
+      let reply: unknown;
+      try { reply = await connection.call('session.steer', { session_id: captured.runtimeId, profile: captured.profileId, text }); }
+      catch (error) {
+        if (error instanceof GatewayOperationError) throw new UserFacingError(error.code === 4010
+          ? "This agent can't take a message while it works. In Settings → Chat, choose Queue instead."
+          : "Hermes couldn't add this to the current reply. Your message is still in the box.");
+        if (owner === captured) {
+          live = addOutgoing(live, id, text, 'unknown'); applyTranscript(chatId);
+          notice = 'Not sure this reached the agent. Your message is still in the box. Check the reply before sending it again.';
+        }
+        return;
+      }
+      if (!jsonObject(reply) || reply.status !== 'queued') {
+        throw new UserFacingError("Hermes couldn't add this to the current reply. Your message is still in the box. Send it again when the reply finishes.");
+      }
+      if (owner !== captured) return;
+      live = addOutgoing(live, id, text, 'pending');
+      if (live.turn) live = Object.freeze({ ...live, items: live.items.map(item => item.id === id ? Object.freeze({ ...item, turn: live.turn ?? undefined }) as TranscriptItem : item) });
+      applyTranscript(chatId);
+      const cleared = await clearSentDraft(draftKey, draftRevision, text);
+      if (owner !== captured) return;
+      if (cleared) drafts = { ...drafts, [chatId]: '' };
+      notice = 'Added to the reply in progress.';
     } finally { if (owner === captured) { sending = false; publish(); } }
   }
   async function runCall<K extends CallName>(name: K, input: CallInput<K>, context: CallContext): Promise<CallOutput<K>> {
@@ -559,7 +647,7 @@ export function createDesktopService(adapters: Readonly<{
       const revision = ++actionRevision;
       let current = generation;
       try { const pending = act(parseDesktopAction(value)); current = generation; await pending; return { ok: true, snapshot: snapshot() }; }
-      catch { const message = status === 'connecting' ? 'Could not connect. Check the address, sign-in token, and secure storage.'
+      catch (error) { const message = error instanceof UserFacingError ? error.message : status === 'connecting' ? 'Could not connect. Check the address, sign-in token, and secure storage.'
         : 'The action could not finish. Check the connection and current selection before trying again.';
         if (revision === actionRevision && current === generation) { notice = message; publish(); }
         return { ok: false, message }; }
@@ -570,7 +658,7 @@ export function createDesktopService(adapters: Readonly<{
         // its already captured authoritative projections have had a short drain.
         shuttingDown = true; ++generation; ++workspaceRevision;
         navigation = null; navigationIds = null; workspace = null; owner = null;
-        acceptedSend = null; running = false; sending = false; navigating = false; reconciled = false;
+        acceptedSends = []; running = false; sending = false; navigating = false; reconciled = false;
         clearPrompts(); const connection = gateway; gateway = undefined; status = 'disconnected'; connection?.close();
         let deadline: ReturnType<typeof setTimeout> | undefined;
         try {

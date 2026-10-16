@@ -5,6 +5,7 @@ import { CALLS, isCallName } from './calls/index.ts';
 import { safeLink } from './links.ts';
 import { parsePreferenceChanges } from './preferences.ts';
 import type { Preferences } from './preferences.ts';
+import type { TodoItem } from '../../../../packages/domain/live-turn.ts';
 import type { AppCommand } from './links.ts';
 import type { CallInput, CallName, CallResult } from './calls/index.ts';
 
@@ -28,6 +29,8 @@ export type DesktopSnapshot = Readonly<{
   drafts: Readonly<Record<string, string>>;
   workspace: DesktopWorkspace | null;
   preferences: Preferences;
+  // The open chat's reply in progress: still status words, to-dos, context use.
+  turn: Readonly<{ key: string | null; status: string; todos: readonly TodoItem[]; context: Readonly<{ used: number; max: number }> | null; startedAt: number | null }>;
 }>;
 // Something that needs a person while bighelp runs. Main decides whether to show
 // an OS notification (preferences, focus, the chat on screen); never a decision path.

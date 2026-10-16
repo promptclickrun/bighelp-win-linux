@@ -60,5 +60,5 @@ for(const tab of ['feed','ideas','goals','files'])test(`real Conversation markup
  assert.match(html, /<div hidden="" inert="" aria-hidden="true" style="display:none">/);
  assert.match(html, /Protected native draft/);assert.equal((html.match(/role="tablist"/g)??[]).length,1);
  assert.ok(html.indexOf('Protected native draft')<html.indexOf('role="tablist"'));
- if(tab==='files')assert.match(html,/Files unavailable/);else assert.match(html,/Inert board body/);
+ if(tab==='files')assert.match(html,/Files on your computer appear here/);else assert.match(html,/Inert board body/);
 });

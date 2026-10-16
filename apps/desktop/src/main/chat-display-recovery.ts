@@ -1,13 +1,29 @@
 // Main-only display recovery. None of these records authorize host operations.
 import { createHash } from 'node:crypto';
 import { createDisplayCache, normalizeDisplayCache } from '../../../../packages/platform/display-cache.ts';
-import type { DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
+import type { CachedTranscriptItem, DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
 import type { ProtectedValue } from '../../../../packages/platform/protected-repository.ts';
 import type { JsonValue } from '../../../../packages/contracts/rpc.ts';
 import { jsonObject } from '../../../../packages/contracts/rpc.ts';
 import { parseEndpoint } from '../../../../packages/platform/transport-policy.ts';
 import type { HostInput } from '../shared/desktop-api.ts';
-import type { ViewData, ChatView } from '../../../../packages/ui/view-model.ts';
+import type { ViewData, ChatView, TranscriptItem } from '../../../../packages/ui/view-model.ts';
+
+// The offline cache keeps a plain reading copy: text and tool labels only.
+// Reasoning, notices, tool input/output and delivery state are not retained.
+export function cacheTranscript(items: readonly TranscriptItem[]): CachedTranscriptItem[] {
+  const result: CachedTranscriptItem[] = [];
+  for (const item of items) {
+    if (item.kind === 'day') result.push({ kind: 'day', id: item.id, label: item.label });
+    else if (item.kind === 'message') {
+      // Unconfirmed or still-streaming rows are not saved history.
+      if (item.delivery !== undefined || item.streaming) throw new TypeError('Not authoritative history');
+      result.push({ kind: 'message', id: item.id, direction: item.direction, paragraphs: [...item.paragraphs] });
+    }
+    else if (item.kind === 'tool') result.push({ kind: 'tool', id: item.id, label: item.label, detail: item.detail });
+  }
+  return result;
+}
 
 type Repository = Readonly<{ read(key: string): Promise<ProtectedValue | null>;
   write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue> }>;
@@ -147,7 +163,7 @@ export function createChatDisplayRecovery(repository: Repository) {
           // Only fenced authoritative history from the current catalog is admitted.
           update(state, () => ({ ...state.data, sessions: state.data.sessions.map(session =>
             session.profileId === chat.agentId && session.storedSessionId === chat.id
-              ? { ...session, preview: chat.preview, transcript: chat.transcript, historyUpdatedAt: Date.now() } : session) }));
+              ? { ...session, preview: chat.preview, transcript: cacheTranscript(chat.transcript), historyUpdatedAt: Date.now() } : session) }));
         },
       });
     },
