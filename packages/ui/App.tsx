@@ -25,6 +25,7 @@ import type { DesktopApi, DesktopSnapshot, DesktopResult } from '../../apps/desk
 import type { ShellInfo } from '../../apps/desktop/src/shared/shell-info.ts';
 import { HostConnection } from './components/HostConnection.tsx';
 import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
+import { VaultPage } from './components/VaultPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
 import { KanbanPage } from './components/KanbanPage.tsx';
 import { EMPTY_DATA } from './view-model.ts';
@@ -37,7 +38,6 @@ import { CHAT_SEARCH_ID, COMPOSER_ID } from './ids.ts';
 // Full sentences, so nothing reads as "Usage aren't built yet".
 const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
   workflows: "Workflow pages aren't built yet",
-  vault: "The vault isn't built yet",
 });
 
 export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean>; shell?: ShellInfo | undefined }>): JSX.Element {
@@ -285,7 +285,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   }
 
   const functionPage = state.place === 'projects' || state.place === 'scheduled' || state.place === 'usage' ? state.place : null;
-  const ownPage = functionPage !== null || state.place === 'kanban';
+  const ownPage = functionPage !== null || state.place === 'kanban' || state.place === 'vault';
   // Delete refuses while this agent is replying in the open chat.
   const replyingAgentId = snapshot?.running && snapshot.selectedChatId ? chatById(data, snapshot.selectedChatId)?.agentId ?? null : null;
   return (
@@ -300,6 +300,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
         {state.place === 'kanban' ? <KanbanPage key={`kanban:${snapshot?.connection ?? 'none'}`} host={api && snapshot && act ? { api, snapshot, act } : null}
           data={data} narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
+        {state.place === 'vault' ? <VaultPage key={`vault:${snapshot?.connection ?? 'none'}`} data={data} nerdMode={nerdMode} narrow={narrow} panes={panes}
+          onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
         {!ownPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
             nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow} onNewChat={startChat}

@@ -179,3 +179,55 @@ test('typed secrets never appear in snapshots, call results, failures or protect
     assert.equal(sent.filter(wire => wire.includes(secret)).length, 2);
   }
 });
+
+const ui = await (async () => {
+  const { build } = await import('esbuild');
+  const { createRequire } = await import('node:module');
+  const result = await build({ stdin: { contents: `
+import React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { AddLogin, VaultPage } from './packages/ui/components/VaultPage.tsx';
+import { HostProvider } from './packages/ui/host.tsx';
+import { ThemeProvider } from './packages/ui/theme.tsx';
+import { PALETTES } from './packages/ui/tokens.ts';
+export function render(component, props, host = null) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}>
+  <HostProvider value={host}>{React.createElement(component === 'add' ? AddLogin : VaultPage, props)}</HostProvider></ThemeProvider>); }
+`, resolveDir: process.cwd(), loader: 'tsx' }, jsx: 'automatic', bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false });
+  const compiled = { exports: {} };
+  new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
+  return compiled.exports;
+})();
+const page = { nerdMode: false, narrow: false, panes: { list: true, detail: true }, onOpenDetail() {},
+  data: { sample: false, host: { label: 'Synthetic computer', state: 'connected' }, chats: [], workflows: [],
+    agents: [{ id: 'agent', name: 'Synthetic agent', summary: '', color: 'blue' }] } };
+
+test('a narrow window opens a vault row in the detail pane and Back returns to the list', async () => {
+  const { createShellState, reduceShell, visiblePanes, showsAgentTabs } = await import('../packages/domain/shell.ts');
+  let state = reduceShell(reduceShell(createShellState(), { type: 'layout', layout: 'narrow' }), { type: 'place', place: 'vault' });
+  assert.deepEqual(visiblePanes(state), { list: true, detail: false });
+  state = reduceShell(state, { type: 'functionDetail' });
+  assert.deepEqual(visiblePanes(state), { list: false, detail: true });
+  assert.equal(showsAgentTabs(state), false);
+  assert.deepEqual(visiblePanes(reduceShell(state, { type: 'back' })), { list: true, detail: false });
+});
+
+test('the add form uses a write-only password field and says where the password goes', () => {
+  const html = ui.render('add', { agentName: 'Synthetic agent', hostLabel: 'Synthetic computer', busy: false, onCancel() {}, onSave: async () => null });
+  const password = html.match(/<input[^>]*type="password"[^>]*>/u)?.[0] ?? '';
+  assert.match(password, /autoComplete="new-password"/u);
+  assert.doesNotMatch(password, /value=/u);
+  assert.match(html, /vault on Synthetic computer/u); assert.match(html, /bighelp keeps no copy/u);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/u);
+});
+
+test('the vault page says what it needs instead of showing an empty or invented list', () => {
+  const offline = ui.render('page', page);
+  assert.match(offline, /Connect to your computer to open the vault\./u);
+  assert.match(offline, /aria-disabled="true"[^>]*aria-label="Add a login\. Open an agent&#x27;s vault first"/u);
+  const api = { call: async () => ({ ok: false, code: 'unsupported', message: VAULT_UNSUPPORTED }) };
+  const opening = ui.render('page', page, { api, snapshot: { status: 'connected', connection: 1 }, act: async () => true });
+  assert.match(opening, /Opening the vault…/u);
+  const choose = ui.render('page', { ...page, data: { ...page.data, agents: [...page.data.agents, { id: 'two', name: 'Second', summary: '', color: 'red' }] } },
+    { api, snapshot: { status: 'connected', connection: 1 }, act: async () => true });
+  assert.match(choose, /Choose an agent to open its vault\./u);
+});
