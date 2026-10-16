@@ -1,6 +1,7 @@
 // A password, one-time code or secret the agent's computer asks for during a
 // chat. Typed into write-only fields, read once for the single answer, then the
 // fields are emptied. Skip declines. Nothing typed is kept, shown or added to chat.
+// No autofocus: a prompt arriving mid-sentence must not take keys meant for the composer.
 import { useState } from 'react';
 import type { JSX } from 'react';
 import { View } from 'react-native-web';
@@ -73,9 +74,9 @@ export function SecureRequest(props: Readonly<{ prompt: SecurePrompt; agentName:
           {prompt.command}</pre>
       ) : null}
       {login ? <SecretField label="Email or username" secretRef={identifier} visible autoComplete="username" maxLength={SECURE_LIMITS.identifier} onFilled={setNamed}
-        disabled={props.disabled} autoFocus /> : null}
+        disabled={props.disabled} /> : null}
       <SecretField label={text.field} secretRef={secret} visible={code} maxLength={code ? SECURE_LIMITS.code : login ? SECURE_LIMITS.password : SECURE_LIMITS.value}
-        onFilled={setFilled} disabled={props.disabled} autoFocus={!login} error={error || undefined} onSubmit={send} />
+        onFilled={setFilled} disabled={props.disabled} error={error || undefined} onSubmit={send} />
       <Label size={12} tone="muted">{text.note}</Label>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         <Button label={login ? 'Save and sign in' : 'Send'} tone="primary" compact disabled={props.disabled} onPress={send} />
