@@ -49,10 +49,10 @@
 
 **Interfaces:** Consume Task 1's reviewed load controller and the existing `DesktopApi.workspace` for `feed | ideas | goals`; use the opened agent's exact profile. Render `WorkspaceBoard` data only. No new wire or capability operations.
 
-- [ ] Write failing tests that selecting each existing agent tab loads exactly that profile/tab, filters no extra identity, displays empty/unsupported/offline/error states, and escapes markup/URL-looking text. Hold reads across agent/tab/generation changes and verify no stale content or request loop; tab loads must invoke neither prompt submission nor board mutation.
-- [ ] Replace the three tab placeholders with a readable selectable list/detail body using existing A primitives. The agent tab strip stays in its existing bottom position; no duplicate rail or Settings. Show supplied title/body/note/category/status/date/read metadata as inert text, with local search and explicit refresh. Files remains accurately unavailable pending its separate contract.
-- [ ] Preserve the mounted composer/draft contract when visiting non-chat tabs; no new chat creation or canonical lookup merely to read a board. Keep protected draft navigation regressions passing.
-- [ ] Run focused board/controller/Conversation/draft tests, `npm run typecheck` and `git diff --check`; commit and report.
+- [x] Write failing tests that selecting each existing agent tab loads exactly that profile/tab, filters no extra identity, displays empty/unsupported/offline/error states, and escapes markup/URL-looking text. Hold reads across agent/tab/generation changes and verify no stale content or request loop; tab loads must invoke neither prompt submission nor board mutation.
+- [x] Replace the three tab placeholders with a readable selectable list/detail body using existing A primitives. The agent tab strip stays in its existing bottom position; no duplicate rail or Settings. Show supplied title/body/note/category/status/date/read metadata as inert text, with local search and explicit refresh. Files remains accurately unavailable pending its separate contract.
+- [x] Preserve the mounted composer/draft contract when visiting non-chat tabs; no new chat creation or canonical lookup merely to read a board. Keep protected draft navigation regressions passing.
+- [x] Run focused board/controller/Conversation/draft tests, `npm run typecheck` and `git diff --check`; commit and report.
 
 ### Task 3: Integrated verification and package handoff
 
