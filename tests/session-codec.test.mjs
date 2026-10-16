@@ -8,7 +8,7 @@ test('finite source-backed session requests',()=>{
  assert.throws(()=>encodeSessionOperation('1',{kind:'sessionList',profile:''}));
 });
 test('catalog identities and receipt aliases are bounded and unique',()=>{
- assert.deepEqual(decodeProfiles({profiles:[{name:'p',display_name:'P',new_field:true}]}),[{id:'p',name:'P',summary:''}]);
+ assert.deepEqual(decodeProfiles({profiles:[{name:'p',display_name:'P',new_field:true}]}),[{id:'p',name:'P',summary:'',color:'#D27B5B',isDefault:false,model:''}]);
  assert.equal(decodeSessionList({sessions:[{id:'old',resolved_id:'new'}]},'p')[0].id,'new');
  assert.throws(()=>decodeProfiles({profiles:[{name:'p'},{name:'p'}]}));
  assert.deepEqual(decodeSessionReceipt({session_id:'live',info:{profile_name:'p'},stored_session_id:'saved',running:true},'p'),{runtimeId:'live',storedSessionId:'saved',running:true,openRequests:[]});

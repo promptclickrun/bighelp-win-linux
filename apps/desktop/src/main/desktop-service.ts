@@ -337,7 +337,7 @@ export function createDesktopService(adapters: Readonly<{
       liveRecovery = displayRecovery?.activate(host, {hostId, principalId}, () => current === hostGeneration) ?? null;
       const profiles = decodeProfiles(await connection.operation({ kind: 'profilesList' }));
       if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
-      data = { sample: false, host: { label: host.label, state: 'connected' }, agents: profiles.map(row => ({ ...row, color: '#D27B5B' })), chats: [], workflows: [] };
+      data = { sample: false, host: { label: host.label, state: 'connected' }, agents: profiles, chats: [], workflows: [] };
       status = 'connected'; notice = profiles.length ? 'Choose an agent to start a chat.' : 'This computer has no available agents.';
       await refresh();
     } catch { if (!shuttingDown && current === hostGeneration) { retire(); notice = 'Could not connect. Check the address, sign-in token, and secure storage.'; publish(); } else connection.close(); throw Error('Unable to connect'); }
@@ -347,8 +347,16 @@ export function createDesktopService(adapters: Readonly<{
     if (!connection || status !== 'connected') throw Error('Not connected');
     const profiles = decodeProfiles(await connection.operation({ kind: 'profilesList' }));
     if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
-    const colors = new Map(data.agents.map(agent => [agent.id, agent.color]));
-    data = { ...data, agents: profiles.map(row => ({ ...row, color: colors.get(row.id) ?? '#D27B5B' })) };
+    data = { ...data, agents: profiles };
+    // A deleted agent's open chat is left the same way a cancelled navigation is.
+    const known = new Set(profiles.map(row => row.id));
+    const openAgent = data.chats.find(chat => chat.id === selectedChatId)?.agentId ?? owner?.profileId;
+    if (openAgent !== undefined && !known.has(openAgent)) {
+      navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSends = [];
+      clearPrompts(); navigating = false; running = false; reconciled = false;
+    }
+    const page = workspace;
+    if (page && !known.has(page.profile)) { ++workspaceRevision; workspace = null; }
     await refresh();
   }
   async function refresh() {
