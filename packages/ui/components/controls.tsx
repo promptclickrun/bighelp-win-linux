@@ -62,7 +62,7 @@ export function FieldLabel(props: Readonly<{ label: string; hint?: string | unde
 
 export function TextField(props: Readonly<{
   label: string; value: string; onChange: (value: string) => void; maxLength: number;
-  type?: 'text' | 'password' | 'url' | 'search'; multiline?: boolean; rows?: number; placeholder?: string;
+  type?: 'text' | 'password' | 'url' | 'search' | 'time' | 'datetime-local'; multiline?: boolean; rows?: number; placeholder?: string;
   hint?: string | undefined; error?: string | undefined; disabled?: boolean; autoFocus?: boolean; mono?: boolean;
   required?: boolean; spellCheck?: boolean; onSubmit?: () => void;
 }>): JSX.Element {
