@@ -92,7 +92,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const font = fontStack(props.platform);
   const { data } = props;
   const panes = visiblePanes(state);
-  const hint = props.snapshot ? (props.error || props.snapshot.notice || (props.snapshot.canSend ? 'Ready to send.' : 'Waiting for a connected chat.')) : composerStatus(data).hint;
+  // Quiet when ready; otherwise say why sending waits.
+  const hint = props.snapshot ? (props.error || props.snapshot.notice || (props.snapshot.canSend ? ''
+    : props.snapshot.status === 'connected' ? (props.snapshot.running ? '' : 'Getting the chat ready…') : 'Connect to your computer to send.')) : composerStatus(data).hint;
   const back = narrow ? () => { leaveChat(); dispatch({ type: 'back' }); } : undefined;
   const openSection = (section: SettingsSection | null) => dispatch({ type: 'settingsSection', section });
 

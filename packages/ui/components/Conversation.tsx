@@ -124,15 +124,15 @@ export function Composer(props: Readonly<{
           </Pressable>
         ) : null}
         {!showStop ? (
-          <Pressable role="button" aria-label={`${sendLabel}. ${props.hint}`} disabled={!sendable} onPress={() => { if (sendable) props.onSend?.(); }}
+          <Pressable role="button" aria-label={props.hint ? `${sendLabel}. ${props.hint}` : sendLabel} disabled={!sendable} onPress={() => { if (sendable) props.onSend?.(); }}
             style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
               backgroundColor: sendable ? palette.action : palette.incoming, cursor: sendable ? 'pointer' : 'not-allowed' }}>
             <Icon name="send" color={sendable ? palette.onAction : palette.muted} />
           </Pressable>
         ) : null}
       </View>
-      <Label nativeID="composer-hint" size={12} tone="muted" style={{ marginTop: 6, marginHorizontal: 14 }}>
-        {props.running && hasText ? `${sendLabel}. ${props.hint}` : props.hint}</Label>
+      <Label nativeID="composer-hint" size={12} tone="muted" style={{ marginTop: 6, marginHorizontal: 14, minHeight: 17 }}>
+        {props.running && hasText ? [sendLabel, props.hint].filter(Boolean).join('. ') : props.hint}</Label>
     </View>
   );
 }
