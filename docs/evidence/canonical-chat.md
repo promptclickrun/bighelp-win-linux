@@ -28,7 +28,7 @@ Hermes: [3b2f971133e4e011022ccf33dc6dc1c9050563d8](https://github.com/NousResear
 - `tui_gateway/methods_session.py:110–124,514–538`: exact-title/hidden registry and lineage projection; 1220–1248: title acknowledgement and 4022.
 - `gateway/platforms/api_server.py:2933–2944`: session-detail projection and archival flags.
 
-Local reference HEADs were verified against these exact revisions. No live Hermes process or host was operated.
+Local reference HEADs were verified against these exact revisions. The implementation agent operated no live host. Subsequent controller-run disposable-host checks are recorded in [integrated qualification](development-build-qualification.md), including stable canonical identity and a distinct ordinary chat.
 
 ## Checks
 

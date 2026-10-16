@@ -48,7 +48,7 @@ Follow-up verification on 2026-10-16:
 
 `scripts/qualification/hermes-smoke.mjs` remains restricted to loopback and independently checks zero configured providers before any prompt, including a fresh check immediately before submission. It now resolves canonical Bot Chat twice to the same actual saved identity, verifies ordinary New chat is distinct, waits for authoritative provider-free saved history to reach the protected display cache, and reconstructs service **and repository** with the same synthetic encryption adapter. A rejected transport restores exact saved history read-only. A second reconstruction after explicit disconnect makes zero connection attempts and still permits cached selection. Every reconstruction awaits `shutdown()` before `repository.close()`.
 
-The implementation agent did not start any host or execute the live script. The controller runs the authorized disposable Hermes after implementation review. The synthetic AES-GCM adapter demonstrates repository reconstruction only; it does not qualify Electron safeStorage, OS key protection, user lock/revocation, hardware, or power-loss persistence. Test logs are local temporary files, not committed user/host content.
+The implementation agent did not start any host or execute the live script. The controller subsequently passed this script against authorized disposable Hermes at `c877ee2`; see [integrated qualification](development-build-qualification.md). The synthetic AES-GCM adapter demonstrates repository reconstruction only; it does not qualify Electron safeStorage, OS key protection, user lock/revocation, hardware, or power-loss persistence. Test logs are local temporary files, not committed user/host content.
 
 ## Sources and limits
 

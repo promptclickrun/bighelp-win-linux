@@ -2,6 +2,8 @@
 
 Date: 2026-10-16. These artifacts are development builds, not installers or releases.
 
+Current integrated verification and downloadable native artifacts are tracked in [development build qualification](development-build-qualification.md). The local `c877ee2` package includes all 15 bundled dependency notices, passes all 82 file hashes plus its archive hash, and passes 20/20 packaged smoke checks with the OS sandbox enabled. Older results below describe their original milestones.
+
 `node scripts/desktop/package.mjs [linux|win32] [x64]` builds production resources, downloads the pinned Electron runtime with `@electron/get`, independently verifies its archive against the checksums bundled with the locked Electron dependency, and assembles a portable directory under ignored `artifacts/`. Run on the target OS. Other operating systems and architectures fail before building or downloading. No dependencies were added.
 
 The runtime retains its original executable name (`electron` or `electron.exe`). Its packaged application has the private identity `bighelp-development`, version `0.0.0`, and entry point `resources/app/main.cjs`. Only the four application bundle files, optional esbuild license companions, and required `THIRD_PARTY_NOTICES.txt` / `THIRD_PARTY_NOTICES.json` enter application resources. Source, fixtures, environment files, source maps, repositories, and credentials are not copied. Symlinks and special source entries are rejected. Electron's default application is removed. Project LICENSE/NOTICE and Electron/Chromium licenses are retained. SHA256SUMS covers every regular artifact file except itself, including both npm notice files; a separate SHA256 accompanies the tar.gz or zip. SHA256 detects corruption; it is not a signing identity.
