@@ -50,6 +50,13 @@ export async function boundedHttp(plan: HttpPlan, signal: AbortSignal): Promise<
       const value = response.headers.get(key);
       if (value !== null) { if (value.includes(',')) throw new Error(); headers[key] = value; }
     }
+    // Cache-Control legitimately has comma-separated directives. It is display-
+    // free policy metadata; authority header duplicate checks above stay strict.
+    const cacheControl = response.headers.get('cache-control');
+    if (cacheControl !== null) {
+      if (cacheControl.length > 1024 || !/^[\x20-\x7e]+$/u.test(cacheControl)) throw new Error();
+      headers['cache-control'] = cacheControl;
+    }
     return Object.freeze({ status: response.status, url: response.url, redirected: false, body, headers: Object.freeze(headers) });
   } catch {
     controller.abort();
