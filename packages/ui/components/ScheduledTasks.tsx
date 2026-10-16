@@ -227,7 +227,7 @@ function TaskDetail(props: Readonly<{
       {props.runsMessage ? <Label tone="muted">{props.runsMessage}</Label>
         : props.runs === null ? <Label tone="muted">Loading recent runs…</Label>
           : props.runs.length === 0 ? <Label tone="muted">No runs yet. Each time this task runs, it shows up here.</Label>
-            : props.runs.map(run => <RunRow key={run.id} run={run} nerd={props.nerd} />)}
+            : <View role="list" aria-label="Recent runs" style={{ gap: 8 }}>{props.runs.map(run => <RunRow key={run.id} run={run} nerd={props.nerd} />)}</View>}
     </View>
     {props.nerd ? <View style={{ gap: 12 }}>
       <Label heading={3} weight="700">Details</Label>

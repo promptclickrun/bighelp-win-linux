@@ -133,7 +133,11 @@ test('scheduled shows plain state and inert host text, with run controls and the
  assert.match(textContent(h.value),/Needs a look/);assert.match(textContent(h.value),/Next run.*Paused/s);assert.match(textContent(h.value),/<script>throw new Error\(\)<\/script>/);
  assert.equal(nodes(h.value,n=>n.type==='script'||n.props?.dangerouslySetInnerHTML).length,0);
  assert.match(textContent(h.value),/Runs use AI credits on your computer's model provider each time\./);assert.ok(control(h,'Run Task now'));assert.doesNotMatch(textContent(h.value),/Task ID/);
- answer(sent(io,'schedules.runs')[0],{profile:'one',id:'t',runs:[]});await h.settle();assert.match(textContent(h.value),/No runs yet/);h.unmount();
+ answer(sent(io,'schedules.runs')[0],{profile:'one',id:'t',runs:[]});await h.settle();assert.match(textContent(h.value),/No runs yet/);
+ control(h,'Refresh scheduled').onPress();h.render();answer(sent(io,'schedules.list')[1],taskList());await h.settle();control(h,'Task').onPress();h.render();
+ answer(sent(io,'schedules.runs').at(-1),{profile:'one',id:'t',runs:[{id:'local-synthetic',kind:'agent',startedAt:'2026-10-16T21:47:13.735Z',endedAt:'2026-10-16T21:47:43.361Z',
+  active:false,summary:null,model:'synthetic-model',inputTokens:12629,outputTokens:213,estimatedCost:0,actualCost:null}]});await h.settle();
+ assert.match(textContent(h.value),/Finished · 12,629 tokens in, 213 out/);assert.doesNotMatch(textContent(h.value),/local-synthetic/,'run IDs only in Nerd Mode');h.unmount();
 });
 test('Run now asks first, sends one run, waits as still text and reloads; a lost reply is not sure and never retried',async()=>{
  const io=ipc(),h=await harness(scheduledEntry,'ScheduledTasksPage',pageProps(io.api,{page:'scheduled'}));h.render();answer(io.hostCalls[0],taskList());await h.settle();control(h,'Task').onPress();h.render();
