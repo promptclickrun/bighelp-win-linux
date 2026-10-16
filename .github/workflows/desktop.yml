@@ -1,0 +1,36 @@
+name: Desktop development packages
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run esbuild:verify
+      - run: npm run electron:fetch
+      - run: npm test
+      - run: npm run typecheck
+      - run: node scripts/desktop/build.mjs --production
+      - run: node scripts/desktop/package.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bighelp-development-${{ matrix.os }}
+          path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.sha256
+          if-no-files-found: error
+          retention-days: 14
