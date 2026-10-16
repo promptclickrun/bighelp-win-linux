@@ -53,8 +53,10 @@ function ChatListBody(props: Readonly<{
     else if (remote.status === 'failed') status = `Could not search ${hostLabel}. Showing chats on this device.`;
     else if (remote.value?.partial) status = 'Some agents could not be searched.';
   }
-  const row = (chat: ChatView) => (
-    <ChatRow key={chat.id} chat={chat} data={data} active={chat.id === props.selectedChatId}
+  // React Native Web gives every View its own stacking layer (z-index 0), so a row
+  // menu would open underneath the rows after it. Earlier rows sit higher.
+  const row = (chat: ChatView, layer: number) => (
+    <ChatRow key={chat.id} chat={chat} data={data} active={chat.id === props.selectedChatId} layer={layer}
       manage={manage} hostLabel={hostLabel} onOpen={() => props.onOpenChat(chat.id, chat.agentId, false)} />
   );
   return (
@@ -64,18 +66,18 @@ function ChatListBody(props: Readonly<{
         <Label size={12} tone="muted">{status}</Label></View> : null}
       {data.chats.length === 0 && !searching ? <Empty>No chats yet. They appear here once a computer is connected.</Empty> : null}
       {local.length > 0 ? (
-        <View role="list" aria-label="Chats">
+        <View role="list" aria-label="Chats" style={{ zIndex: 2 }}>
           {data.sample ? <Caption tag="Sample data">Chats</Caption> : null}
-          {groupChats(local).map(group => (
-            <View key={group.label ?? 'new'} role="group" aria-label={group.label ?? 'New and saved chats'}>
+          {groupChats(local).map((group, index, groups) => (
+            <View key={group.label ?? 'new'} role="group" aria-label={group.label ?? 'New and saved chats'} style={{ zIndex: groups.length - index }}>
               {group.label ? <Caption>{group.label}</Caption> : null}
-              {group.chats.map(row)}
+              {group.chats.map((chat, position) => row(chat, group.chats.length - position))}
             </View>
           ))}
         </View>
       ) : null}
       {extra.length > 0 ? (
-        <View role="list" aria-label={`More matches on ${hostLabel}`}>
+        <View role="list" aria-label={`More matches on ${hostLabel}`} style={{ zIndex: 1 }}>
           <Caption>{`More matches on ${hostLabel}`}</Caption>
           {extra.map(hit => <HitRow key={`${hit.profile}:${hit.id}`} hit={hit} data={data} active={hit.id === props.selectedChatId}
             onOpen={() => props.onOpenChat(hit.id, hit.profile, true)} />)}
@@ -87,12 +89,12 @@ function ChatListBody(props: Readonly<{
 }
 
 function ChatRow(props: Readonly<{
-  chat: ChatView; data: ViewData; active: boolean; manage: boolean; hostLabel: string; onOpen: () => void;
+  chat: ChatView; data: ViewData; active: boolean; manage: boolean; hostLabel: string; layer: number; onOpen: () => void;
 }>): JSX.Element {
   const { palette } = useTheme();
   const agent = agentById(props.data, props.chat.agentId);
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 0 }}>
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, minWidth: 0, zIndex: props.layer }}>
       <View style={{ flex: 1, minWidth: 0 }}>
         <ListRow label={`${props.chat.title}, with ${agent?.name ?? 'an agent'}`} active={props.active} onPress={props.onOpen}>
           <Orb color={agent?.color ?? palette.muted} size={32} />

@@ -215,7 +215,7 @@ export function Conversation(props: Readonly<{
   return (
     <View role="main" style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: palette.page }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 16,
-        borderBottomWidth: 1, borderBottomColor: palette.line, minHeight: 56 }}>
+        borderBottomWidth: 1, borderBottomColor: palette.line, minHeight: 56, zIndex: 1 }}>
         {props.onBack ? <IconButton icon="left" label="Back to the list" onPress={props.onBack} /> : null}
         <Orb color={props.agent.color} size={32} />
         <View style={{ flex: 1, minWidth: 0 }}>

@@ -126,7 +126,8 @@ export function ContextColumn(props: Readonly<{
     <View role="region" aria-label={props.title} style={[{ borderRightWidth: props.narrow ? 0 : 1,
       borderRightColor: palette.line, backgroundColor: palette.page, minHeight: 0 },
       props.narrow ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 } : { flexGrow: 0, flexShrink: 0, width: 300 }]}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 12, paddingBottom: 8, paddingHorizontal: 16, minHeight: 56 }}>
+      {/* Above the scroller, so a header menu (New chat) opens over the list. */}
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 12, paddingBottom: 8, paddingHorizontal: 16, minHeight: 56, zIndex: 1 }}>
         <View style={{ flex: 1 }}><Label heading={2} size={18} weight="700">{props.title}</Label></View>
         {props.actions}
       </View>
