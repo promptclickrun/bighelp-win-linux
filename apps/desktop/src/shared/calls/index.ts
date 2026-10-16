@@ -10,6 +10,7 @@ import { CHAT_LIST_CALLS } from './chats.ts';
 import { PROJECT_CALLS } from './projects.ts';
 import { SCHEDULE_CALLS } from './schedules.ts';
 import { BOARD_CALLS } from './board.ts';
+import { FILES_CALLS } from './files.ts';
 
 // One line per feature module; keep the list in this order.
 export const CALLS = Object.freeze({
@@ -22,6 +23,7 @@ export const CALLS = Object.freeze({
   ...SCHEDULE_CALLS,
   ...PROJECT_CALLS,
   ...BOARD_CALLS,
+  ...FILES_CALLS,
 });
 
 export type CallName = keyof typeof CALLS;

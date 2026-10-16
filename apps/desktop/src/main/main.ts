@@ -2,7 +2,8 @@
 // here; the renderer receives only validated actions and safe snapshots.
 import { app, BrowserWindow, Menu, clipboard, dialog, protocol, session, shell, ipcMain, safeStorage } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { open, readFile } from 'node:fs/promises';
+import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createSaveCopy } from './save-copy.ts';
 import { join } from 'node:path';
 import {
   APP_ORIGIN, APP_SCHEME, CONTENT_SECURITY_POLICY, isAppRequest, launchOptions, resolveAppAsset, secureWebPreferences,
@@ -169,6 +170,16 @@ app.whenReady().then(async () => {
   }
   desktop = createDesktopService({ repository, pickFiles,
     connect: options => connectGateway({ ...options, socket: connectSocket }),
+    // The renderer names a host file; main asks where to save and writes it.
+    saveCopy: createSaveCopy({
+      downloads: () => app.getPath('downloads'),
+      files: { writeFile, rename, rm },
+      showSaveDialog: options => {
+        const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+        const settings = { ...options, properties: ['createDirectory', 'showOverwriteConfirmation'] as ('createDirectory' | 'showOverwriteConfirmation')[] };
+        return window ? dialog.showSaveDialog(window, settings) : dialog.showSaveDialog(settings);
+      },
+    }),
     onChange: snapshot => {
       desktopShell.snapshotChanged(snapshot);
       for (const window of BrowserWindow.getAllWindows()) if (!window.webContents.isDestroyed()) window.webContents.send(SNAPSHOT_CHANNEL, snapshot);

@@ -71,6 +71,8 @@ export function createDesktopService(adapters: Readonly<{
   notify?: (alert: DesktopAlert) => void;
   // System file picker owned by main; returns names and bytes, or null if cancelled.
   pickFiles?: () => Promise<readonly Readonly<{ name: string; bytes: Uint8Array }>[] | null>;
+  // Save a copy (main/save-copy.ts): system Save dialog, then bytes main fetched.
+  saveCopy?: CallContext['saveCopy'];
 }>) {
   let preferences: Preferences = DEFAULT_PREFERENCES;
   const displayRecovery = adapters.repository ? createChatDisplayRecovery(adapters.repository) : null;
@@ -808,6 +810,7 @@ export function createDesktopService(adapters: Readonly<{
         mediaPath: (chatId: string, ref: string) => owner && selectedChatId === chatId ? mediaPaths.get(ref) ?? null : null,
         refreshCatalog: async () => { if (isCurrent()) await reloadProfiles(); },
         requestId: () => randomUUID(),
+        ...(adapters.saveCopy ? { saveCopy: adapters.saveCopy } : {}),
       });
       const mutation = HANDLERS[action.name].mutation;
       try {
