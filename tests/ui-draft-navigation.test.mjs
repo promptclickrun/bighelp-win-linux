@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { readFileSync } from 'node:fs';
 
 const childModuleFilter = /packages[\\/]ui[\\/](components[\\/].*|theme)\.tsx$/;
 function inertChildModule(path) {
-  const file = path.split(/[\\/]/).at(-1);
-  const names = file === 'ContextList.tsx' ? ['ContextList', 'PLACE_TITLES']
-    : file === 'primitives.tsx' ? ['Label', 'Notice', 'PageHead', 'Tag']
-    : file === 'Settings.tsx' ? ['SettingsOverview', 'SettingsPage']
-    : [file === 'theme.tsx' ? 'ThemeProvider' : file.replace('.tsx', '')];
+  // Export every name the real module exports, each as an inert string element.
+  const relative = path.replaceAll('\\', '/').split('packages/ui/').at(-1);
+  const source = readFileSync(new URL(`../packages/ui/${relative}`, import.meta.url), 'utf8');
+  const names = [...source.matchAll(/^export (?:function|const) (\w+)/gmu)].map(match => match[1]);
   return {contents: names.map(name => `export const ${name} = '${name}';`).join('\n'), loader: 'js'};
 }
 

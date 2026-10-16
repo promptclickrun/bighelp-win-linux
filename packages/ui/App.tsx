@@ -12,6 +12,7 @@ import { Conversation } from './components/Conversation.tsx';
 import { PendingAttachments } from './components/PendingAttachments.tsx';
 import { ModelButton } from './components/ModelButton.tsx';
 import { Label, Notice, PageHead, Tag } from './components/primitives.tsx';
+import { Button } from './components/controls.tsx';
 import { Rail } from './components/Rail.tsx';
 import { SettingsOverview, SettingsPage } from './components/Settings.tsx';
 import { ThemeProvider } from './theme.tsx';
@@ -228,10 +229,18 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       </View>
     );
   } else if (!data.host) {
-    detail = <Notice mark title="No computer connected yet"
-      body={api ? "Open Settings → Hosts to connect to Hermes." : "bighelp works with the Hermes agent on your computer. This preview does not connect."} />;
+    detail = <Notice mark title={snapshot?.status === 'connecting' ? 'Connecting…' : 'Welcome to bighelp'}
+      body={api ? 'bighelp is a window onto the Hermes agent running on your computer or another computer you use. Connect to start chatting.'
+        : 'bighelp works with the Hermes agent on your computer. This preview does not connect.'}
+      action={api && snapshot?.status !== 'connecting' ? <Button label="Connect to Hermes" tone="primary" onPress={() => {
+        leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts');
+      }} /> : undefined} />;
   } else {
-    detail = <Notice title={state.place === 'agents' ? 'Pick an agent' : 'Pick a chat'} body="It opens here." />;
+    const first = data.agents[0];
+    detail = <Notice title={state.place === 'agents' ? 'Pick an agent' : 'Pick a chat'}
+      body={state.place === 'agents' ? 'Its chat opens here.' : data.chats.length ? 'It opens here, or start a new one.' : 'Start your first chat.'}
+      action={state.place === 'chats' && first && api && snapshot?.status === 'connected' && act ? <Button label={`New chat with ${first.name}`} tone="primary"
+        onPress={() => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, first.id)); })} /> : undefined} />;
   }
 
   const functionPage = state.place === 'projects' || state.place === 'scheduled' || state.place === 'usage' ? state.place : null;
