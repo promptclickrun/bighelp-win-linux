@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import { CALLS } from '../apps/desktop/src/shared/calls/index.ts';
 import { parseDesktopAction } from '../apps/desktop/src/shared/desktop-api.ts';
 import { decodeBoardItem, decodeWorkspaceBoard } from '../packages/contracts/workspace.ts';
+import { boardActions, boardGroups, discussText, goalPrompt, letsDoItText } from '../packages/ui/board-actions.ts';
 import { ALL_FEATURES, etag, nativeHost, run } from './native-host-fixture.mjs';
+import { control, harness, has, nodes, textContent } from './ui-hook-harness.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
 // BoardStore._item (agent_board.py:564-583), synthetic values.
@@ -211,4 +213,176 @@ test('board items keep display-only feedback fields and drop unsafe or unknown v
   assert.equal(decodeBoardItem({ agentId: 'agent', item: heart }, 'agent').rating, 'up');
   const board = decodeWorkspaceBoard({ agentId: 'agent', items: [item({ id: 'a', kind: 'idea' }), item({ id: 'b', kind: 'idea', dismissed: true }), item({ id: 'c' })] }, 'agent', 'ideas');
   assert.deepEqual(board.items.map(row => row.id), ['a']);
+});
+
+// ---- The board page: actions in the approved list/detail layout ----
+const ALL = { feedback: true, answers: true, goalCategories: true };
+const data = { sample: false, host: { label: 'Synthetic', state: 'connected' }, chats: [], workflows: [], agents: [{ id: 'one', name: 'One', summary: '', color: 'blue' }] };
+const snapshot = (overrides = {}) => ({ generation: 1, connection: 3, revision: 1, status: 'connected', data, selectedChatId: null, running: false,
+  canSend: false, notice: '', storageAvailable: true, prompts: [], drafts: {}, workspace: null, ...overrides });
+const row = (overrides = {}) => ({ id: 'post-1', kind: 'feed', title: 'Top AI stories', body: 'Three stories.', status: '', read: false,
+  rating: 'none', source: 'Evening digest', ...overrides });
+function fakeApi() {
+  const reads = [], calls = [], copied = [];
+  const pending = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+  const api = {
+    workspace(...args) { const held = pending(); reads.push({ args, ...held }); return held.promise; },
+    call(connection, name, input) { const held = pending(); calls.push({ connection, name, input, ...held }); return held.promise; },
+    copyText: async text => { copied.push(text); return true; },
+    send() { throw new Error('Board actions never send a message'); },
+  };
+  return { api, reads, calls, copied };
+}
+async function page(kind, items, features = ALL) {
+  const io = fakeApi(), started = [];
+  const tab = kind === 'idea' ? 'ideas' : kind === 'goal' ? 'goals' : 'feed';
+  const props = { api: io.api, snapshot: snapshot(), data, profile: 'one', page: tab, narrow: false, onStartChat: text => started.push(text) };
+  const h = await harness('packages/ui/components/AgentBoard.tsx', 'AgentBoard', props);
+  h.render();
+  io.reads[0].resolve({ ok: true, snapshot: snapshot({ workspace: { profile: 'one', page: tab, status: 'loaded',
+    data: { tab, items, ...(features ? { features } : {}) } } }) });
+  await h.settle();
+  return { h, io, started, props };
+}
+const ok = value => ({ ok: true, value });
+
+test('feed: opening an unread post reads it once, and thumbs down asks why without requiring it', async () => {
+  const { h, io } = await page('feed', [row()]);
+  control(h, 'Top AI stories (unread)').onPress(); h.render(); await h.settle();
+  assert.deepEqual(io.calls.map(call => [call.connection, call.name, call.input]), [[3, 'board.read', { profile: 'one', itemIds: ['post-1'], read: true }]]);
+  io.calls[0].resolve(ok({ updated: 1 })); await h.settle();
+  for (const label of ['Thumbs up', 'Thumbs down', 'Discuss', 'Mark as unread', 'Copy', 'Clear']) assert.ok(has(h, label), label);
+  control(h, 'Thumbs down').onPress(); h.render();
+  assert.deepEqual(io.calls[1].input, { profile: 'one', itemId: 'post-1', rating: 'down' });
+  assert.match(textContent(h.value), /Less like this\?.*Optional\. It helps\s+One\s+post things you want\./s);
+  io.calls[1].resolve(ok(row({ read: true, rating: 'down' }))); await h.settle();
+  control(h, 'Too frequent').onPress(); h.render();
+  assert.deepEqual(io.calls[2].input, { profile: 'one', itemId: 'post-1', rating: 'down', reason: 'Too frequent' });
+  assert.doesNotMatch(textContent(h.value), /Less like this/);
+  io.calls[2].resolve(ok(row({ read: true, rating: 'down', reason: 'Too frequent' }))); await h.settle();
+  assert.match(textContent(h.value), /You said:\s+Too frequent/);
+  assert.ok(has(h, 'Remove thumbs down'));
+  assert.equal(io.calls.length, 3, 'opening the post again does not re-read it');
+  h.unmount();
+});
+
+test('feed: Clear hides with Undo, and a lost reply rolls back as "not sure"', async () => {
+  const { h, io } = await page('feed', [row({ read: true })]);
+  control(h, 'Top AI stories').onPress(); h.render();
+  control(h, 'Clear').onPress(); h.render();
+  assert.deepEqual(io.calls[0].input, { profile: 'one', itemId: 'post-1', dismissed: true });
+  assert.equal(has(h, 'Top AI stories'), false);
+  assert.match(textContent(h.value), /Cleared “Top AI stories”/);
+  io.calls[0].resolve(ok(row({ read: true, dismissed: true }))); await h.settle();
+  control(h, 'Undo').onPress(); h.render();
+  assert.deepEqual(io.calls[1].input, { profile: 'one', itemId: 'post-1', dismissed: false });
+  io.calls[1].resolve(ok(row({ read: true, dismissed: false }))); await h.settle();
+  assert.ok(has(h, 'Top AI stories'));
+  control(h, 'Top AI stories').onPress(); h.render();
+  control(h, 'Thumbs up').onPress(); h.render();
+  assert.ok(has(h, 'Remove thumbs up'), 'shown at once');
+  io.calls[2].resolve({ ok: false, code: 'unknown', message: 'Not sure this finished. Check before trying again.' }); await h.settle();
+  assert.ok(has(h, 'Thumbs up'), 'rolled back');
+  assert.match(textContent(h.value), /Not sure this was saved\. Refresh to check before trying again\./);
+  control(h, 'Copy').onPress(); await h.settle();
+  assert.deepEqual(io.copied, ['Top AI stories\n\nThree stories.']);
+  assert.equal(io.calls.length, 3, 'nothing was retried');
+  h.unmount();
+});
+
+test('ideas: Let’s do it records the yes, then only fills in a new chat', async () => {
+  const idea = row({ id: 'idea-1', kind: 'idea', title: 'Plan meals', read: true, answer: 'none' });
+  const { h, io, started } = await page('idea', [idea]);
+  control(h, 'Plan meals').onPress(); h.render();
+  for (const label of ["Let's do it", 'Start a chat about this', 'Turn into a goal', 'Not now']) assert.ok(has(h, label), label);
+  control(h, "Let's do it").onPress(); h.render();
+  assert.deepEqual([io.calls[0].name, io.calls[0].input], ['board.accept', { profile: 'one', itemId: 'idea-1' }]);
+  assert.deepEqual(started, [], 'no chat before the yes is recorded');
+  io.calls[0].resolve({ ok: false, code: 'unavailable', message: 'Could not reach Hermes.' }); await h.settle();
+  assert.match(textContent(h.value), /Couldn’t tell One yet\. Check the connection and try again\./);
+  control(h, 'Try again').onPress(); h.render();
+  io.calls[1].resolve(ok({ ...idea, answer: 'yes' })); await h.settle();
+  assert.deepEqual(started, ['Yes, go ahead with this idea: “Plan meals”.']);
+  control(h, 'Start a chat about this').onPress();
+  assert.equal(started.at(-1), 'About your idea “Plan meals”: ');
+  assert.equal(io.calls.length, 2);
+  h.unmount();
+});
+
+test('ideas: on an older plugin Let’s do it goes straight to the chat prefill', async () => {
+  const idea = row({ id: 'idea-1', kind: 'idea', title: 'Plan meals', read: true });
+  const { h, io, started } = await page('idea', [idea], { feedback: false, answers: false, goalCategories: false });
+  control(h, 'Plan meals').onPress(); h.render();
+  for (const label of ['Turn into a goal', 'Mark as unread', 'Mark as read']) assert.equal(has(h, label), false, label);
+  control(h, "Let's do it").onPress();
+  assert.deepEqual(started, [letsDoItText('Plan meals')]);
+  assert.equal(io.calls.length, 0);
+  h.unmount();
+});
+
+test('ideas: a "not sure" Turn into a goal is never resent; Check Goals decides', async () => {
+  const idea = row({ id: 'idea-1', kind: 'idea', title: 'Plan meals', read: true });
+  const { h, io } = await page('idea', [idea]);
+  control(h, 'Plan meals').onPress(); h.render();
+  control(h, 'Turn into a goal').onPress(); h.render();
+  assert.deepEqual([io.calls[0].name, io.calls[0].input], ['board.promote', { profile: 'one', itemId: 'idea-1' }]);
+  assert.equal(has(h, 'Plan meals'), false, 'hidden while it is made');
+  io.calls[0].resolve({ ok: false, code: 'unknown', message: 'Not sure this finished.' }); await h.settle();
+  assert.ok(has(h, 'Plan meals'), 'back until we know');
+  assert.match(textContent(h.value), /Not sure this became a goal/);
+  control(h, 'Plan meals').onPress(); h.render();
+  assert.equal(control(h, 'Turn into a goal').disabled, true, 'no retry until checked');
+  control(h, 'Check Goals').onPress(); h.render();
+  assert.deepEqual([io.calls[1].name, io.calls[1].input], ['board.checkPromote', { profile: 'one', itemId: 'idea-1' }]);
+  io.calls[1].resolve(ok({ state: 'goal' })); await h.settle();
+  assert.equal(has(h, 'Plan meals'), false);
+  assert.match(textContent(h.value), /“Plan meals” became a goal\. Find it in Goals\./);
+  assert.equal(io.calls.filter(call => call.name === 'board.promote').length, 1);
+  h.unmount();
+});
+
+test('goals: done toggles status and Create a goal only fills in a chat', async () => {
+  const goal = row({ id: 'g-run', kind: 'goal', title: 'Run a 10k', status: 'active', category: 'health', read: true });
+  const { h, io, started } = await page('goal', [goal, row({ id: 'g-done', kind: 'goal', title: 'Read 5 books', status: 'done', category: 'interests', read: true })]);
+  const text = textContent(nodes(h.value, node => node.props?.role === 'list'));
+  assert.ok(text.indexOf('Health') < text.indexOf('Run a 10k') && text.indexOf('Run a 10k') < text.indexOf('Done') && text.indexOf('Done') < text.indexOf('Read 5 books'), text);
+  control(h, 'Run a 10k').onPress(); h.render();
+  control(h, 'Mark done').onPress(); h.render();
+  assert.deepEqual(io.calls[0].input, { profile: 'one', itemId: 'g-run', status: 'done' });
+  io.calls[0].resolve(ok({ ...goal, status: 'done' })); await h.settle();
+  assert.ok(has(h, 'Mark active'));
+  control(h, 'Discuss').onPress();
+  assert.equal(started.at(-1), 'About my goal “Run a 10k”: ');
+  control(h, 'Create a goal. Opens a chat; nothing is sent until you press Send.').onPress(); h.render();
+  control(h, 'Health').onPress(); h.render();
+  assert.equal(started.at(-1), "I'd like to set a health goal. Ask me a few quick questions about what I'm after, then make a plan and add it to my Goals under Health.");
+  assert.equal(io.calls.length, 1);
+  h.unmount();
+});
+
+test('without plugin support or a connection the board offers only what works', async () => {
+  const { h, io, props } = await page('feed', [row({ read: false })], null);
+  control(h, 'Top AI stories').onPress(); h.render(); await h.settle();
+  for (const label of ['Thumbs down', 'Mark as read', 'Mark as unread']) assert.equal(has(h, label), false, label);
+  assert.ok(has(h, 'Thumbs up'), 'the heart works on every board plugin');
+  assert.equal(io.calls.length, 0, 'no read marking without the feedback feature');
+  h.render({ ...props, snapshot: snapshot({ status: 'disconnected' }) });
+  assert.equal(nodes(h.value, node => node.props?.role === 'group').length, 0, 'no actions while disconnected');
+  h.unmount();
+});
+
+test('action lists, groups and prefills follow the Mac wording', () => {
+  const labels = (entry, features, chat = true) => boardActions(entry, features, chat).map(action => action.label);
+  assert.deepEqual(labels(row(), ALL), ['Thumbs up', 'Thumbs down', 'Discuss', 'Mark as read', 'Copy', 'Clear']);
+  assert.deepEqual(labels(row({ rating: 'up', read: true }), ALL), ['Remove thumbs up', 'Thumbs down', 'Discuss', 'Mark as unread', 'Copy', 'Clear']);
+  assert.deepEqual(labels(row({ kind: 'idea' }), ALL), ["Let's do it", 'Start a chat about this', 'Turn into a goal', 'Mark as read', 'Copy', 'Not now']);
+  assert.deepEqual(labels(row({ kind: 'goal', status: 'done' }), ALL), ['Mark active', 'Discuss', 'Mark as read', 'Copy', 'Remove']);
+  assert.deepEqual(labels(row({ kind: 'idea' }), undefined, false), ['Copy', 'Not now']);
+  assert.equal(discussText(row()), 'About “Top AI stories”: ');
+  assert.equal(goalPrompt('other'), "I'd like to set a goal. Ask me a few quick questions about what I'm after, then make a plan and add it to my Goals.");
+  assert.equal(goalPrompt('finance'), "I'd like to set a money goal. Ask me a few quick questions about what I'm after, then make a plan and add it to my Goals under Finance.");
+  const ideas = boardGroups([row({ id: 'a', kind: 'idea', section: 'Health' }), row({ id: 'b', kind: 'idea' })], ALL);
+  assert.deepEqual(ideas.map(group => [group.title, group.items.map(entry => entry.id)]), [['Health', ['a']], ['Other ideas', ['b']]]);
+  const goals = boardGroups([row({ id: 'a', kind: 'goal', status: 'active', category: 'mystery' })], { ...ALL, goalCategories: false });
+  assert.deepEqual(goals.map(group => group.title), ['Tracking']);
 });
