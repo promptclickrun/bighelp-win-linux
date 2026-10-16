@@ -45,6 +45,8 @@ export function cleanUserText(text: string): Readonly<{ text: string; attachment
       if (attachments.length < 32) attachments.push(reference[1] === 'image' ? (name.startsWith('pdf_p') ? 'PDF page' : 'Photo') : name || 'File');
       return false;
     }
+    // Image parts of a vision message arrive as an [image] line.
+    if (trimmed === '[image]') { if (attachments.length < 32) attachments.push('Photo'); return false; }
     if (/^\[(?:Image attached|User attached image|User attached PDF|System note: The following is recalled memory)[^\]]*\]$/u.test(trimmed)) return false;
     return true;
   });

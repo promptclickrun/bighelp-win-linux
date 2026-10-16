@@ -21,7 +21,7 @@ export type Gateway = Readonly<{
 type Reply = RpcResult | RpcFailure;
 export type CallOptions = Readonly<{ mutation?: boolean; timeoutMs?: number; maxBytes?: number }>;
 // Attachment staging is the only caller that needs more than the general budget.
-const LARGE_OUTBOUND_BYTES = 12 * 1024 * 1024;
+const LARGE_OUTBOUND_BYTES = RPC_LIMITS.attachmentOutboundBytes;
 // Preserve only finite error authority. Never expose raw host messages through IPC.
 export class GatewayOperationError extends Error {
  readonly code: number;

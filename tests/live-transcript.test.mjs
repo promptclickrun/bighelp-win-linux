@@ -86,6 +86,7 @@ test('REST history pairs tool calls with results, cleans user text and strips at
   assert.deepEqual(cleanUserText('Summarize this\n@file:`/h/a/Q3 report.pdf`\n\n--- Attached Context ---\n\n📎 secret body\n@image:/h/i/upload.jpg'),
     { text: 'Summarize this', attachments: ['Q3 report.pdf'] });
   assert.equal(cleanUserText('<memory-context>private</memory-context>Hi').text, 'Hi');
+  assert.deepEqual(cleanUserText('What color?\n[image]'), { text: 'What color?', attachments: ['Photo'] });
   assert.throws(() => decodeRestHistory({ messages: [{ id: -1, role: 'user', content: 'x' }] }));
 });
 

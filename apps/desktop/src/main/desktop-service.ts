@@ -631,7 +631,9 @@ export function createDesktopService(adapters: Readonly<{
     const output = typeof row.output === 'string' ? row.output : typeof row.message === 'string' ? row.message : '';
     live = Object.freeze({ ...live, items: Object.freeze([...live.items,
       Object.freeze({ kind: 'message', id: `${id}:out`, direction: 'out', paragraphs: Object.freeze([text]), turn: id }),
-      Object.freeze({ kind: 'message', id: `${id}:in`, direction: 'in', paragraphs: Object.freeze([output.trim() ? output.slice(0, 256 * 1024) : `Hermes ran ${token}.`]), turn: id }),
+      // Command output is formatted for a terminal; show it as preformatted text.
+      Object.freeze({ kind: 'message', id: `${id}:in`, direction: 'in', paragraphs: Object.freeze([output.trim()
+        ? `\`\`\`text\n${output.replace(/^\n+|\s+$/gu, '').replace(/```/gu, 'ˋˋˋ').slice(0, 256 * 1024)}\n\`\`\`` : `Hermes ran ${token}.`]), turn: id }),
     ] as TranscriptItem[]) });
     applyTranscript(chatId);
     const cleared = await clearSentDraft(draftKey, draftRevision, text);
