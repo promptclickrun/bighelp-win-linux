@@ -82,9 +82,10 @@ test('an unexpected close reconnects with backoff and reopens the chat without r
   s = f.service.snapshot();
   assert.equal(s.hosts.reconnect.state, 'idle');
   assert.ok(f.calls.some(call => call[1] === 'sessionResume' && call[2] === 'stored'));
-  // The accepted send is still unresolved: it is reported, never replayed.
+  // Hermes confirmed the send before the drop: it is never replayed, and it is
+  // not reported as uncertain (only unconfirmed sends get that warning).
   assert.equal(count(f, 'submit'), 1);
-  assert.equal(s.notice, 'An earlier send may have run. Check saved history before sending again. Nothing was resent.');
+  assert.notEqual(s.notice, 'An earlier send may have run. Check saved history before sending again. Nothing was resent.');
   assert.equal(JSON.stringify(s).includes(host.token), false);
   f.service.dispose();
 });

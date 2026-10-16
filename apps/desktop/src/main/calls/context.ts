@@ -58,7 +58,9 @@ export function callFailure(error: unknown, mutation: boolean): CallFailure {
     return { ok: false, code: 'invalid', message: error.detail || 'Hermes could not do that.' };
   }
   if (error instanceof HttpStatusError) {
-    if ([404, 405, 501].includes(error.status)) return { ok: false, code: 'unsupported', message: error.status === 404 && error.detail ? error.detail : unsupported };
+    // A missing route answers FastAPI's bare "Not Found": that means an older host.
+    if ([404, 405, 501].includes(error.status)) return { ok: false, code: 'unsupported',
+      message: error.status === 404 && error.detail && !/^not found\.?$/iu.test(error.detail) ? error.detail : unsupported };
     if (error.status === 401 || error.status === 403) return { ok: false, code: 'denied', message: 'Hermes did not accept this sign-in for that action.' };
     if (error.status === 409 || error.status === 412) return { ok: false, code: 'conflict', message: error.detail || 'This changed on your computer. Reload and try again.' };
     if (error.status >= 400 && error.status < 500) return { ok: false, code: 'invalid', message: error.detail || 'Hermes could not accept that.' };

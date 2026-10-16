@@ -90,3 +90,17 @@ test('previews drop Markdown syntax but keep the words', async () => {
   assert.equal(plainPreview('```py\nprint(1)\n```'), 'print(1)');
   assert.equal(plainPreview('snake_case_name'), 'snake_case_name');
 });
+
+test('hostile shapes parse in linear time (no rescans or regex backtracking)', async () => {
+  const { parseMarkdown, plainPreview } = await import('../packages/ui/markdown.ts');
+  const cases = ['*a '.repeat(20000), '['.repeat(60000), 'call foo_bar(_x) '.repeat(3600), '# ' + ' '.repeat(40000) + 'x',
+    '` '.repeat(30000), '```' + 'a'.repeat(60000) + '`', 'hello how have here '.repeat(10000), '- a\n' + '\n'.repeat(60000) + 'x',
+    'a|b\n' + ' '.repeat(60000) + 'x', '[a](https://e.com/x) '.repeat(8000)];
+  for (const text of cases) {
+    const started = performance.now(); parseMarkdown(text); plainPreview(text);
+    assert.ok(performance.now() - started < 1500, `${text.slice(0, 12)}… took too long`);
+  }
+  assert.deepEqual(parseMarkdown('### Title ###').blocks[0], { kind: 'heading', level: 3, children: [{ kind: 'text', text: 'Title' }] });
+  assert.equal(parseMarkdown('#5 is not a heading').blocks[0].kind, 'paragraph');
+  assert.equal(parseMarkdown('```js extra\ncode\n```').blocks[0].language, 'js');
+});

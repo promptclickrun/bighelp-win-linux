@@ -86,6 +86,8 @@ function journal(value: JsonValue | undefined): JsonObject[] {
 
 // A refusal with words the person can act on; anything else gets generic copy.
 class UserFacingError extends Error {}
+// An upload whose reply was lost: the photo may or may not be queued on Hermes.
+class UploadUncertain extends UserFacingError {}
 
 export function createDesktopService(adapters: Readonly<{
   repository: Repository | null; connect: (options: ConnectOptions) => Promise<Gateway>;
@@ -203,9 +205,24 @@ export function createDesktopService(adapters: Readonly<{
       const current = await adapters.repository.read(key);
       let entries = journal(current?.value).filter(entry => entry.id !== intent.id);
       // Retain every unresolved send, including late receipts from retired leases.
-      if (intent.phase === 'prepared') entries = entries.filter(entry => entry.phase !== 'complete' && entry.phase !== 'rejected');
+      // Hermes confirmed accepted sends; once no live settlement tracks them they
+      // are not uncertain and must not fill the journal (64-entry limit).
+      if (intent.phase === 'prepared') entries = entries.filter(entry => entry.phase !== 'complete' && entry.phase !== 'rejected'
+        && !(entry.phase === 'accepted' && !acceptedSends.some(sent => sent.intent.id === entry.id)));
       if (entries.length >= 64) throw Error('Send journal requires reconciliation');
       const stored = await adapters.repository.write(key, current?.revision ?? null, { version: 1, intents: [...entries, captured] });
+      revisions.set(key, stored.revision);
+    });
+    writes = result.catch(() => {}); return result;
+  }
+  // Remove one intent that definitely never reached Hermes.
+  function dropIntent(key: string, id: string): Promise<void> {
+    const result = writes.then(async () => {
+      if (!adapters.repository) return;
+      const current = await adapters.repository.read(key);
+      const entries = journal(current?.value);
+      if (!current || !entries.some(entry => entry.id === id)) return;
+      const stored = await adapters.repository.write(key, current.revision, { version: 1, intents: entries.filter(entry => entry.id !== id) });
       revisions.set(key, stored.revision);
     });
     writes = result.catch(() => {}); return result;
@@ -287,8 +304,9 @@ export function createDesktopService(adapters: Readonly<{
     // Hermes sends a bare message.start; an absent payload is an empty one.
     const payload = event.params.payload === undefined ? {} : event.params.payload;
     if (!jsonObject(payload)) return;
-    if (['message.start', 'message.delta', 'message.complete', 'message.interim', 'session.reclaimed', 'error'].includes(type)
-      || (type === 'session.info' && typeof payload.running === 'boolean')) ++historyRevision;
+    // History reads are versioned only against each other. A turn that starts
+    // after a read was requested keeps its own live rows (afterHistory), so a
+    // follow-up turn must not cancel the read that re-enables sending.
     if (type === 'session.reclaimed') { retire(); notice = 'Another client took over this session. Reconnect to continue.'; publish(); return; }
     const wasRunning = running;
     live = reduceLive(live, type, payload, Date.now(), recordMedia);
@@ -566,10 +584,7 @@ export function createDesktopService(adapters: Readonly<{
     // A deleted agent's open chat is left the same way a cancelled navigation is.
     const known = new Set(profiles.map(row => row.id));
     const openAgent = data.chats.find(chat => chat.id === selectedChatId)?.agentId ?? owner?.profileId;
-    if (openAgent !== undefined && !known.has(openAgent)) {
-      navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSends = [];
-      clearPrompts(); navigating = false; running = false; reconciled = false;
-    }
+    if (openAgent !== undefined && !known.has(openAgent)) leaveSelection();
     const page = workspace;
     if (page && !known.has(page.profile)) { ++workspaceRevision; workspace = null; }
     await refresh();
@@ -589,8 +604,10 @@ export function createDesktopService(adapters: Readonly<{
           data.chats.find(chat => chat.id === row.id && chat.agentId === row.profile)?.transcript ?? []));
       }
     }
-    // Newest first across agents, by the host's last activity.
-    const ordered = [...sortChats(chats)];
+    // Newest first across agents, by the host's last activity. Transcripts come
+    // from current data: a reply may have finished while the lists were read.
+    const latest = new Map(data.chats.map(chat => [chat.id, chat.transcript]));
+    const ordered = sortChats(chats).map(chat => latest.has(chat.id) ? { ...chat, transcript: latest.get(chat.id)! } : chat);
     // Newly created sessions can be lazy and absent until their first prompt.
     const active = data.chats.find(chat => chat.id === selectedChatId);
     if (active && !ordered.some(chat => chat.id === active.id)) ordered.unshift(active);
@@ -667,7 +684,8 @@ export function createDesktopService(adapters: Readonly<{
       if (typeof savedDraft?.value === 'string') drafts = { ...drafts, [selectedChatId]: savedDraft.value };
       const pending = await adapters.repository?.read(`journal:${scope(profile, selectedChatId)}`);
       if (owner !== captured) return;
-      notice = journal(pending?.value).some(entry => ['prepared', 'dispatched', 'accepted', 'reconciling', 'unknown'].includes(String(entry.phase)))
+      // Accepted sends reached Hermes; only unconfirmed ones need checking.
+      notice = journal(pending?.value).some(entry => ['prepared', 'dispatched', 'reconciling', 'unknown'].includes(String(entry.phase)))
         ? 'An earlier send may have run. Check saved history before sending again. Nothing was resent.' : '';
       await history(captured, connection);
     } finally { if (isCurrent()) { navigation = null; navigationIds = null; navigating = false; publish(); } }
@@ -791,24 +809,28 @@ export function createDesktopService(adapters: Readonly<{
     const busyAtDispatch = running;
     const files = staged?.chatId === action.chatId ? staged.files : [];
     if (!action.text.trim() && !files.length) throw new UserFacingError('Write a message first.');
+    // Commands never travel as text: mid-reply they would be steered in as words.
+    const command = /^\/[A-Za-z0-9._-]{1,96}(?:\s|$)/u.test(action.text.trimStart()) && !files.length;
+    if (command && running) throw new UserFacingError('Commands run when the current reply finishes. Send it again then.');
     if (running) {
       if (!canSendBusy()) throw new UserFacingError('Wait a moment, then send again.');
       // Files can only wait in the queue; they never steer or interrupt a reply.
       if (preferences.busyMode === 'steer' && !files.length) { await steer(captured, connection, action.chatId, action.text); return; }
       if (preferences.busyMode === 'interrupt' && !files.length) {
+        // Hold the send slot across the stop so a second send cannot interleave.
+        sending = true; publish();
         let stopped = false;
-        try { const reply = await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId }); stopped = jsonObject(reply) && reply.status === 'interrupted'; }
-        catch { stopped = false; }
+        try {
+          const reply = await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId });
+          stopped = jsonObject(reply) && reply.status === 'interrupted';
+        } catch { stopped = false; }
+        finally { if (owner === captured) sending = false; }
         if (!stopped) throw new UserFacingError("The current reply couldn't be stopped. Your message is still in the box.");
         if (owner !== captured) return;
       }
       // queue (or after interrupt): prompt.submit with queued:true, journaled below.
     } else if (!canSend()) throw Error('Chat is not ready');
-    if (/^\/[A-Za-z0-9._-]{1,96}(?:\s|$)/u.test(action.text.trimStart()) && !files.length) {
-      // Commands never travel as plain text; mid-reply they would be read as words.
-      if (running) throw new UserFacingError('Commands run when the current reply finishes. Send it again then.');
-      await runCommand(captured, connection, action.chatId, action.text.trim()); return;
-    }
+    if (command) { await runCommand(captured, connection, action.chatId, action.text.trim(), action.text); return; }
     await journaledSend({ captured, connection, chatId: action.chatId, draftText: action.text, submitText: action.text, display: action.text, files, busyAtDispatch });
   }
   // Persist intent, stage files, then one prompt.submit (HERMES_API.md §6 Send).
@@ -818,17 +840,31 @@ export function createDesktopService(adapters: Readonly<{
     sending = true; let dispatchAttempted = false;
     const intentKey = `journal:${scope(captured.profileId, chatId)}`, draftKey = `draft:${scope(captured.profileId, chatId)}`;
     const draftRevision = revisions.get(draftKey) ?? null;
+    const intentId = randomUUID(), requestId = randomUUID(), queued: string[] = [];
+    let uploadsCertain = true;
+    // Nothing was dispatched: take back confirmed photos and, when every upload
+    // reply arrived, the prepared record. An uncertain upload keeps its record.
+    const withdraw = async () => {
+      for (const path of queued.splice(0)) await connection.call('image.detach', { session_id: captured.runtimeId, path }).catch(() => undefined);
+      if (files.length && uploadsCertain) await dropIntent(intentKey, intentId).catch(() => undefined);
+    };
     let bookendAtDispatch = turnBookends; publish();
     try {
-      const references = files.length ? await upload(captured, connection, files) : [];
-      if (owner !== captured) return;
+      // Persist the intent before the first upload (HERMES_API.md §7).
+      if (files.length) await commitIntent(intentKey, Object.freeze({ id: intentId, owner: captured, phase: 'prepared' as const,
+        request: Object.freeze({ jsonrpc: '2.0' as const, id: requestId, method: 'prompt.submit' as const,
+          params: Object.freeze({ session_id: captured.runtimeId, profile: captured.profileId, text: input.submitText, queued: true as const }) }) }));
+      let references: string[] = [];
+      try { references = files.length ? await upload(captured, connection, files, queued) : []; }
+      catch (error) { if (error instanceof UploadUncertain) uploadsCertain = false; throw error; }
+      if (owner !== captured) { await withdraw(); return; }
       if (preferences.personName && identity) {
         await sendSpeakerNote(operation => connection.requestHttp(operation), identity, { profile: captured.profileId,
           storedSessionId: captured.storedSessionId, personId: await personId(), name: preferences.personName });
-        if (owner !== captured) return;
+        if (owner !== captured) { await withdraw(); return; }
       }
       const text = [input.submitText, ...references].filter(part => part.trim()).join('\n');
-      const result = await createTextSend({ id: randomUUID(), requestId: randomUUID(), owner: captured, text }, {
+      const result = await createTextSend({ id: intentId, requestId, owner: captured, text }, {
         currentOwner: () => owner === captured && status === 'connected' ? captured : null,
         commit: intent => commitIntent(intentKey, intent), submit: request => { dispatchAttempted = true; bookendAtDispatch = turnBookends; return connection.submitText(request); },
       })();
@@ -837,7 +873,8 @@ export function createDesktopService(adapters: Readonly<{
       if (staged?.chatId === chatId) staged = { chatId, files: staged.files.filter(file => !files.includes(file)) };
       applyTranscript(chatId);
       if (result.phase === 'accepted') {
-        acceptedSends = [...acceptedSends, { intent: result, key: intentKey, bookend: bookendAtDispatch }];
+        // A queued send completes only after its own turn, one bookend later.
+        acceptedSends = [...acceptedSends, { intent: result, key: intentKey, bookend: input.busyAtDispatch ? bookendAtDispatch + 1 : bookendAtDispatch }];
         const cleared = await clearSentDraft(draftKey, draftRevision, input.draftText);
         if (owner !== captured) return;
         if (cleared) drafts = { ...drafts, [chatId]: '' };
@@ -846,6 +883,7 @@ export function createDesktopService(adapters: Readonly<{
         else { await history(captured, connection); }
       } else { reconciled = false; notice = 'Not sure this arrived. Reopen the chat to check saved history. Nothing will be resent automatically.'; }
     } catch (error) {
+      if (!dispatchAttempted) await withdraw().catch(() => undefined);
       if (owner === captured && dispatchAttempted) { reconciled = false; notice = 'The send outcome could not be saved. Reopen the chat to check history before sending again.'; }
       throw error;
     } finally { if (owner === captured) { sending = false; publish(); } }
@@ -853,7 +891,7 @@ export function createDesktopService(adapters: Readonly<{
   // A leading /command runs through Hermes's command path (slash.exec, then
   // command.dispatch for skills/plugins), never as prompt text. Results that
   // expand into a prompt go through the same journaled send.
-  async function runCommand(captured: Owner, connection: Gateway, chatId: string, text: string) {
+  async function runCommand(captured: Owner, connection: Gateway, chatId: string, text: string, typed: string = text) {
     const token = text.split(/\s+/u)[0] ?? '', name = token.slice(1).toLowerCase(), arg = text.slice(token.length).trim();
     const draftKey = `draft:${scope(captured.profileId, chatId)}`, draftRevision = revisions.get(draftKey) ?? null;
     const session = { session_id: captured.runtimeId, profile: captured.profileId };
@@ -884,7 +922,7 @@ export function createDesktopService(adapters: Readonly<{
     if ((row.type === 'skill' || row.type === 'send') && typeof row.message === 'string' && row.message.trim()) {
       const display = typeof row.display === 'string' && row.display.trim() ? row.display.slice(0, 4000) : text;
       if (typeof row.notice === 'string' && row.notice.trim()) notice = row.notice.slice(0, 300);
-      await journaledSend({ captured, connection, chatId, draftText: text, submitText: row.message, display, files: [], busyAtDispatch: running });
+      await journaledSend({ captured, connection, chatId, draftText: typed, submitText: row.message, display, files: [], busyAtDispatch: running });
       return;
     }
     if (row.type === 'prefill' && typeof row.message === 'string') {
@@ -901,7 +939,7 @@ export function createDesktopService(adapters: Readonly<{
         ? `\`\`\`text\n${output.replace(/^\n+|\s+$/gu, '').replace(/```/gu, 'ˋˋˋ').slice(0, 256 * 1024)}\n\`\`\`` : `Hermes ran ${token}.`]), turn: id }),
     ] as TranscriptItem[]) });
     applyTranscript(chatId);
-    const cleared = await clearSentDraft(draftKey, draftRevision, text);
+    const cleared = await clearSentDraft(draftKey, draftRevision, typed);
     if (owner === captured) { if (cleared) drafts = { ...drafts, [chatId]: '' }; notice = ''; publish(); }
   }
   // A stable random ID for this person on this computer (a label key, not a credential).
@@ -919,8 +957,8 @@ export function createDesktopService(adapters: Readonly<{
   // Stage files on the live session in the chosen order. Images join the session's
   // image queue (claimed by the next prompt); other files return @file: references.
   // Hermes binds neither to one message: another client could interleave.
-  async function upload(captured: Owner, connection: Gateway, files: readonly StagedFile[]): Promise<string[]> {
-    const references: string[] = [], queued: string[] = [];
+  async function upload(captured: Owner, connection: Gateway, files: readonly StagedFile[], queued: string[]): Promise<string[]> {
+    const references: string[] = [];
     const options = { mutation: true, timeoutMs: 120000, maxBytes: 12 * 1024 * 1024 } as const;
     for (const file of files) {
       const base64 = Buffer.from(file.bytes).toString('base64');
@@ -931,12 +969,11 @@ export function createDesktopService(adapters: Readonly<{
           : await connection.call('file.attach', { session_id: captured.runtimeId, name: file.name, data_url: `data:${file.mime};base64,${base64}` }, options);
       } catch (error) {
         if (error instanceof GatewayOperationError) {
-          // A definite refusal: take back images already queued, then stop.
-          for (const path of queued) await connection.call('image.detach', { session_id: captured.runtimeId, path }).catch(() => undefined);
+          // A definite refusal; the caller takes back photos already queued.
           throw new UserFacingError(`Couldn't add ${file.name}${error.detail ? `: ${error.detail.replace(/[.!?]?$/u, '.')}` : '.'} Nothing was sent.`);
         }
         notice = 'Not sure the files finished uploading. Nothing was sent. Check the chat before sending again.';
-        throw new UserFacingError(notice);
+        throw new UploadUncertain(notice);
       }
       if (file.kind === 'image') {
         if (!jsonObject(reply) || reply.attached !== true) throw new UserFacingError(`Hermes didn't accept ${file.name}. Nothing was sent.`);

@@ -27,7 +27,7 @@ export const EMPTY_LIVE: LiveTurn = Object.freeze({
   todos: Object.freeze([]), todoRevision: -1, context: null, failure: null, model: null, counter: 0,
 });
 
-export const LIVE_LIMITS = Object.freeze({ items: 1500, textBytes: 1024 * 1024, status: 160 });
+export const LIVE_LIMITS = Object.freeze({ items: 1500, characters: 400_000, status: 160 });
 
 type Payload = Readonly<Record<string, unknown>>;
 const str = (value: unknown): string => typeof value === 'string' ? value : '';
@@ -48,8 +48,11 @@ function setText(item: TranscriptItem, text: string, streaming: boolean): Transc
 function textOf(item: TranscriptItem | undefined): string {
   return item?.kind === 'message' ? item.paragraphs.join('\n\n') : '';
 }
+// Character bound checked in O(1) per update (no re-encoding of the whole reply).
+// Past it the live view stops growing and says so; saved history shows the rest.
+export const LIVE_CUT_NOTE = '\n\n… The rest of this reply is too long to show while it streams. It appears when the reply finishes.';
 function bounded(text: string): string {
-  return new TextEncoder().encode(text).byteLength > LIVE_LIMITS.textBytes ? text.slice(0, LIVE_LIMITS.textBytes / 4) : text;
+  return text.length > LIVE_LIMITS.characters ? text.slice(0, LIVE_LIMITS.characters) + LIVE_CUT_NOTE : text;
 }
 
 // The current turn key, opening one if an event arrives without message.start.
@@ -70,8 +73,9 @@ function appendText(state: LiveTurn, text: string, now: number): LiveTurn {
   let current = sealReasoning(ensureTurn(state, now));
   if (!text) return current;
   if (current.segment) {
-    const existing = current.items.find(item => item.id === current.segment);
-    return withItems(current, replace(current.items, current.segment, item => setText(item, bounded(textOf(existing) + text), true)));
+    const previous = textOf(current.items.find(item => item.id === current.segment));
+    if (previous.endsWith(LIVE_CUT_NOTE)) return current;
+    return withItems(current, replace(current.items, current.segment, item => setText(item, bounded(previous + text), true)));
   }
   const counter = current.counter + 1, id = `${current.turn}:text:${counter}`;
   current = Object.freeze({ ...current, counter, segment: id });
@@ -206,7 +210,8 @@ function reduceLiveEvent(state: LiveTurn, type: string, payload: Payload, now: n
       if (!text) return state;
       const current = ensureTurn(state, now);
       if (current.reasoning) {
-        return withItems(current, replace(current.items, current.reasoning, item => item.kind === 'reasoning' ? Object.freeze({ ...item, text: bounded(item.text + text) }) : item));
+        return withItems(current, replace(current.items, current.reasoning, item => item.kind === 'reasoning' && !item.text.endsWith(LIVE_CUT_NOTE)
+          ? Object.freeze({ ...item, text: bounded(item.text + text) }) : item));
       }
       const counter = current.counter + 1, id = `${current.turn}:reasoning:${counter}`;
       return withItems({ ...current, counter, reasoning: id, status: 'Thinking' }, [...current.items, Object.freeze({ kind: 'reasoning', id, text: bounded(text),
