@@ -188,7 +188,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           })();
         } : undefined}
         onStop={api && snapshot && chat && act ? () => { void act(api.interrupt(snapshot.generation, chat.id)); } : undefined}
-        requests={api && snapshot && act ? <InteractiveRequests key={snapshot.generation} prompts={snapshot.prompts} disabled={snapshot.status !== 'connected'} onAnswer={(id, answer) => { void act(api.answer(snapshot.generation, id, answer)); }} /> : null}
+        requests={api && snapshot && act ? <InteractiveRequests key={snapshot.generation} prompts={snapshot.prompts} agentName={agent.name} disabled={snapshot.status !== 'connected'} onAnswer={(id, answer) => { void act(api.answer(snapshot.generation, id, answer)); }} /> : null}
         onTab={tab => {
           if (tab !== 'chat') leaveChat();
           else suppressNavigation.current = false;

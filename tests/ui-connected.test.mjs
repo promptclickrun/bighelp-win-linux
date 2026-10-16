@@ -33,7 +33,7 @@ test('approval renders only offered decisions and escapes executable-looking hos
 test('clarification retains locked answers and requires an explicit answer submission', () => {
   const html = render('requests', { disabled: false, onAnswer() {}, prompts: [{id:'2',prompt:{kind:'clarify',isBatch:true,questions:[{id:'a',question:'Locked',choices:[],multiSelect:false,lockedAnswer:'Already answered'},{id:'b',question:'Choose',choices:['One','Two'],multiSelect:false}]}}] });
   assert.match(html, /Already answered/); assert.match(html, /type="radio"/);
-  assert.match(html, /<button type="submit" disabled="">Send answer/);
+  assert.match(html, /<button type="submit" disabled=""[^>]*>Send answer/);
 });
 
 test('offline composer preserves the saved draft while rendering the input read-only', () => {
