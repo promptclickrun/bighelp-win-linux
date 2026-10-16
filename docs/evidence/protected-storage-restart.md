@@ -77,8 +77,21 @@ user namespaces; missing Secret Service is classified only after Electron starts
   synthetic missing executable produced exit 1, `process-launch-failed`, and
   `cleanup: removed`, without echoing the path. No probe/test directories remained.
 - No real encryption write/restart/read passed locally because the Linux secret
-  service was unavailable. Windows execution remains CI evidence to collect;
-  this document does not claim a successful Windows run.
+  service was unavailable.
+
+## Hosted CI evidence, 2026-10-16
+
+[Run 38865386767](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38865386767)
+at `9ad74327895e542d0a204cd6d946ea2d54cfb1d0` passed both desktop jobs.
+The Windows Server 2022 runner used Electron 44.7.2 and reported
+`backend: windows-dpapi`, `status: passed`, and `cleanup: removed`.
+Encrypted write and the separate-process read both passed. All three harness
+checks were true: ciphertext excluded the plaintext, the synthetic value was
+recovered after restart, and the read left the ciphertext unchanged.
+
+The Ubuntu 24.04 runner reached actual safeStorage with the sandbox enabled and
+reported `unavailable`, `backend: basic_text`, and `cleanup: removed`. This is
+an explicit unavailable result, not successful Linux encryption qualification.
 
 This probe qualifies only the tested OS account/runtime's protected-storage
 restart behavior. It does not establish Windows 11 hardware acceptance,
