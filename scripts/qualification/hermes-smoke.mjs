@@ -30,6 +30,11 @@ try {
   assert.equal(result.ok, true, 'Host connection');
   let s = service.snapshot(); assert.ok(s.data.agents.length, 'At least one actual profile');
   const profiles = s.data.agents.length;
+  for (const page of ['projects', 'usage', 'scheduled']) {
+    result = await service.handle({ kind: 'workspace', generation: s.generation, profile: s.data.agents[0].id, page, days: 30 });
+    assert.equal(result.ok, true, `${page} read action`);
+    assert.equal(service.snapshot().workspace?.status, 'loaded', `${page} stock-host catalog`);
+  }
   result = await service.handle({ kind: 'newChat', generation: s.generation, profile: s.data.agents[0].id });
   assert.equal(result.ok, true, 'Session creation');
   s = service.snapshot(); assert.ok(s.canSend, 'History reconciled before send');
@@ -48,5 +53,5 @@ try {
   assert.equal(result.ok, true, 'Reconnect');
   result = await service.handle({ kind: 'openChat', generation: service.snapshot().generation, chatId });
   assert.equal(result.ok, true, 'Saved session resumes without re-send');
-  console.log(JSON.stringify({ passed: true, profiles, updates, evidence: 'Disposable real Hermes; provider-free failure; synthetic encryption adapter' }, null, 2));
+  console.log(JSON.stringify({ passed: true, profiles, updates, workspace: ['projects', 'usage', 'scheduled'], evidence: 'Disposable real Hermes; provider-free failure; synthetic encryption adapter' }, null, 2));
 } finally { service.dispose(); await repository.close(); key.fill(0); await rm(directory, { recursive: true, force: true }); }

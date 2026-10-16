@@ -26,7 +26,7 @@ async function setup(t) {
   const directory = await mkdtemp(join(tmpdir(), 'bighelp-protected-'));
   t.after(() => rm(directory, { recursive: true, force: true }));
   const { createProtectedRepository } = await import('../packages/platform/protected-repository.ts');
-  const open = (overrides = {}) => createProtectedRepository({ directory, protection, platform: 'linux', ...overrides });
+  const open = (overrides = {}) => createProtectedRepository({ directory, protection, platform: process.platform, ...overrides });
   return { directory, open };
 }
 
@@ -54,7 +54,7 @@ test('encrypted roundtrip, reload, CAS serialization and scoped removal', async 
 test('unavailable and Linux basic_text protection refuse persistence', async t => {
   const { open } = await setup(t);
   await assert.rejects(open({ protection: { ...protection, isEncryptionAvailable: () => false } }), /protection/);
-  await assert.rejects(open({ protection: { ...protection, getSelectedStorageBackend: () => 'basic_text' } }), /protection/);
+  await assert.rejects(open({ platform: 'linux', protection: { ...protection, getSelectedStorageBackend: () => 'basic_text' } }), /protection/);
   const repository = await open();
   protection.isEncryptionAvailable = () => false;
   try { await assert.rejects(repository.write('key', null, 'secret'), /protection/); }
@@ -73,9 +73,11 @@ test('invalid values, corruption, substituted identity and unsafe files fail clo
   await writeFile(pathFor(directory, 'key'), 'broken');
   await assert.rejects(repository.read('key'));
   await rm(pathFor(directory, 'key'));
-  await symlink(pathFor(directory, 'other'), pathFor(directory, 'key'));
-  await assert.rejects(repository.read('key'));
-  await rm(pathFor(directory, 'key'));
+  if (process.platform !== 'win32') {
+    await symlink(pathFor(directory, 'other'), pathFor(directory, 'key'));
+    await assert.rejects(repository.read('key'));
+    await rm(pathFor(directory, 'key'));
+  } else t.diagnostic('File symlink creation requires Windows privileges; directory junction rejection is tested separately.');
   await mkdir(pathFor(directory, 'key'));
   await assert.rejects(repository.read('key'));
   await repository.close();
@@ -105,7 +107,7 @@ test('another process cannot acquire a live lock and dead owners are safely recl
   const run = promisify(execFile);
   const moduleUrl = new URL('../packages/platform/protected-repository.ts', import.meta.url).href;
   const program = `import { createProtectedRepository } from ${JSON.stringify(moduleUrl)};
-    const repository = await createProtectedRepository({directory: process.argv[1], platform:'linux', protection: {
+    const repository = await createProtectedRepository({directory: process.argv[1], platform:process.platform, protection: {
       isEncryptionAvailable:()=>true, getSelectedStorageBackend:()=> 'synthetic',
       encryptString: text => Buffer.from(text), decryptString: bytes => Buffer.from(bytes).toString()
     }}); process.exit(0);`;
@@ -166,7 +168,7 @@ test('newer envelopes remain untouched and a symlink directory is rejected', asy
   assert.deepEqual(await readFile(pathFor(directory, 'key')), bytes);
   await repository.close();
   const link = join(directory, 'linked');
-  await symlink(directory, link);
+  await symlink(directory, link, process.platform === 'win32' ? 'junction' : 'dir');
   await assert.rejects(open({ directory: link }), /directory/);
 });
 

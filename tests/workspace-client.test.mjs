@@ -71,6 +71,14 @@ test('scheduled catalog preserves real state and projects no prompt, script, or 
   assert.equal(decodeWorkspaceScheduled({ jobs: [{ ...job(), schedule: { kind: 'once', run_at: '2026-10-17T09:00:00Z' } }] }, 'agent').tasks[0].schedule,
     '2026-10-17T09:00:00Z');
 });
+test('scheduled REST arrays use the shipping client normalization before row validation', async () => {
+  const { state, client } = harness(); state.response.body = [job()];
+  const result = await client.scheduled();
+  assert.equal(result.status, 'loaded');
+  assert.equal(result.data.tasks[0].id, job().id);
+  assert.throws(() => decodeWorkspaceScheduled([{ ...job(), profile: 'other' }], 'agent'));
+  assert.throws(() => decodeWorkspaceScheduled(Array(501).fill(job()), 'agent'));
+});
 
 test('board verifies current context and returns only the requested kind without writes or AI', async () => {
   const { state, client } = harness();

@@ -201,7 +201,8 @@ function schedule(value: unknown): string {
 }
 export function decodeWorkspaceScheduled(value: unknown, profile: string): WorkspaceScheduled {
   workspaceProfile(profile);
-  const payload = bounded(value); profileEcho(payload, profile);
+  // DirectHermesWorkspaceClient.swift:92 normalizes the stock REST array.
+  const payload = bounded(Array.isArray(value) ? { jobs: value } : value); profileEcho(payload, profile);
   const tasks = unique(rows(payload.jobs, 500).map(value => {
     const row = object(value); profileEcho(row, profile);
     if (row.profile !== profile) return invalid();

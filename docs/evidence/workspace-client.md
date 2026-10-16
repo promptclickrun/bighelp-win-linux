@@ -1,8 +1,8 @@
 # Read-only workspace clients
 
 Evidence recorded 2026-10-16. This is a bounded client implementation tested with
-synthetic source-shaped responses and a local HTTP server. It is not a claim of
-live-host, desktop UI, or platform parity.
+synthetic source-shaped responses, a local HTTP server, and the disposable stock
+Hermes host identified below. It is not a claim of completed UI or platform parity.
 
 ## Source and exact wire operations
 
@@ -84,7 +84,7 @@ Missing or invalid numeric metadata is omitted. This implementation deliberately
 does not turn missing values into zero or infer totals from partial daily data.
 Limits: 800 days, 200 model rows, 2 MiB envelope.
 
-Scheduled tasks consume `{jobs:[{id,profile,name,enabled,state,schedule,...}]}`.
+Scheduled tasks accept the stock REST array and its normalized `{jobs:[{id,profile,name,enabled,state,schedule,...}]}` envelope. The shipping dispatcher normalizes arrays before the codec ([DirectHermesWorkspaceClient.swift:92](https://github.com/promptclickrun/bighelp/blob/d62a545386fb1b63f8ca33365766a46b3b1bd636/Bighelp/DirectHermes/DirectHermesWorkspaceClient.swift#L92)); the disposable-host test caught this initially missing step. Both forms retain the same row/profile and size validation.
 Every task must echo the requested profile. States are `scheduled`, `running`,
 `paused`, `completed`, `error`; a scheduled/running row never becomes a fabricated
 successful outcome. Schedule is a bounded string, `{kind:'cron',expr}`,
@@ -145,6 +145,7 @@ Checks on the integrated working tree on 2026-10-16:
 - Integrating agent's `npm test`: 227 passed; production build passed. This
   includes concurrent desktop-service changes and is not isolated workspace-only
   runtime evidence.
+- After adding the REST-array regression: 228 integrated tests and all strict typechecks pass. `scripts/qualification/hermes-smoke.mjs` verified real Projects, usage and empty scheduled catalogs against isolated stock Hermes `3b2f971133e4e011022ccf33dc6dc1c9050563d8`. No schedules were created or run. The plugin board remains synthetic-only evidence.
 
 The existing transport policy accepts only canonical strong ETags. The Apple
 source additionally recognizes specific weak/compression proxy wrappers; that
