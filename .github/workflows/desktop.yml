@@ -22,6 +22,7 @@ jobs:
       - run: npm run esbuild:verify
       - run: npm run electron:fetch
       - run: node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.protected-storage.json
+      - run: node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.workspace-ui.json
       - run: node --test scripts/qualification/protected-storage.test.mjs
       - name: Require real Windows OS protection across restart
         if: runner.os == 'Windows'
@@ -42,17 +43,17 @@ jobs:
       - run: npm run typecheck
       - run: node scripts/desktop/build.mjs --production
       - run: node scripts/desktop/package.mjs
-      - name: Packaged Linux smoke with OS sandbox
+      - name: Packaged Linux smoke and synthetic workspace interactions with OS sandbox
         if: runner.os == 'Linux'
         shell: bash
         run: |
           cp -a artifacts/bighelp-development-linux-x64 "$RUNNER_TEMP/bighelp-smoke"
           sudo chown root:root "$RUNNER_TEMP/bighelp-smoke/chrome-sandbox"
           sudo chmod 4755 "$RUNNER_TEMP/bighelp-smoke/chrome-sandbox"
-          xvfb-run -a node scripts/desktop/smoke.mjs --executable "$RUNNER_TEMP/bighelp-smoke/electron"
-      - name: Packaged Windows smoke
+          xvfb-run -a node scripts/desktop/smoke.mjs --workspace-fixture --executable "$RUNNER_TEMP/bighelp-smoke/electron"
+      - name: Packaged Windows smoke and synthetic workspace interactions
         if: runner.os == 'Windows'
-        run: node scripts/desktop/smoke.mjs --executable artifacts/bighelp-development-win32-x64/electron.exe
+        run: node scripts/desktop/smoke.mjs --workspace-fixture --executable artifacts/bighelp-development-win32-x64/electron.exe
       - uses: actions/upload-artifact@v4
         with:
           name: bighelp-development-${{ matrix.os }}

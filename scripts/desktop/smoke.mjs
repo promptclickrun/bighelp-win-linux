@@ -3,7 +3,7 @@
 // Chrome DevTools Protocol: renderer isolation, the frozen preload description,
 // blocked network/navigation/popups, and the rendered shell. Optional screenshots.
 //
-//   node scripts/desktop/smoke.mjs [--fixture-preview] [--screenshots <dir>] [--no-os-sandbox]
+//   node scripts/desktop/smoke.mjs [--fixture-preview] [--workspace-fixture] [--screenshots <dir>] [--no-os-sandbox]
 //
 // --no-os-sandbox passes Chromium's --no-sandbox. Use it only on a development
 // machine that cannot run Chromium's OS sandbox, and report it: it removes the
@@ -219,10 +219,27 @@ try {
     await capture('narrow-light-chat');
   } else {
     await capture('wide-light-empty');
+    for (const page of ['Projects', 'Scheduled', 'Usage']) {
+      await click(page); await sleep(100);
+      check(`no-host ${page} is unavailable with disabled refresh`, await evaluate(
+        `document.body.innerText.includes('This page is unavailable. Connect to Hermes') && document.querySelector('[aria-label="Refresh ${page.toLowerCase()}"]')?.getAttribute('aria-disabled') === 'true'`));
+      check(`no-host ${page} has no agent tab bar`, await evaluate("document.querySelector('[role=tablist]') === null"));
+    }
+    await capture('wide-light-no-host-usage');
   }
   const escaped = [...requests].filter(([id, url]) => !url.startsWith('app://bighelp/') && !url.startsWith('data:') && answered.has(id));
   check('no request outside app:// got a response', escaped.length === 0,
     `${requests.size} requests seen, ${escaped.length} answered outside app://`);
+  // Separate evidence stage: only after ordinary packaged isolation/no-host checks.
+  if (flag('--workspace-fixture')) {
+    if (flag('--fixture-preview')) throw new Error('Use --workspace-fixture with the ordinary no-host app, separately from --fixture-preview');
+    if (results.some(result => !result.ok)) throw new Error('Packaged checks failed before synthetic fixture injection');
+    const { runWorkspaceFixture } = await import('../qualification/workspace-ui-smoke.mjs');
+    const beforeFixture = new Set(requests.keys());
+    await runWorkspaceFixture({ root, evaluate, send, check, capture, sleep });
+    const fixtureRequests = [...requests].filter(([id, url]) => !beforeFixture.has(id) && !url.startsWith('app://bighelp/') && !url.startsWith('data:'));
+    check('synthetic UI issues no external network requests', fixtureRequests.length === 0, `${fixtureRequests.length} external requests`);
+  }
 } catch (error) {
   check('smoke run completed', false, error instanceof Error ? error.message : String(error));
 } finally {
@@ -237,6 +254,6 @@ const failed = results.filter(result => !result.ok);
 const runtime = browserVersion ?? null;
 process.stdout.write(`${JSON.stringify({
   runtime, osSandbox: flag('--no-os-sandbox') ? 'disabled (--no-sandbox)' : 'enabled',
-  fixturePreview: flag('--fixture-preview'), screenshots: shots, passed: results.length - failed.length, failed: failed.length, results,
+  fixturePreview: flag('--fixture-preview'), workspaceFixture: flag('--workspace-fixture'), screenshots: shots, passed: results.length - failed.length, failed: failed.length, results,
 }, null, 2)}\n`);
 process.exit(failed.length === 0 ? 0 : 1);
