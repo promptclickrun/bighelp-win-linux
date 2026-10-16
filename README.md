@@ -2,7 +2,7 @@
 
 Private planning and implementation repository for a React Native desktop companion to [Hermes](https://github.com/NousResearch/hermes-agent), targeting the functional and visual behavior of [Bighelp](https://github.com/promptclickrun/bighelp) on macOS.
 
-**Status: Phase 0 started.** The first executable ownership/send-state contracts are implemented. No desktop app has been built or released. See [evidence and remaining gates](docs/P0_EVIDENCE.md).
+**Status: Phase 0, first runnable shell.** The approved hybrid layout runs as an Electron + React Native Web app with no host connection yet. Contracts for ownership, send state, RPC framing and transport policy are implemented and type-checked. Nothing has been packaged or released. See [desktop shell evidence](docs/evidence/desktop-shell.md), [toolchain](docs/qualification/TOOLCHAIN.md) and [remaining gates](docs/P0_EVIDENCE.md).
 
 ## Start here
 
@@ -33,6 +33,19 @@ No Hermes runtime, model server, account system, or notification cloud will be d
 
 ## Contributing
 
-Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md). Run the dependency-free contract tests with `node --experimental-strip-types --test tests/*.test.mjs` (tested on Node 22.23.0). This executes TypeScript by stripping types, not by type-checking it. Desktop build commands await dependency approval and platform proof.
+Read [AGENTS.md](AGENTS.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md).
+
+Use Node 24.22.0 (npm 11.19.1) for the desktop toolchain. Contract tests alone still run on Node 22.23.0 or later.
+
+```sh
+npm ci                   # exact lockfile; install scripts stay off (.npmrc)
+npm run electron:fetch   # reviewed step: download Electron, verified against its pinned checksums
+npm run check            # contract tests, three strict type checks, guarded bundle
+npm run desktop:start    # the app, no sample data
+npm run desktop:preview  # synthetic sample data (development only)
+npm run desktop:smoke -- --fixture-preview   # drive real Electron over DevTools and check the boundaries
+```
+
+On a Linux machine that can't run Chromium's OS sandbox, `desktop:smoke` needs `--no-os-sandbox`. Report it when you use it. See [TOOLCHAIN.md](docs/qualification/TOOLCHAIN.md).
 
 Apache-2.0; see [LICENSE](LICENSE) and [NOTICE](NOTICE). The repository is private; that does not remove the obligations attached to borrowed material.
