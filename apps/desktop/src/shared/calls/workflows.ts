@@ -19,8 +19,9 @@ export type StartInput = Readonly<{
 function check<T>(value: unknown, guard: (value: unknown) => value is T): T { if (!guard(value)) throw new InvalidInput(); return value; }
 const workflowId = (value: unknown) => check(value, isWorkflowId);
 const runId = (value: unknown) => check(value, isRunId);
-// The plugin takes UUID versions 1 to 5; this app makes version 4 tokens.
-function runToken(value: unknown): string {
+// The plugin takes canonical UUID versions 1 to 5; this app makes version 4 ones
+// (crypto.randomUUID) for run tokens and request IDs.
+function v4(value: unknown): string {
   const token = uuid(value);
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(token)) throw new InvalidInput();
   return token;
@@ -56,7 +57,7 @@ export const WORKFLOW_CALLS = Object.freeze({
   // from the window so the same start can be sent again after a lost answer.
   'workflows.start': defineCall<RunSummary>()((input): StartInput => {
     const value = fields(input, ['workflowId', 'revision', 'inputs', 'clientRunToken', 'requestId']);
-    const clientRunToken = runToken(value.clientRunToken), requestId = uuid(value.requestId);
+    const clientRunToken = v4(value.clientRunToken), requestId = v4(value.requestId);
     if (clientRunToken === requestId) throw new InvalidInput();
     return Object.freeze({ workflowId: workflowId(value.workflowId), revision: integer(value.revision, 1, 2 ** 31),
       inputs: runInputs(value.inputs), clientRunToken, requestId });

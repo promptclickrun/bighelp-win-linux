@@ -23,6 +23,11 @@ const UNREADABLE = "The bighelp plugin sent workflow data this app can't read.";
 const GONE = "This isn't on your computer any more. Refresh to see the latest.";
 const NOT_SURE_CONTROL = 'Not sure that went through. Check the run before trying again.';
 const NOT_SURE_SIGNOFF = 'Not sure your sign-off went through. Check the run before trying again.';
+// The plugin refuses with these before it starts or changes anything (PLUGIN_API.md §2).
+const REFUSED_FIRST = new Set(['runner_unavailable', 'workflows_unavailable', 'store_unavailable']);
+const NOT_NOW = "Workflows can't run on your computer right now, so nothing changed. Try again later.";
+// A reply that does not echo the context it was sent under is not this request's answer.
+class EchoMismatch extends Error {}
 
 type Session = Readonly<{
   read<T>(route: string, body: Readonly<Record<string, unknown>>, decoder: (value: unknown) => T): Promise<T>;
@@ -51,8 +56,10 @@ async function open(context: CallContext): Promise<Session> {
   async function send(route: string, body: Readonly<Record<string, unknown>>, requestId: string): Promise<unknown> {
     const json = JSON.stringify(body);
     if (new TextEncoder().encode(json).byteLength > WORKFLOW_LIMITS.responseBytes) throw new CallError('invalid', 'That is too long to send. Shorten it and try again.');
-    return (await context.http({ method: 'POST', path: BASE + route, body: json, maxBytes: WORKFLOW_LIMITS.responseBytes,
-      native: { etag, requestId } })).body;
+    const response = await context.http({ method: 'POST', path: BASE + route, body: json, maxBytes: WORKFLOW_LIMITS.responseBytes,
+      native: { etag, requestId } });
+    if (response.etag !== etag) throw new EchoMismatch();
+    return response.body;
   }
   return Object.freeze({
     async read<T>(route: string, body: Readonly<Record<string, unknown>>, decoder: (value: unknown) => T): Promise<T> {
@@ -63,6 +70,7 @@ async function open(context: CallContext): Promise<Session> {
           if (error.status === 412) throw new CallError('stale', 'Something changed on your computer. Refresh and try again.');
           if (error.status === 503) throw new CallError('unavailable', error.detail || "Workflows aren't available on your computer right now.");
         }
+        if (error instanceof EchoMismatch) throw new CallError('unavailable', 'The bighelp plugin on your computer sent an unexpected reply. Try again.');
         throw error;
       }
       try { return decoder(reply); } catch { throw new CallError('invalid', UNREADABLE); }
@@ -72,6 +80,7 @@ async function open(context: CallContext): Promise<Session> {
       try { reply = await send(route, body, requestId); } catch (error) {
         if (error instanceof CallError) throw error;
         if (error instanceof HttpStatusError) {
+          if (error.status === 503 && REFUSED_FIRST.has(error.code)) throw new CallError('unavailable', error.detail || NOT_NOW);
           // 412 can follow a committed change; it never authorizes sending it again.
           if (error.status === 412 || error.status >= 500) throw new CallError('unknown', notSure);
           if (error.status === 404) throw new CallError('invalid', GONE);

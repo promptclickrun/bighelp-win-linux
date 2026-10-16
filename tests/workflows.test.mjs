@@ -31,7 +31,8 @@ const CONTEXT = { schemaVersion: 1, pluginVersion: '3.13.0', runtimeId: '0f1e2d3
   principal: null, features: ['native-context-v1', 'native-workflows-v1'] };
 
 // A fake host: each route goes through the real transport policy parser first.
-function host(answer, { context = CONTEXT, contextError = null } = {}) {
+// Replies echo the request ID (the transport checks it) and, unless told, the context ETag.
+function host(answer, { context = CONTEXT, contextError = null, echo = ETAG } = {}) {
   const seen = [];
   let ids = 0;
   const ctx = Object.freeze({
@@ -39,7 +40,7 @@ function host(answer, { context = CONTEXT, contextError = null } = {}) {
       parseHttpOperation({ kind: 'route', ...route });
       const call = { method: route.method, path: route.path, body: JSON.parse(route.body), native: route.native, maxBytes: route.maxBytes };
       seen.push(call);
-      return { body: await answer(call), requestId: route.native?.requestId };
+      return { body: await answer(call), requestId: route.native?.requestId, etag: echo };
     },
     async nativeContext() {
       if (contextError) throw contextError;
@@ -55,7 +56,8 @@ function host(answer, { context = CONTEXT, contextError = null } = {}) {
     catch (error) { return callFailure(error, HANDLERS[name].mutation); }
   } };
 }
-const refuse = (status, code, message) => { throw new HttpStatusError(status, message ?? code); };
+// The plugin's error envelope reaches handlers as status, one-line detail and code.
+const refuse = (status, code, message) => { throw new HttpStatusError(status, message ?? code, code); };
 const startInput = (overrides = {}) => ({ workflowId: WF, revision: 3, inputs: { topic: 'How small teams use checklists', length: 'Medium' },
   clientRunToken: TOKEN, requestId: REQUEST, ...overrides });
 
@@ -171,6 +173,8 @@ test('workflow calls refuse anything outside their exact inputs', () => {
     ['workflows.start', startInput({ sample: true })], ['workflows.start', startInput({ clientRunToken: 'not-a-token' })],
     ['workflows.start', startInput({ clientRunToken: '6f1e2d3c-4b5a-1987-8a6b-5c4d3e2f1a0b' })],
     ['workflows.start', startInput({ requestId: TOKEN })], ['workflows.start', startInput({ revision: 0 })],
+    ['workflows.start', startInput({ requestId: '0b6f0c1e-5d7a-1c55-9f0e-2a1b3c4d5e6f' })],
+    ['workflows.start', startInput({ requestId: '0b6f0c1e-5d7a-4c55-0f0e-2a1b3c4d5e6f' })],
     ['workflows.start', startInput({ revision: 'draft' })], ['workflows.start', startInput({ inputs: { Topic: 'x' } })],
     ['workflows.start', startInput({ inputs: JSON.parse('{"__proto__":"x"}') })], ['workflows.start', startInput({ inputs: { topic: '' } })],
     ['workflows.start', startInput({ inputs: { topic: 'a\u0000b' } })], ['workflows.start', startInput({ inputs: { topic: 'x'.repeat(20001) } })],
@@ -213,17 +217,23 @@ test('runs/start sends the exact body with the window token and request ID, unde
 });
 
 test('a lost or uncertain start answer is "not sure", keeps its token and is never sent again by itself', async () => {
-  for (const [label, answer] of [
+  for (const [label, answer, echo = ETAG] of [
     ['lost reply', () => { throw new Error('socket closed'); }],
     ['context changed after commit', () => refuse(412, 'context_changed')],
-    ['server error', () => refuse(503, 'runner_unavailable')],
+    ['server error', () => refuse(500, 'internal_error')],
+    ['proxy 503 without the plugin envelope', () => { throw new HttpStatusError(503, 'Service Unavailable'); }],
     ['unreadable reply', () => ({ run: { id: 'nope' } })],
+    ['reply under another context', () => reply('runs-start.json'), `"sha256:${'b'.repeat(64)}"`],
   ]) {
-    const fake = host(answer);
+    const fake = host(answer, { echo });
     const result = await fake.call('workflows.start', startInput());
     assert.deepEqual(result, { ok: false, code: 'unknown', message: NOT_SURE_STARTED }, label);
     assert.equal(fake.seen.length, 1, `${label}: sent once, never retried`);
   }
+  // The plugin's own "refused before starting" codes: nothing started.
+  const notNow = await host(() => refuse(503, 'runner_unavailable', "This computer can't run workflow stages right now.")).call('workflows.start', startInput());
+  assert.deepEqual(notNow, { ok: false, code: 'unavailable', message: "This computer can't run workflow stages right now." });
+  assert.equal(settleStart(createStartIntent(WF, 3, {}, () => TOKEN), notNow, false).outcome, 'refused');
   // Refusals the host answered for this exact token.
   const refused = host(() => refuse(422, 'inputs_invalid', 'Fill in Topic.'));
   assert.deepEqual(await refused.call('workflows.start', startInput()), { ok: false, code: 'invalid', message: 'Fill in Topic.' });
@@ -343,6 +353,8 @@ test('reads go through the verified context; an unsupported plugin is one clear 
   assert.deepEqual(detail.seen.map(call => call.body.revision), ['draft', 3]);
   const gone = await host(() => refuse(404, 'run_not_found')).call('workflows.run', { runId: RUN });
   assert.equal(gone.code, 'stale');
+  const otherContext = await host(() => reply('list.json'), { echo: `"sha256:${'c'.repeat(64)}"` }).call('workflows.overview', {});
+  assert.equal(otherContext.code, 'unavailable', 'a reply under another context is not shown');
 
   const noPlugin = await host(() => assert.fail('no send'), { contextError: new HttpStatusError(404) }).call('workflows.overview', {});
   assert.deepEqual(noPlugin, { ok: false, code: 'unsupported', message: 'Workflows need the bighelp plugin on your computer.' });
