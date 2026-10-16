@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.base.json",
+  // Protocol, domain, client and privileged policy code. No DOM, no JSX.
+  "compilerOptions": { "lib": ["ES2024"], "types": ["node"] },
+  "include": ["../packages/domain/**/*.ts", "../packages/contracts/**/*.ts", "../packages/hermes-client/**/*.ts",
+    "../packages/platform/**/*.ts", "../packages/ui/tokens.ts", "../packages/ui/view-model.ts", "../packages/ui/fixtures.ts",
+    "../packages/ui/glyphs.ts"]
+}

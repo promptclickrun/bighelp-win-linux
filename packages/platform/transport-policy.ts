@@ -53,7 +53,7 @@ function privateLiteral(host: string): boolean {
   if (host === '[::1]' || /^\[f[cd][0-9a-f]{2}:/u.test(host)) return true;
   const parts = host.split('.');
   if (parts.length !== 4 || parts.some(part => !/^(0|[1-9][0-9]{0,2})$/u.test(part) || Number(part) > 255)) return false;
-  const [a, b] = parts.map(Number);
+  const [a = -1, b = -1] = parts.map(Number);
   return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31)
     || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
 }
