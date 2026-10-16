@@ -3,6 +3,9 @@ import { join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { licenseFiles, validateBundledLicenses } from './package-licenses.mjs';
 
+// Icons main loads at runtime (see apps/desktop/src/main/desktop-lifecycle.ts).
+export const APP_ICON_FILES = Object.freeze(['16', '32', '48', '64', '128', '256'].map(size => `icons/bighelp-${size}.png`).concat('icons/bighelp.ico'));
+
 export function validateTarget(platform, arch) {
   if (!['linux', 'win32'].includes(platform) || arch !== 'x64') throw new Error('Supported development targets: linux/x64 and win32/x64');
 }
@@ -22,7 +25,7 @@ export async function regularFiles(directory, prefix = '') {
 }
 export async function validateAppSource(directory) {
   const files = await regularFiles(directory);
-  const required = ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js', ...licenseFiles];
+  const required = ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js', ...APP_ICON_FILES, ...licenseFiles];
   const allowed = new Set([...required, 'main.cjs.LEGAL.txt', 'preload.cjs.LEGAL.txt', 'renderer/renderer.js.LEGAL.txt']);
   if (required.some(file => !files.includes(file))) throw new Error('Incomplete application bundle');
   if (files.some(file => !allowed.has(file))) throw new Error('Unexpected file in application bundle');
