@@ -18,7 +18,8 @@ const api: DesktopApi = Object.freeze({
   canonicalChat: (generation, profile, requestId) => invoke({ kind: 'canonicalChat', generation, profile, requestId }),
   cancelNavigation: (generation, requestId) => invoke({ kind: 'cancelNavigation', generation, requestId }),
   newChat: (generation, profile) => invoke({ kind: 'newChat', generation, profile }),
-  openChat: (generation, chatId) => invoke({ kind: 'openChat', generation, chatId }),
+  openChat: (generation, chatId, profile) => invoke(profile === undefined ? { kind: 'openChat', generation, chatId }
+    : { kind: 'openChat', generation, chatId, profile }),
   send: (generation, chatId, text) => invoke({ kind: 'send', generation, chatId, text }),
   interrupt: (generation, chatId) => invoke({ kind: 'interrupt', generation, chatId }),
   answer: (generation, promptId, answer) => invoke({ kind: 'answer', generation, promptId, answer }),

@@ -20,6 +20,9 @@ export type TranscriptItem =
 export type AgentView = Readonly<{ id: string; name: string; summary: string; color: string; isDefault?: boolean; model?: string }>;
 export type ChatView = Readonly<{
   id: string; agentId: string; title: string; preview: string; transcript: readonly TranscriptItem[];
+  // Host times in epoch milliseconds, when Hermes supplied them. Saved offline
+  // copies and just-created chats have none; they are never invented.
+  startedAt?: number; updatedAt?: number;
 }>;
 export type HostView = Readonly<{ label: string; state: 'connected' | 'offline' }>;
 export type WorkflowView = Readonly<{ id: string; title: string; status: string }>;

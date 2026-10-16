@@ -9,6 +9,7 @@ import type { Place, SettingsSection } from '../domain/shell.ts';
 import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
 import { AddAgentButton, AgentManager, AgentMenu } from './components/AgentManager.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
+import { ChatMenu } from './components/ChatMenu.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { PendingAttachments } from './components/PendingAttachments.tsx';
 import { ModelButton } from './components/ModelButton.tsx';
@@ -138,6 +139,10 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       if (saved && mounted.current && navigationSequence.current === request && currentGeneration.current === expected) perform();
     });
   };
+  // Same flow as the conversation's compose button: save drafts, then open.
+  const startChat = api && snapshot?.status === 'connected' && act ? (profile: string) => navigate(() => {
+    pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, profile));
+  }) : undefined;
   let detail: JSX.Element;
   const agentId = state.place === 'chats' ? (chatById(data, state.selectedChatId)?.agentId ?? null) : state.selectedAgentId;
   const agent = agentById(data, agentId);
@@ -188,7 +193,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         editable={!snapshot || (snapshot.status === 'connected' && snapshot.selectedChatId === chat?.id)}
         canSend={!sendPending && !!snapshot?.canSend && snapshot.selectedChatId === chat?.id}
         running={!!snapshot?.running && snapshot.selectedChatId === chat?.id}
-        onNewChat={api && snapshot?.status === 'connected' && act ? () => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, agent.id)); }) : undefined}
+        onNewChat={startChat ? () => startChat(agent.id) : undefined}
+        menu={chat && snapshot?.status === 'connected' ? <ChatMenu chat={chat} hostLabel={data.host?.label ?? 'your computer'} /> : null}
         onSend={api && snapshot && chat && act ? () => {
           if (sending.current) return;
           const text = dirty.current.get(chat.id) ?? snapshot.drafts[chat.id] ?? '';
@@ -271,9 +277,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           data={data} narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
         {!ownPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
-            nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow}
+            nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow} onNewChat={startChat}
             addAgent={<AddAgentButton />} agentMenu={agent => <AgentMenu agent={agent} />}
-            onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
+            onOpenChat={(chatId, owner, searched) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(searched ? api.openChat(snapshot.generation, chatId, owner) : api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
             onOpenAgent={id => navigate(() => {
               suppressNavigation.current = false;
               dispatch({ type: 'openAgent', agentId: id });

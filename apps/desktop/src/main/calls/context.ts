@@ -22,6 +22,9 @@ export type CallContext = Readonly<{
   requireProfile(profile: string): string;
   // The chat open in this window, or null. Chat-scoped calls must match it.
   openChat(): OpenChat | null;
+  // Leave the chat if it is the one open in this window, after the host confirmed
+  // it was archived or deleted. Selects nothing; never opens another chat.
+  closeChat(profile: string, storedSessionId: string): void;
   isCurrent(): boolean;
   // Re-read host catalogs after a confirmed change.
   refreshCatalog(): Promise<void>;

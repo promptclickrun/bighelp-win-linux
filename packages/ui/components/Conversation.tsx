@@ -190,7 +190,7 @@ function AgentTabs(props: Readonly<{ agentName: string; active: AgentTab; onTab:
 export function Conversation(props: Readonly<{
   agent: AgentView; chat: ChatView | null; host: HostView | null; tab: AgentTab; draft: string; hint: string;
   sample: boolean; canSend?: boolean; editable?: boolean; running?: boolean; board?: ReactNode; files?: ReactNode; requests?: ReactNode;
-  headerActions?: ReactNode; attachments?: ReactNode; onAttach?: (() => void) | undefined;
+  headerActions?: ReactNode; menu?: ReactNode; attachments?: ReactNode; onAttach?: (() => void) | undefined;
   onDropFiles?: ((files: readonly Readonly<{ name: string; bytes: Uint8Array }>[]) => void) | undefined;
   onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void;
   onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined; onCheckHistory?: (() => void) | undefined;
@@ -215,7 +215,7 @@ export function Conversation(props: Readonly<{
   return (
     <View role="main" style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: palette.page }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 16,
-        borderBottomWidth: 1, borderBottomColor: palette.line, minHeight: 56 }}>
+        borderBottomWidth: 1, borderBottomColor: palette.line, minHeight: 56, zIndex: 1 }}>
         {props.onBack ? <IconButton icon="left" label="Back to the list" onPress={props.onBack} /> : null}
         <Orb color={props.agent.color} size={32} />
         <View style={{ flex: 1, minWidth: 0 }}>
@@ -223,6 +223,7 @@ export function Conversation(props: Readonly<{
           <Label size={12} tone="muted" oneLine>{subline}</Label>
         </View>
         {props.headerActions}
+        {props.menu}
         <IconButton icon="compose" label={`New chat with ${props.agent.name}`} onPress={props.onNewChat ?? (() => {})} disabled={!props.onNewChat} />
         {props.agentMenu}
       </View>
