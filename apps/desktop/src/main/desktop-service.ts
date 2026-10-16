@@ -368,11 +368,10 @@ export function createDesktopService(adapters: Readonly<{
     if (!connection || status !== 'connected') throw Error('Not connected');
     const chats: ChatView[] = [];
     for (const agent of data.agents) {
-      const rows = decodeSessionList(await connection.operation({ kind: 'sessionList', profile: agent.id }), agent.id);
+      // session.list decides membership; REST adds display-only last-activity times.
+      const [listed, activity] = await Promise.all([connection.operation({ kind: 'sessionList', profile: agent.id }), recentActivity(connection, agent.id)]);
       if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
-      // Display-only last-activity times; session.list above decides membership.
-      const activity = await recentActivity(connection, agent.id);
-      if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
+      const rows = decodeSessionList(listed, agent.id);
       for (const row of rows) {
         if (chats.some(chat => chat.id === row.id)) throw Error('Ambiguous session identity');
         chats.push(catalogChat(row, activity.get(row.id),
