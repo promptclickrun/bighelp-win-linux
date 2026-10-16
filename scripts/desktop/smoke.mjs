@@ -22,7 +22,8 @@ const args = process.argv.slice(2);
 const flag = name => args.includes(name);
 const shotsIndex = args.indexOf('--screenshots');
 const shots = shotsIndex >= 0 ? resolve(args[shotsIndex + 1] ?? '') : null;
-const electronPath = createRequire(import.meta.url)('electron');
+const executableIndex = args.indexOf('--executable');
+const electronPath = executableIndex >= 0 ? resolve(args[executableIndex + 1] ?? '') : createRequire(import.meta.url)('electron');
 const main = join(root, 'apps', 'desktop', 'dist', 'main.cjs');
 
 const freePort = () => new Promise((done, fail) => {
@@ -35,8 +36,10 @@ const port = await freePort();
 const profile = await mkdtemp(join(tmpdir(), 'bighelp-smoke-'));
 const child = spawn(electronPath, [
   `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1',
-  ...(flag('--no-os-sandbox') ? ['--no-sandbox'] : []), main, ...(flag('--fixture-preview') ? ['--fixture-preview'] : []),
-], { env: { ...process.env, XDG_CONFIG_HOME: profile, ELECTRON_DISABLE_SECURITY_WARNINGS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  ...(flag('--no-os-sandbox') ? ['--no-sandbox'] : []), ...(flag('--headless') ? ['--ozone-platform=headless', '--disable-gpu'] : []),
+  ...(executableIndex >= 0 ? [] : [main]), ...(flag('--fixture-preview') ? ['--fixture-preview'] : []),
+], { env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, LOCALAPPDATA: profile,
+  ELECTRON_RUN_AS_NODE: undefined, ELECTRON_DISABLE_SECURITY_WARNINGS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let stderr = '';
 child.stderr.on('data', chunk => { stderr += chunk; });
 child.stdout.on('data', () => {});
@@ -80,6 +83,7 @@ try {
     return reply.result?.result?.value;
   };
   await send('Network.enable');
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
   browserVersion = await evaluate('navigator.userAgent.match(/(Chrome|Electron)\\/[\\d.]+/g)?.join(" ")');
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await evaluate("document.querySelector('[aria-label=\"Places\"]') !== null")) break;
@@ -93,6 +97,12 @@ try {
   check('preload exposes only {platform, fixturePreview}', /^\{"platform":"(windows|linux|other)","fixturePreview":(true|false)\}$/u.test(info ?? ''), info);
   check('preload object is frozen', await evaluate('Object.isFrozen(window.bighelpShell)'));
   check('no electron/ipc globals', await evaluate("!('ipcRenderer' in window) && !('electron' in window)"));
+  check('desktop bridge exposes only finite operations', await evaluate(
+    "Object.isFrozen(window.bighelpDesktop) && Object.keys(window.bighelpDesktop).sort().join(',') === 'answer,connect,disconnect,draft,interrupt,newChat,openChat,refresh,send,snapshot,subscribe,workspace'"));
+  if (!flag('--fixture-preview')) {
+    check('privileged service rejects stale or malformed actions', await evaluate(
+      "window.bighelpDesktop.send(-1, 'not-a-chat', 'test').then(result => result.ok === false)"));
+  }
   check('page served from app://bighelp', await evaluate("location.origin === 'app://bighelp'"));
   const csp = await evaluate("document.querySelector('meta[http-equiv=\"Content-Security-Policy\"]')?.content ?? ''");
   check('CSP forbids connections', /connect-src 'none'/u.test(csp));
@@ -147,7 +157,8 @@ try {
     .every(label => text.includes(label)), '');
   const fixture = flag('--fixture-preview');
   check(fixture ? 'sample data is labelled' : 'no invented data without a computer',
-    fixture ? text.includes('Sample data') : text.includes('No computer connected yet') && !text.includes('Juniper'));
+    fixture ? text.includes('Sample data') : text.includes('No computer connected yet') && !text.includes('Juniper'),
+    fixture ? '' : text.slice(0, 1200));
 
   const click = label => evaluate(`(() => { const el = document.querySelector('[aria-label=${JSON.stringify(label)}]'); if (!el) return false; el.click(); return true; })()`);
   const capture = async name => {

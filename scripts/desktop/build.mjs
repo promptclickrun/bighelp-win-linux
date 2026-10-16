@@ -6,6 +6,7 @@ import { build } from 'esbuild';
 import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
+import { isBuiltin } from 'node:module';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const app = join(root, 'apps', 'desktop');
@@ -20,7 +21,9 @@ const common = { bundle: true, logLevel: 'warning', legalComments: 'linked', met
 // Main and preload: Electron's embedded Node 24 (Electron 44.7.2). electron is
 // provided by the runtime. The sandboxed preload may only require('electron').
 const mainResult = await build({ ...common, entryPoints: [join(app, 'src/main/main.ts')], outfile: join(out, 'main.cjs'),
-  platform: 'node', format: 'cjs', target: 'node24', external: ['electron'] });
+  platform: 'node', format: 'cjs', target: 'node24', external: ['electron'],
+  // ws uses Node's native UTF-8 validation and JS masking; no optional native addons.
+  define: { 'process.env.WS_NO_BUFFER_UTIL': '"1"', 'process.env.WS_NO_UTF_8_VALIDATE': '"1"' } });
 const preloadResult = await build({ ...common, entryPoints: [join(app, 'src/preload/preload.ts')], outfile: join(out, 'preload.cjs'),
   platform: 'node', format: 'cjs', target: 'node24', external: ['electron'] });
 
@@ -28,20 +31,22 @@ const preloadResult = await build({ ...common, entryPoints: [join(app, 'src/prel
 const rendererResult = await build({ ...common, entryPoints: [join(app, 'src/renderer/index.tsx')],
   outfile: join(out, 'renderer', 'renderer.js'), platform: 'browser', format: 'iife', target: 'chrome140',
   jsx: 'automatic', minify: production,
-  define: { 'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development') } });
+  define: { 'process.env.NODE_ENV': JSON.stringify(production ? 'production' : 'development'),
+    __BIGHELP_FIXTURES__: production ? 'false' : 'true' } });
 await copyFile(join(app, 'src/renderer/index.html'), join(out, 'renderer', 'index.html'));
 
 // Graph checks: fail the build instead of shipping a boundary violation.
 const inputs = result => Object.keys(result.metafile.inputs);
 const rendererInputs = inputs(rendererResult);
 const forbidden = rendererInputs.filter(file => /(^|\/)node_modules\/react-native\//u.test(file) || /^node:/u.test(file)
-  || /(^|\/)apps\/desktop\/src\/(main|preload)\//u.test(file));
+  || /(^|\/)apps\/desktop\/src\/(main|preload)\//u.test(file)
+  || (production && /packages\/ui\/fixtures\.ts$/u.test(file)));
 if (forbidden.length > 0) throw new Error(`Renderer bundle includes forbidden modules: ${forbidden.join(', ')}`);
 const preloadOutputs = Object.values(preloadResult.metafile.outputs).flatMap(output => output.imports.map(entry => entry.path));
 const preloadExternal = preloadOutputs.filter(path => path !== 'electron');
 if (preloadExternal.length > 0) throw new Error(`Sandboxed preload must only require electron: ${preloadExternal.join(', ')}`);
 const mainExternal = Object.values(mainResult.metafile.outputs).flatMap(output => output.imports)
-  .filter(entry => entry.external && entry.path !== 'electron' && !entry.path.startsWith('node:')).map(entry => entry.path);
+  .filter(entry => entry.external && entry.path !== 'electron' && !isBuiltin(entry.path)).map(entry => entry.path);
 if (mainExternal.length > 0) throw new Error(`Main bundle has unexpected externals: ${mainExternal.join(', ')}`);
 
 const size = result => Object.values(result.metafile.outputs).reduce((sum, output) => sum + output.bytes, 0);
