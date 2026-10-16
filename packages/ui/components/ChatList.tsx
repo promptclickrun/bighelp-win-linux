@@ -56,7 +56,8 @@ export function ChatList(props: Readonly<{ data: ViewData; selectedChatId: strin
       <Search label="Search chats" value={query} onChange={setQuery} />
       {status ? <View role="status" aria-live="polite" style={{ paddingHorizontal: 12, paddingTop: 8 }}>
         <Label size={12} tone="muted">{status}</Label></View> : null}
-      {data.chats.length === 0 && !searching ? <Empty>No chats yet. They appear here once a computer is connected.</Empty> : null}
+      {data.chats.length === 0 && !searching ? <Empty>{connected ? 'No chats yet. Use New chat to start one.'
+        : 'No chats yet. They appear here once a computer is connected.'}</Empty> : null}
       {local.length > 0 ? (
         <View role="list" aria-label="Chats" style={{ zIndex: 2 }}>
           {data.sample ? <Caption tag="Sample data">Chats</Caption> : null}
