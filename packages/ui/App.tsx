@@ -22,7 +22,6 @@ import { ThemeProvider } from './theme.tsx';
 import { LAYOUT, PALETTES, fontStack } from './tokens.ts';
 import type { DesktopApi, DesktopSnapshot, DesktopResult } from '../../apps/desktop/src/shared/desktop-api.ts';
 import type { ShellInfo } from '../../apps/desktop/src/shared/shell-info.ts';
-import type { HostValue } from './host.tsx';
 import { HostConnection } from './components/HostConnection.tsx';
 import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
@@ -140,7 +139,6 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       if (saved && mounted.current && navigationSequence.current === request && currentGeneration.current === expected) perform();
     });
   };
-  const host: HostValue | null = api && snapshot && act ? { api, snapshot, act } : null;
   // Same flow as the conversation's compose button: save drafts, then open.
   const startChat = api && snapshot?.status === 'connected' && act ? (profile: string) => navigate(() => {
     pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, profile));
@@ -194,7 +192,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         canSend={!sendPending && !!snapshot?.canSend && snapshot.selectedChatId === chat?.id}
         running={!!snapshot?.running && snapshot.selectedChatId === chat?.id}
         onNewChat={startChat ? () => startChat(agent.id) : undefined}
-        menu={host && chat && snapshot?.status === 'connected' ? <ChatMenu host={host} chat={chat} hostLabel={data.host?.label ?? 'your computer'} /> : null}
+        menu={chat && snapshot?.status === 'connected' ? <ChatMenu chat={chat} hostLabel={data.host?.label ?? 'your computer'} /> : null}
         onSend={api && snapshot && chat && act ? () => {
           if (sending.current) return;
           const text = dirty.current.get(chat.id) ?? snapshot.drafts[chat.id] ?? '';
@@ -277,7 +275,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           data={data} narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
         {!ownPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
-            nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow} host={host} onNewChat={startChat}
+            nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow} onNewChat={startChat}
             addAgent={<AddAgentButton />} agentMenu={agent => <AgentMenu agent={agent} />}
             onOpenChat={(chatId, owner, searched) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(searched ? api.openChat(snapshot.generation, chatId, owner) : api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
             onOpenAgent={id => navigate(() => {

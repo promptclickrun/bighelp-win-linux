@@ -16,7 +16,7 @@ export function useChatCapabilities(): Readonly<{ search: boolean; manage: boole
   return { search: capabilities.value?.search === true, manage: capabilities.value?.manage === true };
 }
 
-// Needs a HostProvider above it (ChatList provides one).
+// Needs the app's HostProvider above it.
 export function ChatActions(props: Readonly<{ chat: ChatView; hostLabel: string; label?: string }>): JSX.Element {
   const call = useCall();
   const [pending, setPending] = useState<Pending | null>(null);

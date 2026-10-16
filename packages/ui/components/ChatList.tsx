@@ -5,8 +5,7 @@ import { useEffect, useState } from 'react';
 import { View } from 'react-native-web';
 import type { ChatSearchHit, SnippetPart } from '../../contracts/chat-list.ts';
 import { filterChats, groupChats } from '../chat-list.ts';
-import type { HostValue } from '../host.tsx';
-import { HostProvider, useQuery } from '../host.tsx';
+import { useHost, useQuery } from '../host.tsx';
 import { useTheme } from '../theme.tsx';
 import type { ChatView, ViewData } from '../view-model.ts';
 import { agentById } from '../view-model.ts';
@@ -16,18 +15,11 @@ import { Label, Orb, Tag } from './primitives.tsx';
 
 export type OpenChat = (chatId: string, agentId: string, searched: boolean) => void;
 
-export function ChatList(props: Readonly<{
-  data: ViewData; selectedChatId: string | null; host: HostValue | null; onOpenChat: OpenChat;
-}>): JSX.Element {
-  const body = <ChatListBody data={props.data} selectedChatId={props.selectedChatId} onOpenChat={props.onOpenChat}
-    connected={props.host?.snapshot.status === 'connected'} />;
-  return props.host ? <HostProvider value={props.host}>{body}</HostProvider> : body;
-}
-
-function ChatListBody(props: Readonly<{
-  data: ViewData; selectedChatId: string | null; connected: boolean; onOpenChat: OpenChat;
-}>): JSX.Element {
+// Host calls come from the app's HostProvider; without one (sample preview) the
+// list filters locally and offers no chat actions.
+export function ChatList(props: Readonly<{ data: ViewData; selectedChatId: string | null; onOpenChat: OpenChat }>): JSX.Element {
   const { data } = props;
+  const connected = useHost()?.snapshot.status === 'connected';
   const [query, setQuery] = useState('');
   const [settled, setSettled] = useState('');
   // Ask the host only after typing pauses; local filtering is immediate.
@@ -36,18 +28,18 @@ function ChatListBody(props: Readonly<{
     return () => clearTimeout(timer);
   }, [query]);
   const capabilities = useChatCapabilities();
-  const manage = props.connected && capabilities.manage;
+  const manage = connected && capabilities.manage;
   const hostLabel = data.host?.label ?? 'your computer';
   const profiles = data.agents.slice(0, 16).map(agent => agent.id);
   const searching = query.trim().length >= 2;
-  const remote = useQuery('chats.search', props.connected && capabilities.search && settled.length >= 2 && profiles.length
+  const remote = useQuery('chats.search', connected && capabilities.search && settled.length >= 2 && profiles.length
     ? { query: settled, profiles } : null);
   const local = filterChats(data.chats, data.agents, query);
   const shown = new Set(local.map(chat => chat.id));
   const extra = searching && remote.status === 'loaded' && remote.value
     ? remote.value.results.filter(hit => !shown.has(hit.id) && data.agents.some(agent => agent.id === hit.profile)) : [];
   let status = '';
-  if (searching && props.connected) {
+  if (searching && connected) {
     if (!capabilities.search) status = 'Search covers chats already loaded on this device.';
     else if (remote.status === 'loading' || settled !== query.trim()) status = `Searching ${hostLabel}…`;
     else if (remote.status === 'failed') status = `Could not search ${hostLabel}. Showing chats on this device.`;

@@ -3,7 +3,6 @@ import type { JSX, ReactNode } from 'react';
 import { ScrollView, View } from 'react-native-web';
 import type { Place, SettingsSection } from '../../domain/shell.ts';
 import { agentsByRecency } from '../chat-list.ts';
-import type { HostValue } from '../host.tsx';
 import { useTheme } from '../theme.tsx';
 import type { AgentView, ViewData } from '../view-model.ts';
 import { ChatList } from './ChatList.tsx';
@@ -24,8 +23,8 @@ export function ContextList(props: Readonly<{
   onOpenAgent: (agentId: string) => void; onSettingsSection: (section: SettingsSection) => void; narrow: boolean;
   // Agent management controls, supplied only while a computer is connected.
   addAgent?: JSX.Element; agentMenu?: ((agent: AgentView) => ReactNode) | undefined;
-  // Connected builds only: host calls for the chat list, and starting a new chat.
-  host?: HostValue | null; onNewChat?: ((agentId: string) => void) | undefined;
+  // Connected builds only: starting a new chat.
+  onNewChat?: ((agentId: string) => void) | undefined;
 }>): JSX.Element {
   const { palette } = useTheme();
   const { data } = props;
@@ -45,7 +44,7 @@ export function ContextList(props: Readonly<{
           ? <IconButton icon="compose" label={`New chat with ${agents[0]!.name}`} onPress={() => onNewChat(agents[0]!.id)} />
           : <MenuButton label="New chat" icon="compose"
             items={agents.map(agent => ({ label: agent.name, onPress: () => onNewChat(agent.id) }))} />;
-      body = <ChatList data={data} selectedChatId={props.selectedChatId} host={props.host ?? null} onOpenChat={props.onOpenChat} />;
+      body = <ChatList data={data} selectedChatId={props.selectedChatId} onOpenChat={props.onOpenChat} />;
       break;
     }
     case 'agents':
