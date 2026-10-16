@@ -71,7 +71,10 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const narrow = width < LAYOUT.narrowBreakpoint;
   useEffect(() => { dispatch({ type: 'layout', layout: narrow ? 'narrow' : 'wide' }); }, [narrow]);
 
-  const theme = state.appearance === 'automatic' ? (system === 'dark' ? 'dark' : 'light') : state.appearance;
+  // Connected builds keep these choices in main; the sample preview keeps them in memory.
+  const appearance = props.snapshot?.preferences?.appearance ?? state.appearance;
+  const nerdMode = props.snapshot?.preferences?.nerdMode ?? state.nerdMode;
+  const theme = appearance === 'automatic' ? (system === 'dark' ? 'dark' : 'light') : appearance;
   const palette = PALETTES[theme];
   const font = fontStack(props.platform);
   const { data } = props;
@@ -171,16 +174,16 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         }} />
     );
   } else if (state.place === 'settings' && state.settingsSection !== null) {
-    detail = <SettingsPage section={state.settingsSection} appearance={state.appearance} host={data.host}
+    detail = <SettingsPage section={state.settingsSection} appearance={appearance} host={data.host}
       hostContent={api && snapshot && act ? <HostConnection snapshot={snapshot} error={props.error ?? ''} onConnect={host => navigate(() => { void act(api.connect(host)); })} onDisconnect={() => navigate(() => { void act(api.disconnect()); })} onRefresh={() => { void act(api.refresh()); }} /> : undefined}
-      onAppearance={value => dispatch({ type: 'appearance', value })} onBack={() => openSection(null)} />;
+      onAppearance={value => { dispatch({ type: 'appearance', value }); if (api && act) void act(api.preferences({ appearance: value })); }} onBack={() => openSection(null)} />;
   } else if (state.place === 'settings') {
     detail = (
       <View style={{ flex: 1, minWidth: 0 }}>
         <PageHead title="Settings" />
         <ScrollView style={{ flex: 1 }}>
-          <SettingsOverview nerdMode={state.nerdMode} onOpen={openSection}
-            onNerdMode={on => dispatch({ type: 'nerdMode', on })} />
+          <SettingsOverview nerdMode={nerdMode} onOpen={openSection}
+            onNerdMode={on => { dispatch({ type: 'nerdMode', on }); if (api && act) void act(api.preferences({ nerdMode: on })); }} />
         </ScrollView>
       </View>
     );
@@ -208,7 +211,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
         {!functionPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
-            nerdMode={state.nerdMode} settingsSection={state.settingsSection} narrow={narrow}
+            nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow}
             onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
             onOpenAgent={id => navigate(() => {
               suppressNavigation.current = false;

@@ -11,6 +11,7 @@ const api: DesktopApi = Object.freeze({
   connect: host => invoke({ kind: 'connect', host }),
   disconnect: () => invoke({ kind: 'disconnect' }),
   refresh: () => invoke({ kind: 'refresh' }),
+  preferences: changes => invoke({ kind: 'preferences', changes }),
   canonicalChat: (generation, profile, requestId) => invoke({ kind: 'canonicalChat', generation, profile, requestId }),
   cancelNavigation: (generation, requestId) => invoke({ kind: 'cancelNavigation', generation, requestId }),
   newChat: (generation, profile) => invoke({ kind: 'newChat', generation, profile }),

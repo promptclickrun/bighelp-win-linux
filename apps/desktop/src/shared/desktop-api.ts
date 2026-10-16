@@ -3,6 +3,8 @@ import type { InteractivePrompt } from '../../../../packages/contracts/prompts.t
 import type { WorkspaceBoard, WorkspaceDays, WorkspaceProjects, WorkspaceScheduled, WorkspaceUsage } from '../../../../packages/contracts/workspace.ts';
 import { CALLS, isCallName } from './calls/index.ts';
 import { safeLink } from './links.ts';
+import { parsePreferenceChanges } from './preferences.ts';
+import type { Preferences } from './preferences.ts';
 import type { AppCommand } from './links.ts';
 import type { CallInput, CallName, CallResult } from './calls/index.ts';
 
@@ -25,6 +27,12 @@ export type DesktopSnapshot = Readonly<{
   prompts: readonly Readonly<{ id: string; prompt: InteractivePrompt }>[];
   drafts: Readonly<Record<string, string>>;
   workspace: DesktopWorkspace | null;
+  preferences: Preferences;
+}>;
+// Something that needs a person while bighelp runs. Main decides whether to show
+// an OS notification (preferences, focus, the chat on screen); never a decision path.
+export type DesktopAlert = Readonly<{
+  kind: 'approval' | 'question' | 'reply' | 'failed'; chatId: string; agentName: string; text: string;
 }>;
 export type DesktopResult = Readonly<{ ok: true; snapshot: DesktopSnapshot }> | Readonly<{ ok: false; message: string }>;
 export type DesktopAction =
@@ -32,6 +40,7 @@ export type DesktopAction =
   | Readonly<{ kind: 'disconnect' }>
   | Readonly<{ kind: 'cancelNavigation'; generation: number; requestId: string }>
   | Readonly<{ kind: 'refresh' }>
+  | Readonly<{ kind: 'preferences'; changes: Partial<Preferences> }>
   | Readonly<{ kind: 'connect'; host: HostInput }>
   | Readonly<{ kind: 'canonicalChat'; generation: number; profile: string; requestId: string }>
   | Readonly<{ kind: 'newChat'; generation: number; profile: string }>
@@ -48,6 +57,7 @@ export type DesktopApi = Readonly<{
   connect(host: HostInput): Promise<DesktopResult>;
   disconnect(): Promise<DesktopResult>;
   refresh(): Promise<DesktopResult>;
+  preferences(changes: Partial<Preferences>): Promise<DesktopResult>;
   canonicalChat(generation: number, profile: string, requestId: string): Promise<DesktopResult>;
   cancelNavigation(generation: number, requestId: string): Promise<DesktopResult>;
   newChat(generation: number, profile: string): Promise<DesktopResult>;
@@ -110,6 +120,10 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   const kind = input.kind;
   if (kind === 'snapshot' || kind === 'disconnect' || kind === 'refresh') {
     keys(input, ['kind']); return { kind };
+  }
+  if (kind === 'preferences') {
+    keys(input, ['kind', 'changes']);
+    return { kind, changes: parsePreferenceChanges(input.changes) };
   }
   if (kind === 'connect') {
     keys(input, ['kind', 'host']);

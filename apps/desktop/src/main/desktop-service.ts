@@ -20,7 +20,9 @@ import type { ProtectedValue } from '../../../../packages/platform/protected-rep
 import { EMPTY_DATA } from '../../../../packages/ui/view-model.ts';
 import type { ViewData, ChatView, TranscriptItem } from '../../../../packages/ui/view-model.ts';
 import { parseDesktopAction } from '../shared/desktop-api.ts';
-import type { DesktopAction, DesktopSnapshot, DesktopResult, DesktopWorkspace, HostInput } from '../shared/desktop-api.ts';
+import type { DesktopAction, DesktopAlert, DesktopSnapshot, DesktopResult, DesktopWorkspace, HostInput } from '../shared/desktop-api.ts';
+import { DEFAULT_PREFERENCES, restorePreferences } from '../shared/preferences.ts';
+import type { Preferences } from '../shared/preferences.ts';
 import type { CallInput, CallName, CallOutput } from '../shared/calls/index.ts';
 import type { CallFailure } from '../shared/call.ts';
 import { HANDLERS } from './calls/index.ts';
@@ -49,7 +51,11 @@ function journal(value: JsonValue | undefined): JsonObject[] {
 export function createDesktopService(adapters: Readonly<{
   repository: Repository | null; connect: (options: ConnectOptions) => Promise<Gateway>;
   onChange: (snapshot: DesktopSnapshot) => void;
+  // Optional desktop integrations owned by main (notifications, tray, login item).
+  onPreferences?: (preferences: Preferences) => void;
+  notify?: (alert: DesktopAlert) => void;
 }>) {
+  let preferences: Preferences = DEFAULT_PREFERENCES;
   const displayRecovery = adapters.repository ? createChatDisplayRecovery(adapters.repository) : null;
   let liveRecovery: ReturnType<NonNullable<typeof displayRecovery>['activate']> | null = null;
   let recovered: { binding: string; scope: DisplayCacheScope; data: DisplayCacheData } | null = null;
@@ -81,7 +87,8 @@ export function createDesktopService(adapters: Readonly<{
     && reconciled && !running && !sending && !navigating;
   function snapshot(): DesktopSnapshot {
     return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend(), notice,
-      storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace });
+      storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
+      preferences });
   }
   const publish = () => adapters.onChange(snapshot());
   function save(key: string, value: unknown): Promise<void> {
@@ -369,6 +376,13 @@ export function createDesktopService(adapters: Readonly<{
     if (action.kind === 'connect') { await connect(action.host); return; }
     if (action.kind === 'disconnect') { retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
     if (action.kind === 'refresh') { await refresh(); return; }
+    if (action.kind === 'preferences') {
+      const next = Object.freeze({ ...preferences, ...action.changes });
+      if (adapters.repository) await save('desktop:preferences', next);
+      preferences = next; publish();
+      try { adapters.onPreferences?.(preferences); } catch { /* Integration failures never block the choice. */ }
+      return;
+    }
     if (action.kind === 'cancelNavigation') {
       if (navigation?.requestId === action.requestId && navigation.initiatingGeneration === action.generation) {
         navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSend = null;
@@ -521,7 +535,13 @@ export function createDesktopService(adapters: Readonly<{
     },
     async initialize(): Promise<void> {
       if (!adapters.repository || shuttingDown) return;
+      // Capture the host lease before any await: a disconnect during startup wins.
       const current = hostGeneration;
+      try {
+        const stored = await adapters.repository.read('desktop:preferences');
+        if (stored) { preferences = restorePreferences(stored.value); revisions.set('desktop:preferences', stored.revision); publish(); }
+      } catch { /* Defaults apply; a corrupt record is never overwritten silently. */ }
+      try { adapters.onPreferences?.(preferences); } catch { /* Integration failures never block startup. */ }
       try {
         const enabled = await adapters.repository.read('desktop:autoConnect');
         if (shuttingDown || current !== hostGeneration) return;
