@@ -34,7 +34,14 @@ A separate reviewer read the chat core and reproduced 10 of 15 findings against 
 
 ## Hosted CI
 
-Recorded in the pull request: Windows Server 2022 and Ubuntu 24.04 runners build, test, package and run the packaged smoke with the OS sandbox enabled.
+[CI run 38977637932](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38977637932) at `22f88dc` passed both jobs (build, five strict compiler projects, tests, production packaging and packaged smoke with the OS sandbox enabled):
+
+| Runner | Tests | OS protection | Packaged smoke | Download |
+|---|---|---|---|---|
+| Windows Server 2022 x64 | 640: 631 passed, 9 POSIX-only skips, 0 failed | DPAPI write → restart → read: all checks true | 169/169 | [bighelp-beta-windows-2022](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38977637932/artifacts/12079442664) |
+| Ubuntu 24.04 x64 (xvfb) | 640 passed, 0 failed | No keyring on the runner: unavailable/basic_text, refused (fail closed) | 169/169 | [bighelp-beta-ubuntu-24.04](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38977637932/artifacts/12079886112) |
+
+Downloads need repository access and expire after 14 days. They are unsigned portable archives with SHA-256 files. Hosted runners are not Windows 11 or Ubuntu desktop qualification.
 
 ## Not verified
 
