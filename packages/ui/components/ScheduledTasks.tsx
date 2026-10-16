@@ -290,7 +290,8 @@ function initialDraft(editing: Editing, profile: string): Draft {
     model: task.model ?? '', workdir: task.workdir ?? '', more: !!(task.model || task.workdir),
     ...(start.kind === 'daily' || start.kind === 'weekdays' ? { time: start.time } : {}),
     ...(start.kind === 'hours' ? { every: start.every } : {}), ...(start.kind === 'once' ? { at: localInput(start.at) } : {}),
-    ...(start.kind === 'custom' ? { custom: start.text } : {}) };
+    // Keep the person's own wording ("every monday 9am"); Hermes parses it to the same cron line.
+    ...(start.kind === 'custom' ? { custom: task.schedule.kind === 'cron' && task.scheduleText !== task.schedule.expr ? task.scheduleText : start.text } : {}) };
 }
 
 export function TaskEditor(props: Readonly<{

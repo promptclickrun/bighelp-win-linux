@@ -195,6 +195,12 @@ test('editing sends only what changed',async()=>{
  assert.equal(field(h,'How often?').value,'2');control(h,'Save').onPress();h.render();assert.equal(unchanged,1);assert.equal(sent(io,'schedules.update').length,0);
  field(h,'Short name').onChange({target:{value:'Renamed'}});h.render();control(h,'Save').onPress();h.render();
  assert.deepEqual(sent(io,'schedules.update')[0].input,{profile:'one',id:'t',changes:{name:'Renamed'}});h.unmount();
+ const natural=taskRow({schedule:{kind:'cron',expr:'0 9 * * 1'},scheduleText:'every monday 9am'});
+ const own=await harness(scheduledEntry,'TaskEditor',{editing:{mode:'edit',task:natural},profile:'one',agents:data.agents,supports:null,hostOffset:null,api:io.api,snapshot:snapshot(),
+  onClose(){},onSaved(){},onUncertain(){},onUnchanged(){}});own.render();
+ assert.equal(field(own,'Schedule').value,'every monday 9am','the person keeps their own wording');
+ field(own,'Short name').onChange({target:{value:'Mondays'}});own.render();control(own,'Save').onPress();own.render();
+ assert.deepEqual(sent(io,'schedules.update')[1].input.changes,{name:'Mondays'});own.unmount();
 });
 test('usage summary and daily/model selection keep missing values unavailable and cost labels distinct',async()=>{
  const io=ipc(),h=await harness(pageEntry,'UsagePage',pageProps(io.api,{page:'usage'}));h.render();resolve(io.calls[0],'usage',{days:30,totals:{inputTokens:0,estimatedCost:0.2,actualCost:0},daily:[{day:'2026-10-01',sessions:0}],models:[{name:'Synthetic model',apiCalls:2}]});await h.settle();
