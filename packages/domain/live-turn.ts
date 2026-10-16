@@ -16,12 +16,13 @@ export type LiveTurn = Readonly<{
   todos: readonly TodoItem[]; todoRevision: number;
   context: Readonly<{ used: number; max: number }> | null;
   failure: string | null;       // plain sentence for the last failed turn
+  model: Readonly<{ name: string; provider: string; reasoning: string }> | null;
   counter: number;
 }>;
 
 export const EMPTY_LIVE: LiveTurn = Object.freeze({
   turn: null, running: false, items: Object.freeze([]), segment: null, reasoning: null, status: '', startedAt: null,
-  todos: Object.freeze([]), todoRevision: -1, context: null, failure: null, counter: 0,
+  todos: Object.freeze([]), todoRevision: -1, context: null, failure: null, model: null, counter: 0,
 });
 
 export const LIVE_LIMITS = Object.freeze({ items: 1500, textBytes: 1024 * 1024, status: 160 });
@@ -225,6 +226,10 @@ export function reduceLive(state: LiveTurn, type: string, payload: Payload, now:
       const usage = payload.usage && typeof payload.usage === 'object' ? payload.usage as Record<string, unknown> : null;
       if (usage && Number.isSafeInteger(usage.context_used) && Number.isSafeInteger(usage.context_max) && (usage.context_max as number) > 0) {
         current = Object.freeze({ ...current, context: Object.freeze({ used: usage.context_used as number, max: usage.context_max as number }) });
+      }
+      if (type === 'session.info' && typeof payload.model === 'string' && payload.model && payload.model.length <= 256) {
+        current = Object.freeze({ ...current, model: Object.freeze({ name: payload.model, provider: str(payload.provider).slice(0, 128),
+          reasoning: str(payload.reasoning_effort).slice(0, 32) }) });
       }
       if (type === 'session.info' && payload.running === false && current.running) {
         // The settled bookend: anything still running has no confirmed outcome.

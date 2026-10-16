@@ -114,7 +114,7 @@ export function createDesktopService(adapters: Readonly<{
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
       preferences, attachments: staged && staged.chatId === selectedChatId
         ? staged.files.map(file => ({ id: file.id, name: file.name, size: file.bytes.byteLength, kind: file.kind })) : [],
-      turn: { key: live.turn, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt } });
+      turn: { key: live.turn, model: live.model, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt } });
   }
   const publish = () => { clearTimeout(publishTimer); publishTimer = undefined; adapters.onChange(snapshot()); };
   // Streaming text arrives many times a second; coalesce those updates.
@@ -544,28 +544,39 @@ export function createDesktopService(adapters: Readonly<{
       }
       // queue (or after interrupt): prompt.submit with queued:true, journaled below.
     } else if (!canSend()) throw Error('Chat is not ready');
+    if (/^\/[A-Za-z0-9._-]{1,96}(?:\s|$)/u.test(action.text.trimStart()) && !files.length) {
+      // Commands never travel as plain text; mid-reply they would be read as words.
+      if (running) throw new UserFacingError('Commands run when the current reply finishes. Send it again then.');
+      await runCommand(captured, connection, action.chatId, action.text.trim()); return;
+    }
+    await journaledSend({ captured, connection, chatId: action.chatId, draftText: action.text, submitText: action.text, display: action.text, files, busyAtDispatch });
+  }
+  // Persist intent, stage files, then one prompt.submit (HERMES_API.md §6 Send).
+  async function journaledSend(input: Readonly<{ captured: Owner; connection: Gateway; chatId: string; draftText: string; submitText: string;
+    display: string; files: readonly StagedFile[]; busyAtDispatch: boolean }>) {
+    const { captured, connection, chatId, files } = input;
     sending = true; let dispatchAttempted = false;
-    const intentKey = `journal:${scope(captured.profileId, action.chatId)}`, draftKey = `draft:${scope(captured.profileId, action.chatId)}`;
+    const intentKey = `journal:${scope(captured.profileId, chatId)}`, draftKey = `draft:${scope(captured.profileId, chatId)}`;
     const draftRevision = revisions.get(draftKey) ?? null;
     let bookendAtDispatch = turnBookends; publish();
     try {
       const references = files.length ? await upload(captured, connection, files) : [];
       if (owner !== captured) return;
-      const text = [action.text, ...references].filter(part => part.trim()).join('\n');
+      const text = [input.submitText, ...references].filter(part => part.trim()).join('\n');
       const result = await createTextSend({ id: randomUUID(), requestId: randomUUID(), owner: captured, text }, {
         currentOwner: () => owner === captured && status === 'connected' ? captured : null,
         commit: intent => commitIntent(intentKey, intent), submit: request => { dispatchAttempted = true; bookendAtDispatch = turnBookends; return connection.submitText(request); },
       })();
       if (owner !== captured) return;
-      live = addOutgoing(live, result.id, action.text, result.phase === 'accepted' ? 'pending' : 'unknown', files.map(file => file.kind === 'image' ? 'Photo' : file.name));
-      if (staged?.chatId === action.chatId) staged = { chatId: action.chatId, files: staged.files.filter(file => !files.includes(file)) };
-      applyTranscript(action.chatId);
+      live = addOutgoing(live, result.id, input.display, result.phase === 'accepted' ? 'pending' : 'unknown', files.map(file => file.kind === 'image' ? 'Photo' : file.name));
+      if (staged?.chatId === chatId) staged = { chatId, files: staged.files.filter(file => !files.includes(file)) };
+      applyTranscript(chatId);
       if (result.phase === 'accepted') {
         acceptedSends = [...acceptedSends, { intent: result, key: intentKey, bookend: bookendAtDispatch }];
-        const cleared = await clearSentDraft(draftKey, draftRevision, action.text);
+        const cleared = await clearSentDraft(draftKey, draftRevision, input.draftText);
         if (owner !== captured) return;
-        if (cleared) drafts = { ...drafts, [action.chatId]: '' };
-        if (busyAtDispatch) notice = 'Queued. It runs when the current reply finishes.';
+        if (cleared) drafts = { ...drafts, [chatId]: '' };
+        if (input.busyAtDispatch) notice = 'Queued. It runs when the current reply finishes.';
         else if (turnBookends === bookendAtDispatch) { running = true; notice = ''; }
         else { await history(captured, connection); }
       } else { reconciled = false; notice = 'Not sure this arrived. Reopen the chat to check saved history. Nothing will be resent automatically.'; }
@@ -573,6 +584,58 @@ export function createDesktopService(adapters: Readonly<{
       if (owner === captured && dispatchAttempted) { reconciled = false; notice = 'The send outcome could not be saved. Reopen the chat to check history before sending again.'; }
       throw error;
     } finally { if (owner === captured) { sending = false; publish(); } }
+  }
+  // A leading /command runs through Hermes's command path (slash.exec, then
+  // command.dispatch for skills/plugins), never as prompt text. Results that
+  // expand into a prompt go through the same journaled send.
+  async function runCommand(captured: Owner, connection: Gateway, chatId: string, text: string) {
+    const token = text.split(/\s+/u)[0] ?? '', name = token.slice(1).toLowerCase(), arg = text.slice(token.length).trim();
+    const draftKey = `draft:${scope(captured.profileId, chatId)}`, draftRevision = revisions.get(draftKey) ?? null;
+    const session = { session_id: captured.runtimeId, profile: captured.profileId };
+    const options = { mutation: true, timeoutMs: 120000 } as const;
+    const id = `command:${randomUUID()}`;
+    let reply: unknown;
+    sending = true; publish();
+    try {
+      try { reply = await connection.call('slash.exec', { ...session, command: text }, options); }
+      catch (error) {
+        if (!(error instanceof GatewayOperationError) || error.code !== 4018) throw error;
+        reply = await connection.call('command.dispatch', { ...session, name, ...(arg ? { arg } : {}) }, options);
+      }
+      if (jsonObject(reply) && reply.type === 'alias' && typeof reply.target === 'string' && /^\/?[A-Za-z0-9._-]{1,96}$/u.test(reply.target)) {
+        reply = await connection.call('command.dispatch', { ...session, name: reply.target.replace(/^\//u, ''), ...(arg ? { arg } : {}) }, options);
+      }
+    } catch (error) {
+      if (owner === captured) { sending = false; publish(); }
+      if (error instanceof GatewayOperationError) {
+        throw new UserFacingError(error.code === 4018 ? `Hermes doesn't know ${token}. Your text is still in the box.`
+          : `Hermes couldn't run ${token}${error.detail ? `: ${error.detail.replace(/[.!?]?$/u, '.')}` : '.'} Your text is still in the box.`);
+      }
+      throw new UserFacingError(`Not sure ${token} ran. It won't be sent again automatically.`);
+    }
+    if (owner !== captured) return;
+    sending = false;
+    const row = jsonObject(reply) ? reply : {};
+    if ((row.type === 'skill' || row.type === 'send') && typeof row.message === 'string' && row.message.trim()) {
+      const display = typeof row.display === 'string' && row.display.trim() ? row.display.slice(0, 4000) : text;
+      if (typeof row.notice === 'string' && row.notice.trim()) notice = row.notice.slice(0, 300);
+      await journaledSend({ captured, connection, chatId, draftText: text, submitText: row.message, display, files: [], busyAtDispatch: running });
+      return;
+    }
+    if (row.type === 'prefill' && typeof row.message === 'string') {
+      // Hermes hands text back to edit (for example /undo); nothing is sent.
+      await save(draftKey, row.message);
+      if (owner === captured) { drafts = { ...drafts, [chatId]: row.message }; notice = typeof row.notice === 'string' ? row.notice.slice(0, 300) : ''; publish(); }
+      return;
+    }
+    const output = typeof row.output === 'string' ? row.output : typeof row.message === 'string' ? row.message : '';
+    live = Object.freeze({ ...live, items: Object.freeze([...live.items,
+      Object.freeze({ kind: 'message', id: `${id}:out`, direction: 'out', paragraphs: Object.freeze([text]), turn: id }),
+      Object.freeze({ kind: 'message', id: `${id}:in`, direction: 'in', paragraphs: Object.freeze([output.trim() ? output.slice(0, 256 * 1024) : `Hermes ran ${token}.`]), turn: id }),
+    ] as TranscriptItem[]) });
+    applyTranscript(chatId);
+    const cleared = await clearSentDraft(draftKey, draftRevision, text);
+    if (owner === captured) { if (cleared) drafts = { ...drafts, [chatId]: '' }; notice = ''; publish(); }
   }
   // Stage files on the live session in the chosen order. Images join the session's
   // image queue (claimed by the next prompt); other files return @file: references.

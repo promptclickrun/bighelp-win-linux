@@ -26,6 +26,7 @@ async function harness(entry, name, initial) {
     useLayoutEffect(effect,deps) { return hooks.useEffect(effect,deps ?? [Symbol()]); },
     useMemo(compute) { cursor++; return compute(); }, useCallback(callback) { cursor++; return callback; },
     useId() { return `id-${cursor++}`; }, memo(component) { return component; },
+    useContext() { cursor++; return null; }, createContext(value) { return { Provider: 'Provider', value }; },
   };
   const element=(type,props)=>({type,props}); const module={exports:{}};
   new Function('require','module','exports',await compiled(entry))(name=>{

@@ -46,6 +46,8 @@ function harness() {
       return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; changed = true; }]; },
     useReducer(reduce, initial, init) { const index = cursor++; if (!(index in slots)) slots[index] = init(initial);
       return [slots[index], action => { const next = reduce(slots[index], action); if (next !== slots[index]) { slots[index] = next; changed = true; } }]; },
+    createContext(value) { return { Provider: 'Provider', value }; }, useContext(context) { cursor++; return context?.value ?? null; },
+    useCallback(callback) { cursor++; return callback; },
     useEffect(effect, deps) { const index = cursor++, old = slots[index];
       if (!old || deps.some((dep, i) => !Object.is(dep, old.deps[i]))) {
         effects.push(() => { old?.cleanup?.(); slots[index] = {deps, cleanup: effect()}; });

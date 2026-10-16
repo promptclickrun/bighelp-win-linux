@@ -10,6 +10,7 @@ import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { PendingAttachments } from './components/PendingAttachments.tsx';
+import { ModelButton } from './components/ModelButton.tsx';
 import { Label, Notice, PageHead, Tag } from './components/primitives.tsx';
 import { Rail } from './components/Rail.tsx';
 import { SettingsOverview, SettingsPage } from './components/Settings.tsx';
@@ -20,6 +21,7 @@ import { HostConnection } from './components/HostConnection.tsx';
 import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
 import { EMPTY_DATA } from './view-model.ts';
+import { HostProvider } from './host.tsx';
 import type { ViewData } from './view-model.ts';
 import { agentById, chatById, composerStatus } from './view-model.ts';
 import type { AppCommand } from '../../apps/desktop/src/shared/links.ts';
@@ -154,6 +156,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         turn={snapshot?.turn && snapshot.selectedChatId === chat?.id ? snapshot.turn : undefined} liveTurn={snapshot?.turn?.key ?? null}
         actions={api ? { openLink: url => { void api.openLink(url); }, copy: text => api.copyText(text) } : {}}
         onCheckHistory={api && snapshot && chat && act ? () => { void act(api.openChat(snapshot.generation, chat.id)); } : undefined}
+        headerActions={api && snapshot && chat && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
+          ? <ModelButton chatId={chat.id} running={snapshot.running} current={snapshot.turn?.model ?? null} /> : null}
         onAttach={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
           ? () => { void act(api.attach(snapshot.generation, chat.id)); } : undefined}
         attachments={snapshot?.attachments?.length && chat && snapshot.selectedChatId === chat.id ? <PendingAttachments files={snapshot.attachments}
@@ -276,5 +280,7 @@ export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string
     return () => { mounted = false; off(); };
   }, [props.api]);
   if (!snapshot) return <div role="status">{error || 'Opening bighelp…'}</div>;
-  return <App data={snapshot.data ?? EMPTY_DATA} platform={props.platform} api={props.api} snapshot={snapshot} error={error} act={act} />;
+  return <HostProvider value={{ api: props.api, snapshot, act }}>
+    <App data={snapshot.data ?? EMPTY_DATA} platform={props.platform} api={props.api} snapshot={snapshot} error={error} act={act} />
+  </HostProvider>;
 }

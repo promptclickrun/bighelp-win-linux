@@ -2,7 +2,7 @@
 // agent's own Chat/Feed/Ideas/Goals/Files bar. The composer is a sibling of the
 // scroller, never inside a recycled list, so streaming can't reset the draft.
 import type { JSX, KeyboardEvent, ReactNode } from 'react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Pressable, View } from 'react-native-web';
 import { AGENT_TABS, SHELL_LIMITS } from '../../domain/shell.ts';
 import type { AgentTab } from '../../domain/shell.ts';
@@ -14,6 +14,8 @@ import type { MarkdownActions } from './Markdown.tsx';
 import { IconButton, Icon, Label, Notice, Orb } from './primitives.tsx';
 import { Transcript } from './Transcript.tsx';
 import { COMPOSER_ID } from '../ids.ts';
+import { useCall } from '../host.tsx';
+import type { ChatCommand } from '../../../apps/desktop/src/shared/calls/chat.ts';
 
 const TAB_INFO: Readonly<Record<AgentTab, readonly [GlyphName, string]>> = Object.freeze({
   chat: ['chat', 'Chat'], feed: ['feed', 'Feed'], ideas: ['ideas', 'Ideas'], goals: ['goals', 'Goals'], files: ['files', 'Files'],
@@ -30,10 +32,28 @@ const BUSY_LABELS = Object.freeze({ steer: 'Add to the reply in progress', queue
 export function Composer(props: Readonly<{
   agentName: string; draft: string; onDraft: (text: string) => void; hint: string; canSend?: boolean; editable?: boolean; running?: boolean;
   onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; enterToSend?: boolean; busyMode?: ChatOptions['busyMode'];
-  attachments?: ReactNode; onAttach?: (() => void) | undefined;
+  attachments?: ReactNode; onAttach?: (() => void) | undefined; chatId?: string | undefined;
 }>): JSX.Element {
   const { palette, font } = useTheme();
   const input = useRef<HTMLTextAreaElement>(null);
+  // "/" at the start offers Hermes's own commands and skills; picking one only inserts text.
+  const call = useCall();
+  const [commands, setCommands] = useState<readonly ChatCommand[] | null>(null);
+  const [highlight, setHighlight] = useState(0);
+  const [dismissed, setDismissed] = useState('');
+  const token = /^\/([A-Za-z0-9._-]{0,96})$/u.exec(props.draft);
+  const menuOpen = !!token && !!props.chatId && dismissed !== props.draft && props.editable !== false;
+  useEffect(() => { setCommands(null); }, [props.chatId]);
+  useEffect(() => {
+    if (!menuOpen || commands !== null || !props.chatId) return;
+    let live = true;
+    void call('chat.commands', { chatId: props.chatId }).then(result => { if (live) setCommands(result.ok ? result.value : []); });
+    return () => { live = false; };
+  }, [menuOpen, commands, props.chatId, call]);
+  const query = (token?.[1] ?? '').toLowerCase();
+  const matches = menuOpen && commands ? commands.filter(command => command.name.slice(1).toLowerCase().startsWith(query)
+    || (query.length > 1 && command.description.toLowerCase().includes(query))).slice(0, 8) : [];
+  const pick = (command: ChatCommand) => { props.onDraft(`${command.name} `); setHighlight(0); input.current?.focus(); };
   const hasText = !!props.draft.trim() || !!props.attachments;
   const sendable = !!props.canSend && hasText;
   const showStop = !!props.running && !hasText;
@@ -45,7 +65,16 @@ export function Composer(props: Readonly<{
   }, [props.draft]);
   const keyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     // Never send while an input method is composing (CJK, emoji pickers).
-    if (event.nativeEvent.isComposing || event.key !== 'Enter') return;
+    if (event.nativeEvent.isComposing) return;
+    if (matches.length) {
+      const index = Math.min(highlight, matches.length - 1);
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault(); setHighlight((index + (event.key === 'ArrowDown' ? 1 : matches.length - 1)) % matches.length); return;
+      }
+      if (event.key === 'Tab' || (event.key === 'Enter' && !event.shiftKey)) { event.preventDefault(); pick(matches[index]!); return; }
+      if (event.key === 'Escape') { event.preventDefault(); setDismissed(props.draft); return; }
+    }
+    if (event.key !== 'Enter') return;
     const send = (props.enterToSend ?? true) ? !event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey : event.ctrlKey || event.metaKey;
     if (!send) return;
     event.preventDefault();
@@ -56,11 +85,30 @@ export function Composer(props: Readonly<{
     <View role="form" aria-label="Message box" style={{ width: '100%', maxWidth: 820, alignSelf: 'center', paddingTop: 8,
       paddingHorizontal: 20, paddingBottom: 10 }}>
       {props.attachments}
+      {menuOpen ? (
+        <div role="listbox" aria-label="Commands and skills" style={{ marginBottom: 6, border: `1px solid ${palette.line}`, borderRadius: 12,
+          backgroundColor: palette.raised, overflow: 'hidden', fontFamily: font, boxShadow: '0 8px 24px -12px rgba(0,0,0,.3)' }}>
+          {commands === null ? <div style={{ padding: '8px 12px', fontSize: 13, color: palette.muted }}>Loading commands…</div>
+            : matches.length ? matches.map((command, index) => (
+              <div key={command.name} role="option" aria-selected={index === Math.min(highlight, matches.length - 1)}
+                onMouseDown={event => { event.preventDefault(); pick(command); }}
+                style={{ display: 'flex', gap: 10, alignItems: 'baseline', padding: '7px 12px', cursor: 'pointer',
+                  background: index === Math.min(highlight, matches.length - 1) ? palette.actionSoft : 'transparent' }}>
+                <span style={{ fontWeight: 600, fontSize: 14, color: palette.ink }}>{command.name}</span>
+                <span style={{ flex: 1, minWidth: 0, fontSize: 12, color: palette.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{command.description}</span>
+                {command.kind === 'skill' ? <span style={{ fontSize: 11, color: palette.muted }}>Skill</span> : null}
+              </div>
+            )) : <div style={{ padding: '8px 12px', fontSize: 13, color: palette.muted }}>No matching commands.</div>}
+          <div style={{ padding: '5px 12px', fontSize: 11, color: palette.muted, borderTop: `1px solid ${palette.line}` }}>
+            ↑ ↓ to move, Enter or Tab to insert, Esc to close. A command runs when you send it.</div>
+        </div>
+      ) : null}
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, backgroundColor: palette.card, borderWidth: 1,
         borderColor: palette.line, borderRadius: 22, padding: 5, boxShadow: '0 4px 14px -6px rgba(60,40,30,.16)' }}>
         <IconButton icon="plus" label={props.onAttach ? 'Add files or photos' : 'Adding files needs a connected chat'}
           onPress={props.onAttach ?? (() => {})} disabled={!props.onAttach || props.editable === false} />
         <textarea id={COMPOSER_ID} ref={input} value={props.draft} rows={1} readOnly={props.editable === false}
+          role="combobox" aria-expanded={menuOpen} aria-autocomplete="list"
           onChange={event => props.onDraft(event.target.value)} onKeyDown={keyDown}
           aria-label={`Message ${props.agentName}`} aria-describedby="composer-hint" placeholder={`Message ${props.agentName}`}
           maxLength={SHELL_LIMITS.draftCharacters} spellCheck={false}
@@ -181,7 +229,7 @@ export function Conversation(props: Readonly<{
         {props.turn?.todos.length ? <TodoRail todos={props.turn.todos} /> : null}
         <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} editable={props.editable ?? true}
           canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop}
-          enterToSend={options.enterToSend} busyMode={options.busyMode} attachments={props.attachments} onAttach={props.onAttach} />
+          enterToSend={options.enterToSend} busyMode={options.busyMode} attachments={props.attachments} onAttach={props.onAttach} chatId={props.chat?.id} />
       </div>
       <AgentTabs agentName={props.agent.name} active={props.tab} onTab={props.onTab} />
     </View>

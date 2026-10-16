@@ -32,7 +32,7 @@ export type DesktopSnapshot = Readonly<{
   // The open chat's reply in progress: still status words, to-dos, context use.
   // Files chosen for the open chat's next message (names and sizes only).
   attachments: readonly PendingAttachment[];
-  turn: Readonly<{ key: string | null; status: string; todos: readonly TodoItem[]; context: Readonly<{ used: number; max: number }> | null; startedAt: number | null }>;
+  turn: Readonly<{ key: string | null; model: Readonly<{ name: string; provider: string; reasoning: string }> | null; status: string; todos: readonly TodoItem[]; context: Readonly<{ used: number; max: number }> | null; startedAt: number | null }>;
 }>;
 export type PendingAttachment = Readonly<{ id: string; name: string; size: number; kind: 'image' | 'file' }>;
 // Something that needs a person while bighelp runs. Main decides whether to show

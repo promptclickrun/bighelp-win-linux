@@ -3,6 +3,7 @@
 import type { CallInput, CallName, CallOutput } from '../../shared/calls/index.ts';
 import type { CallContext } from './context.ts';
 import { HOST_HANDLERS } from './host.ts';
+import { CHAT_HANDLERS } from './chat.ts';
 
 export type CallHandler<K extends CallName> = Readonly<{
   // Writes report an unknown outcome when the reply is lost; reads do not.
@@ -14,4 +15,5 @@ export type CallHandlers = { readonly [K in CallName]: CallHandler<K> };
 
 export const HANDLERS: CallHandlers = Object.freeze({
   ...HOST_HANDLERS,
+  ...CHAT_HANDLERS,
 });
