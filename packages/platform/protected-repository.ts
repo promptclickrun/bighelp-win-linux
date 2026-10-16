@@ -2,7 +2,7 @@
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, rmdir, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { join, resolve, parse } from 'node:path';
+import { join, resolve, parse, dirname } from 'node:path';
 import type { JsonValue } from '../contracts/rpc.ts';
 export type { JsonValue } from '../contracts/rpc.ts';
 
@@ -40,16 +40,25 @@ function validateJson(value: unknown, depth = 0, budget = { remaining: 100_000 }
     }
   }
 }
-async function safeDirectory(directory: string): Promise<string> {
+async function syncDirectory(directory: string, platform: NodeJS.Platform): Promise<void> {
+  // Node cannot portably open/flush directory handles on Windows. File sync and
+  // same-directory replacement remain available there, without power-loss proof.
+  if (platform === 'win32') return;
+  const file = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | (constants.O_NOFOLLOW ?? 0));
+  try { await file.sync(); } finally { await file.close(); }
+}
+async function safeDirectory(directory: string, platform: NodeJS.Platform): Promise<string> {
   const absolute = resolve(directory);
   let current = parse(absolute).root;
   for (const component of absolute.slice(current.length).split(/[\\/]/).filter(Boolean)) {
     current = join(current, component);
-    try { await mkdir(current, { mode: 0o700 }); } catch (error) {
+    let created = false;
+    try { await mkdir(current, { mode: 0o700 }); created = true; } catch (error) {
       if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error;
     }
     const stat = await lstat(current);
     if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error('Unsafe repository directory');
+    if (created) await syncDirectory(dirname(current), platform);
   }
   return realpath(absolute);
 }
@@ -61,7 +70,7 @@ export async function createProtectedRepository(options: { directory: string; pr
       (!protection.getSelectedStorageBackend || protection.getSelectedStorageBackend() === 'basic_text'))) throw Error('Secure protection unavailable');
   }
   requireProtection();
-  const directory = await safeDirectory(options.directory);
+  const directory = await safeDirectory(options.directory, platform);
   const lock = join(directory, '.repository.lock');
   const ownerPath = join(lock, 'owner');
   type LockOwner = { pid: number; nonce: string };
@@ -110,12 +119,24 @@ export async function createProtectedRepository(options: { directory: string; pr
   // Incomplete metadata fails closed rather than guessing that a lock is stale.
   const ownerFile = await open(ownerPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, 0o600);
   try { await ownerFile.writeFile(JSON.stringify(owner)); await ownerFile.sync(); } finally { await ownerFile.close(); }
+  await syncDirectory(lock, platform);
+  await syncDirectory(directory, platform);
   const ownedLock = await lstat(lock);
   let closed = false;
+  let durabilityUncertain = false;
+  async function commitDirectory(): Promise<void> {
+    try { await syncDirectory(directory, platform); }
+    catch {
+      durabilityUncertain = true;
+      // Rename/unlink already happened: never imply that it is safe to retry.
+      throw Error('Repository durability uncertain; close and reopen to inspect');
+    }
+  }
   let tail: Promise<unknown> = Promise.resolve();
   function serialized<T>(operation: () => Promise<T>): Promise<T> {
     const result = tail.then(async () => {
       if (closed) throw Error('Repository closed');
+      if (durabilityUncertain) throw Error('Repository durability uncertain; close and reopen to inspect');
       requireProtection();
       return operation();
     });
@@ -154,12 +175,12 @@ export async function createProtectedRepository(options: { directory: string; pr
       else if (character === '}' || character === ']') depth--;
     }
     const envelope: unknown = JSON.parse(plaintext);
-    validateJson(envelope);
     if (!envelope || Array.isArray(envelope) || typeof envelope !== 'object') throw Error('Invalid protected envelope');
-    const record = envelope as Record<string, JsonValue>;
+    const record = envelope as Record<string, unknown>;
     if (record['version'] !== 1 || record['key'] !== key ||
-      typeof record['revision'] !== 'number' || !Number.isSafeInteger(record['revision']) || record['revision'] < 1 || !Object.hasOwn(record, 'value')) throw Error('Invalid protected envelope');
-    return { revision: record['revision'], value: record['value']! };
+      typeof record['revision'] !== 'number' || !Number.isSafeInteger(record['revision']) || record['revision'] < 1 || !Object.hasOwn(record, 'value') || Object.keys(record).length !== 4) throw Error('Invalid protected envelope');
+    validateJson(record['value']);
+    return { revision: record['revision'], value: record['value'] };
   }
   function checkRevision(expected: number | null, current: ProtectedValue | null) {
     if (expected !== null && (!Number.isSafeInteger(expected) || expected < 1)) throw Error('Invalid expected revision');
@@ -193,6 +214,7 @@ export async function createProtectedRepository(options: { directory: string; pr
           try { await file.writeFile(encrypted); await file.sync(); } finally { await file.close(); }
           await rename(temporary, join(directory, keyName(key)));
           created = false;
+          await commitDirectory();
         } finally { if (created) await unlink(temporary); }
         return { revision, value: snapshot };
       });
@@ -201,7 +223,10 @@ export async function createProtectedRepository(options: { directory: string; pr
       return serialized(async () => {
         const current = await readValue(key);
         checkRevision(expectedRevision, current);
-        if (current) await unlink(join(directory, keyName(key)));
+        if (current) {
+          await unlink(join(directory, keyName(key)));
+          await commitDirectory();
+        }
       });
     },
     close(): Promise<void> {
@@ -214,6 +239,7 @@ export async function createProtectedRepository(options: { directory: string; pr
             currentOwner.pid !== owner.pid || currentOwner.nonce !== owner.nonce) throw Error('Lock ownership changed');
           await unlink(ownerPath);
           await rmdir(lock);
+          await syncDirectory(directory, platform);
         }
       });
       tail = result.catch(() => undefined);

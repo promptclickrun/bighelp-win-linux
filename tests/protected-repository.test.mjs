@@ -180,3 +180,89 @@ test('missing owner metadata and abandoned recovery claims fail closed', async t
   await mkdir(join(lock, 'reclaim'));
   await assert.rejects(open(), /locked/);
 });
+
+async function observeSync(t, directory, hook) {
+  const { open } = await import('node:fs/promises');
+  const probe = await open(directory, 'r');
+  const prototype = Object.getPrototypeOf(probe), original = prototype.sync;
+  await probe.close();
+  t.mock.method(prototype, 'sync', async function () {
+    const stat = await this.stat();
+    await hook(stat);
+    return original.call(this);
+  });
+}
+
+test('POSIX writes and removals sync the containing directory after changing entries', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX filesystem semantics');
+  const { directory, open } = await setup(t);
+  let syncs = 0, expected = 'creating';
+  await observeSync(t, directory, async stat => {
+    if (!stat.isDirectory()) return;
+    syncs++;
+    if (expected === 'written') assert.ok((await readFile(pathFor(directory, 'key'))).length);
+    if (expected === 'removed') await assert.rejects(readFile(pathFor(directory, 'key')), { code: 'ENOENT' });
+  });
+  const repository = await open();
+  assert.ok(syncs >= 2, 'lock metadata and repository entries are synced during creation');
+  const before = syncs;
+  expected = 'written';
+  await repository.write('key', null, 'value');
+  assert.ok(syncs > before, 'write awaited directory sync');
+  const afterWrite = syncs;
+  expected = 'removed';
+  await repository.remove('key', 1);
+  assert.ok(syncs > afterWrite, 'remove awaited directory sync');
+  await repository.close();
+});
+
+test('POSIX directory sync failure reports uncertainty and blocks further operations until reopen', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX filesystem semantics');
+  const { directory, open } = await setup(t), repository = await open();
+  let fail = true;
+  await observeSync(t, directory, stat => { if (stat.isDirectory() && fail) throw Error('synthetic sync failure'); });
+  await assert.rejects(repository.write('key', null, 'value'), /durability.*uncertain/i);
+  await assert.rejects(repository.write('other', null, 'blocked'), /reopen/i);
+  fail = false;
+  await repository.close();
+  const reopened = await open();
+  assert.deepEqual(await reopened.read('key'), { revision: 1, value: 'value' });
+  await reopened.close();
+});
+
+test('values at JSON node and depth limits remain readable after envelope wrapping', async t => {
+  const { open } = await setup(t), repository = await open();
+  const nodes = Array(99_999).fill(0);
+  await repository.write('nodes', null, nodes);
+  assert.equal((await repository.read('nodes')).value.length, nodes.length);
+  let depth = null;
+  for (let index = 0; index < 64; index++) depth = [depth];
+  await repository.write('depth', null, depth);
+  assert.deepEqual((await repository.read('depth')).value, depth);
+  await assert.rejects(repository.write('nodes', 1, 'x'.repeat(1024 * 1024 - 2)), /size/);
+  assert.equal((await repository.read('nodes')).revision, 1);
+  await repository.close();
+});
+
+test('POSIX failed removal sync reports uncertainty without pretending the record survived', async t => {
+  if (process.platform === 'win32') return t.skip('POSIX filesystem semantics');
+  const { directory, open } = await setup(t), repository = await open();
+  await repository.write('key', null, 'value');
+  let fail = true;
+  await observeSync(t, directory, stat => { if (stat.isDirectory() && fail) throw Error('synthetic sync failure'); });
+  await assert.rejects(repository.remove('key', 1), /durability.*uncertain/i);
+  await assert.rejects(repository.read('key'), /reopen/i);
+  fail = false;
+  await repository.close();
+  const reopened = await open();
+  assert.equal(await reopened.read('key'), null);
+  await reopened.close();
+});
+
+test('values close to the complete envelope byte limit roundtrip', async t => {
+  const { open } = await setup(t), repository = await open();
+  const value = 'x'.repeat(1024 * 1024 - 128);
+  await repository.write('key', null, value);
+  assert.equal((await repository.read('key')).value, value);
+  await repository.close();
+});
