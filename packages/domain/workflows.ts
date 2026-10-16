@@ -64,7 +64,7 @@ export function stageKindText(kind: StageKind): string {
     case 'agent': return 'Agent';
     case 'check': return 'Automatic check';
     case 'decision': return 'Pass or send back';
-    case 'signoff': return 'Your sign-off';
+    case 'signoff': return 'Waits for your sign-off';
     case 'delivery': return 'Sends the results';
     case 'parallel': return 'At the same time';
     case 'command': return 'Runs a command';

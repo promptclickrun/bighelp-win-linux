@@ -354,3 +354,30 @@ test('reads go through the verified context; an unsupported plugin is one clear 
   const offline = await host(() => refuse(503, 'store_unavailable', "The workflow store can't be opened.")).call('workflows.overview', {});
   assert.deepEqual(offline, { ok: false, code: 'unavailable', message: "The workflow store can't be opened." });
 });
+
+test('the window records a start before sending it, sends one at a time and keeps it until the host answers', async () => {
+  const { forgetStart, pendingStart, sendStart } = await import('../packages/ui/workflow-starts.ts');
+  let ids = 0;
+  const intent = createStartIntent('wf_0000000000000abc', 1, { topic: 'Tea' }, () => [TOKEN, REQUEST][ids++]);
+  let release;
+  const seen = [];
+  const first = sendStart(intent, false, request => {
+    seen.push(request);
+    assert.equal(pendingStart(intent.workflowId)?.intent.state, 'sending', 'recorded before it goes out');
+    return new Promise(done => { release = done; });
+  });
+  assert.equal(await sendStart(resendStart(intent), false, () => assert.fail('a second send while one is out')), null);
+  release({ ok: false, code: 'unknown', message: '' });
+  assert.equal((await first).outcome, 'unknown');
+  const kept = pendingStart(intent.workflowId);
+  assert.deepEqual([kept.intent.state, kept.uncertain, kept.intent.clientRunToken, kept.intent.requestId], ['unknown', true, TOKEN, REQUEST]);
+  // Sending it again by hand is the same request; a send that throws is still unknown.
+  await sendStart(resendStart(kept.intent), kept.uncertain, request => { seen.push(request); throw new Error('ipc closed'); });
+  assert.deepEqual(seen[1], seen[0]);
+  assert.equal(pendingStart(intent.workflowId).intent.state, 'unknown');
+  forgetStart({ ...intent, clientRunToken: 'ffffffff-ffff-4fff-8fff-ffffffffffff' });
+  assert.ok(pendingStart(intent.workflowId), 'only the start on screen is forgotten');
+  const done = await sendStart(resendStart(kept.intent), true, async () => ({ ok: true, value: decodeRunReply(reply('runs-start.json')) }));
+  assert.equal(done.outcome, 'started');
+  assert.equal(pendingStart(intent.workflowId), null);
+});

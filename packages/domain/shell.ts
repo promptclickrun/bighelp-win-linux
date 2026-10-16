@@ -120,7 +120,7 @@ export function reduceShell(state: ShellState, action: ShellAction): ShellState 
       return next(state, { agentTab: action.tab });
     case 'functionDetail':
       if (state.place !== 'projects' && state.place !== 'scheduled' && state.place !== 'usage' && state.place !== 'kanban'
-        && state.place !== 'vault') return state;
+        && state.place !== 'vault' && state.place !== 'workflows') return state;
       return next(state, { narrowPane: 'detail' });
     case 'back':
       if (state.layout !== 'narrow' || state.narrowPane !== 'detail') return state;
