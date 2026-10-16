@@ -18,13 +18,14 @@ import type { DesktopApi, DesktopSnapshot, DesktopResult } from '../../apps/desk
 import { HostConnection } from './components/HostConnection.tsx';
 import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
+import { KanbanPage } from './components/KanbanPage.tsx';
 import { EMPTY_DATA } from './view-model.ts';
 import type { ViewData } from './view-model.ts';
 import { agentById, chatById, composerStatus } from './view-model.ts';
 
 // Full sentences, so nothing reads as "Usage aren't built yet".
 const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
-  kanban: "Kanban isn't built yet", workflows: "Workflow pages aren't built yet",
+  workflows: "Workflow pages aren't built yet",
   vault: "The vault isn't built yet",
 });
 
@@ -202,6 +203,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   }
 
   const functionPage = state.place === 'projects' || state.place === 'scheduled' || state.place === 'usage' ? state.place : null;
+  const ownPage = functionPage !== null || state.place === 'kanban';
   return (
     <ThemeProvider value={{ theme, palette, font }}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: palette.page, minHeight: 0 }}>
@@ -209,7 +211,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           onHost={() => { leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts'); }} />
         {functionPage ? <WorkspaceFunctionPage key={functionPage} page={functionPage} data={data} api={api} snapshot={snapshot}
           narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
-        {!functionPage && panes.list && !(narrow && state.place === 'settings') ? (
+        {state.place === 'kanban' ? <KanbanPage key={`kanban:${snapshot?.connection ?? 'none'}`} host={api && snapshot && act ? { api, snapshot, act } : null}
+          data={data} narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
+        {!ownPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
             nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow}
             onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
@@ -224,7 +228,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
               }
             })} onSettingsSection={openSection} />
         ) : null}
-        {!functionPage && (panes.detail || (narrow && state.place === 'settings')) ? detail : null}
+        {!ownPage && (panes.detail || (narrow && state.place === 'settings')) ? detail : null}
         {props.error ? <View role="status" style={{ position: 'absolute', bottom: 4, left: 80, right: 8, backgroundColor: palette.card, padding: 8 }}><Label>{props.error}</Label></View> : null}
       </View>
     </ThemeProvider>
