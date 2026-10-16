@@ -33,6 +33,8 @@ const api = Object.freeze<DesktopApi>({
   subscribe: listener => { listeners.add(listener); return () => { listeners.delete(listener); }; },
   workspace: (generation, profile, page, days) => new Promise<DesktopResult>(resolve => { reads.push({ generation, profile, page, days, snapshot, resolve }); }),
   connect: forbidden, disconnect: forbidden, refresh: forbidden, cancelNavigation: forbidden,
+  probeHost: forbidden, signIn: forbidden, cancelSetup: forbidden, renameHost: forbidden, forgetHost: forbidden,
+  reconnectNow: forbidden, connectSaved: forbidden,
   canonicalChat: async () => { calls.canonicalChat++; return { ok: false, message: 'No synthetic canonical navigation' }; },
   newChat: async () => { calls.newChat++; return { ok: false, message: 'No synthetic new chat' }; },
   send: async () => { calls.send++; return { ok: false, message: 'No synthetic sends' }; },
