@@ -31,6 +31,12 @@ records request retirement, actual DOM draft/focus/accessibility checks, fixture
 isolation and precise limits. Controller inspection of wide Projects/Scheduled/
 Usage/Feed and narrow Projects/Feed screenshots found no visual blocker.
 
+Review of the test stage found a cleanup gap on partial fixture initialization.
+`21bc47e` makes setup/injection teardown exception-safe and idempotent; nine
+focused failure regressions pass. The covering Electron run still passes 133
+checks. The final integrated `npm test` at `950ef4d` passes **373 tests**, zero
+failed or skipped, including those nine qualification regressions.
+
 These checks do not qualify physical keyboard/IME, screen-reader behavior or a
 real plugin host. The historical host and hosted-runner results below retain
 their tested commits; they are not results from this newer UI revision.
