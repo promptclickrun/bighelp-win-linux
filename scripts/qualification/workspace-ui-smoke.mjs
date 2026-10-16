@@ -7,8 +7,6 @@ export async function runWorkspaceFixture({ root, evaluate, send, check, capture
   const bundle = await build({ absWorkingDir: root, entryPoints: [join(root, 'scripts/qualification/workspace-ui-fixture.tsx')],
     bundle: true, write: false, platform: 'browser', format: 'iife', target: 'chrome140', jsx: 'automatic', minify: true,
     define: { 'process.env.NODE_ENV': '"production"' }, logLevel: 'silent' });
-  const injected = await send('Runtime.evaluate', { expression: bundle.outputFiles[0].text, returnByValue: true });
-  if (injected.result?.exceptionDetails || injected.error) throw new Error('Synthetic fixture injection failed');
   const q = 'window.workspaceQualification';
   const scope = 'document.getElementById("workspace-qualification")';
   const el = label => `${scope}.querySelector('[aria-label='+CSS.escape(${JSON.stringify(label)})+']')`;
@@ -29,7 +27,10 @@ export async function runWorkspaceFixture({ root, evaluate, send, check, capture
   const resolve = async (index, marker, mode = 'loaded') => { await evaluate(`${q}.resolve(${index},${JSON.stringify(marker)},${JSON.stringify(mode)}),true`); await sleep(80); };
   const quiet = async () => { const before = await count(); for (let i = 0; i < 4; i++) await evaluate(`${q}.churn(),true`); await sleep(200); await assert('snapshot revisions and callback churn do not reload', async () => await count() === before); };
   const key = async (key, code, windowsVirtualKeyCode) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code, windowsVirtualKeyCode }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code, windowsVirtualKeyCode }); };
+  const originalState = await evaluate(`JSON.stringify((() => { const e=document.getElementById('root'); return e ? [e.getAttribute('hidden'),e.getAttribute('inert')] : null; })())`);
   try {
+    const injected = await send('Runtime.evaluate', { expression: bundle.outputFiles[0].text, returnByValue: true });
+    if (injected.result?.exceptionDetails || injected.error) throw new Error('Synthetic fixture injection failed');
     await wait(() => evaluate(`Boolean(${el('Chats')})`), 'fixture mounted');
     await click('Projects');
     await assert('multiple profiles require explicit choice', () => has('Choose an agent to load this page.'));
@@ -153,7 +154,7 @@ export async function runWorkspaceFixture({ root, evaluate, send, check, capture
     await assert('browsing sends no new/canonical/send/board mutation or other operations', () => evaluate(`(() => { const c=${q}.calls(); return c.send===0 && c.newChat===0 && c.canonicalChat===0 && c.boardMutation===0 && c.other===0 && c.draft>0; })()`));
     check('synthetic UI evidence only (no host or physical input qualification)', true, `${await count()} explicitly controlled finite workspace reads`);
   } finally {
-    await evaluate(`${q}?.cleanup(); delete globalThis.qualificationComposer; true`);
-    check('synthetic UI root and controller removed', await evaluate(`!document.getElementById('workspace-qualification') && !window.workspaceQualification && !document.getElementById('root')?.hidden && !document.getElementById('root')?.inert`));
+    await evaluate(`(() => { try { (window.workspaceQualificationCleanup ?? ${q}?.cleanup)?.(); } finally { delete globalThis.qualificationComposer; } return true; })()`);
+    check('synthetic UI root and controller removed', await evaluate(`!document.getElementById('workspace-qualification') && !window.workspaceQualification && !window.workspaceQualificationCleanup && JSON.stringify((() => { const e=document.getElementById('root'); return e ? [e.getAttribute('hidden'),e.getAttribute('inert')] : null; })())===${JSON.stringify(originalState)}`));
   }
 }

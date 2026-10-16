@@ -61,27 +61,58 @@ const container = document.createElement('div');
 container.id = 'workspace-qualification';
 container.style.cssText = 'position:fixed;inset:0;display:flex;z-index:2147483647';
 const original = document.getElementById('root');
-const previousHidden = original?.hidden;
-const previousInert = original?.inert;
-if (original) { original.hidden = true; original.inert = true; }
-document.body.append(container);
-const root = createRoot(container);
-root.render(<ConnectedApp api={api} platform="linux" />);
-const control = {
-  hostile, longTitle,
-  reads: () => reads.map(({ generation, profile, page, days }) => ({ generation, profile, page, days })),
-  calls: () => ({ ...calls }),
-  resolve: (index: number, marker = 'Synthetic', mode: Mode = 'loaded') => {
-    const read = reads[index]; if (!read) throw new Error('Missing synthetic read');
-    read.resolve(mode === 'failed' ? { ok: false, message: 'Synthetic read failed' } : { ok: true,
-      snapshot: { ...read.snapshot, workspace: workspace(read, marker, mode) } });
-  },
-  churn: () => publish(),
-  generation: () => publish({ generation: snapshot.generation + 1 }),
-  offline: () => publish({ status: 'disconnected', data: { ...snapshot.data, host: { label: 'Synthetic interaction fixture', state: 'offline' } } }),
-  online: () => publish({ status: 'connected', data: { ...snapshot.data, host: { label: 'Synthetic interaction fixture', state: 'connected' } } }),
-  catalog: (mode: 'both' | 'beta' | 'empty') => publish({ data: { ...snapshot.data, agents: mode === 'empty' ? [] : mode === 'beta' ? [agents[1]!] : agents } }),
-  cleanup: () => { root.unmount(); container.remove(); listeners.clear(); if (original) { original.hidden = previousHidden ?? false; original.inert = previousInert ?? false; } delete window.workspaceQualification; },
+const previousHidden = original?.getAttribute('hidden') ?? null;
+const previousInert = original?.getAttribute('inert') ?? null;
+let root: ReturnType<typeof createRoot> | undefined;
+let cleaned = false;
+// Register teardown before touching live DOM, independently of the ready controller.
+const cleanup = () => {
+  if (cleaned) return;
+  cleaned = true;
+  try { root?.unmount(); }
+  finally {
+    container.remove(); listeners.clear();
+    if (original) {
+      if (previousHidden === null) original.removeAttribute('hidden'); else original.setAttribute('hidden', previousHidden);
+      if (previousInert === null) original.removeAttribute('inert'); else original.setAttribute('inert', previousInert);
+    }
+    delete window.workspaceQualification;
+    delete window.workspaceQualificationCleanup;
+  }
 };
-declare global { interface Window { workspaceQualification?: typeof control } }
-window.workspaceQualification = control;
+window.workspaceQualificationCleanup = cleanup;
+try {
+  if (original) { original.hidden = true; original.inert = true; }
+  document.body.append(container);
+  root = createRoot(container);
+  root.render(<ConnectedApp api={api} platform="linux" />);
+  const control = {
+    hostile, longTitle,
+    reads: () => reads.map(({ generation, profile, page, days }) => ({ generation, profile, page, days })),
+    calls: () => ({ ...calls }),
+    resolve: (index: number, marker = 'Synthetic', mode: Mode = 'loaded') => {
+      const read = reads[index]; if (!read) throw new Error('Missing synthetic read');
+      read.resolve(mode === 'failed' ? { ok: false, message: 'Synthetic read failed' } : { ok: true,
+        snapshot: { ...read.snapshot, workspace: workspace(read, marker, mode) } });
+    },
+    churn: () => publish(),
+    generation: () => publish({ generation: snapshot.generation + 1 }),
+    offline: () => publish({ status: 'disconnected', data: { ...snapshot.data, host: { label: 'Synthetic interaction fixture', state: 'offline' } } }),
+    online: () => publish({ status: 'connected', data: { ...snapshot.data, host: { label: 'Synthetic interaction fixture', state: 'connected' } } }),
+    catalog: (mode: 'both' | 'beta' | 'empty') => publish({ data: { ...snapshot.data, agents: mode === 'empty' ? [] : mode === 'beta' ? [agents[1]!] : agents } }),
+    cleanup,
+  };
+  window.workspaceQualification = control;
+} catch (error) {
+  cleanup();
+  throw error;
+}
+type Control = Readonly<{
+  hostile: string; longTitle: string;
+  reads: () => readonly Readonly<{ generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays }>[];
+  calls: () => typeof calls;
+  resolve: (index: number, marker?: string, mode?: Mode) => void;
+  churn: () => void; generation: () => void; offline: () => void; online: () => void;
+  catalog: (mode: 'both' | 'beta' | 'empty') => void; cleanup: () => void;
+}>;
+declare global { interface Window { workspaceQualification?: Control; workspaceQualificationCleanup?: () => void } }
