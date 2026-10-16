@@ -29,10 +29,13 @@ export class HttpStatusError extends Error {
   readonly status: number;
   readonly detail: string;
   readonly code: string;
-  constructor(status: number, detail = '', code = '') {
+  // Something in front of Hermes (a proxy) asked for its own credentials.
+  readonly challenged: boolean;
+  constructor(status: number, detail = '', code = '', challenged = false) {
     super('Host request refused');
     if (!Number.isInteger(status) || status < 100 || status > 599) throw new TypeError('Invalid HTTP status');
     this.name = 'HttpStatusError'; this.status = status; this.detail = safeDetail(detail); this.code = errorCodeText(code);
+    this.challenged = challenged === true;
   }
 }
 function errorCodeText(value: unknown): string {
@@ -87,6 +90,16 @@ export type TransportAdapters = Readonly<{
   isCurrent(): boolean;
   // Monotonic milliseconds, including time spent waiting for a ticket response.
   now(): number;
+  // Optional sign-in renewal owned by main. Without it the configured token is used as is.
+  credential?: CredentialSource;
+}>;
+// The token for this host lease, kept in main. current() may first renew a bearer
+// token that is about to expire. renew() is asked once after Hermes turns a token
+// away (401 without a proxy challenge); it returns a different token or null.
+// Hermes checks sign-in before any route runs, so one resend is safe.
+export type CredentialSource = Readonly<{
+  current(): Promise<string>;
+  renew(rejected: string): Promise<string | null>;
 }>;
 
 function record(value: unknown): Record<string, unknown> {
@@ -314,8 +327,16 @@ function checkResponse(value: unknown, plan: HttpPlan): Record<string, unknown> 
   if (response.redirected !== false || response.url !== plan.url) throw new Error('Redirect or destination mismatch');
   if (typeof response.status !== 'number' || !Number.isInteger(response.status)
       || response.status < 100 || response.status > 599) throw new Error('Host request failed');
-  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status, errorDetail(response.body), errorCode(response.body));
+  if (response.status < 200 || response.status >= 300) {
+    const headers = response.headers && typeof response.headers === 'object' ? response.headers as Record<string, unknown> : {};
+    throw new HttpStatusError(response.status, errorDetail(response.body), errorCode(response.body), headers['www-authenticate'] !== undefined);
+  }
   return response;
+}
+function credentialToken(value: unknown): string {
+  const token = headerValue(value);
+  if (/\s/u.test(token)) throw new TypeError('Invalid authentication token');
+  return token;
 }
 
 // Each instance captures one verified owner binding and copied credential values.
@@ -326,10 +347,41 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
   const endpoint = parseEndpoint(config.endpoint, config.approvedPrivateHttpOrigin);
   const auth = parseAuthentication(config.authentication);
   const proxy = proxyHeaders(config.proxy ?? {}, endpoint, auth);
-  const authenticated = Object.freeze({ ...proxy, ...(auth.kind === 'provider'
-    ? { Authorization: `Bearer ${auth.token}` } : { 'X-Hermes-Session-Token': auth.token }) });
+  const credential = adapters.credential;
+  const headersFor = (token: string): Readonly<Record<string, string>> => Object.freeze({ ...proxy, ...(auth.kind === 'provider'
+    ? { Authorization: `Bearer ${token}` } : { 'X-Hermes-Session-Token': token }) });
   function current(signal: AbortSignal): void {
     if (signal.aborted || !adapters.isCurrent()) throw new Error('Transport cancelled or stale');
+  }
+  // Renewal failures are not transport details; never surface their cause.
+  async function token(signal: AbortSignal): Promise<string> {
+    if (!credential) return auth.token;
+    let value: unknown;
+    try { value = await credential.current(); } catch { throw new Error('Host sign-in unavailable'); }
+    current(signal);
+    return credentialToken(value);
+  }
+  async function renewed(rejected: string, signal: AbortSignal): Promise<string | null> {
+    if (!credential) return null;
+    let value: unknown;
+    try { value = await credential.renew(rejected); } catch { return null; }
+    current(signal);
+    if (value === null) return null;
+    const fresh = credentialToken(value);
+    return fresh === rejected ? null : fresh;
+  }
+  // One request, then at most one resend with a renewed token after Hermes turned
+  // the first one away. A proxy challenge or any other status is final.
+  async function sendSigned(build: (authenticated: Readonly<Record<string, string>>) => HttpPlan,
+    signal: AbortSignal): Promise<Record<string, unknown>> {
+    // No await without a renewal source: dispatch stays in the caller's turn.
+    const used = credential ? await token(signal) : auth.token;
+    try { return await send(build(headersFor(used)), signal); } catch (error) {
+      if (!(error instanceof HttpStatusError) || error.status !== 401 || error.challenged) throw error;
+      const fresh = await renewed(used, signal);
+      if (fresh === null) throw error;
+      return send(build(headersFor(fresh)), signal);
+    }
   }
   function plan(path: string, method: RouteMethod, headers: Readonly<Record<string, string>>,
     maxResponseBytes: number, body?: string, timeoutMs?: number): HttpPlan {
@@ -344,12 +396,11 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       return checkResponse(response, request);
     } catch (error) {
       // Never return the adapter's URL/header-bearing exception or cause.
-      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status, error.detail, error.code);
+      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status, error.detail, error.code, error.challenged);
       throw new Error('Host request failed or retired');
     }
   }
-  async function request(value: unknown, signal: AbortSignal): Promise<HttpResult> {
-    const operation = parseHttpOperation(value);
+  function prepare(operation: HttpOperation, authenticated: Readonly<Record<string, string>>): HttpPlan {
     let prepared: HttpPlan;
     switch (operation.kind) {
       case 'route': {
@@ -384,7 +435,11 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
         }), 196608, JSON.stringify({ agentId: operation.agentId }));
         break;
     }
-    const response = await send(prepared, signal);
+    return prepared;
+  }
+  async function request(value: unknown, signal: AbortSignal): Promise<HttpResult> {
+    const operation = parseHttpOperation(value);
+    const response = await sendSigned(authenticated => prepare(operation, authenticated), signal);
     current(signal);
     if (operation.kind === 'route') {
       if (operation.native) {
@@ -439,7 +494,8 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
           if (auth.kind === 'provider') {
             const started = adapters.now();
             if (!Number.isFinite(started) || started < 0) throw new Error('Invalid clock');
-            const response = await send(plan('/api/auth/ws-ticket', 'POST', Object.freeze({
+            // A fresh ticket for every socket. A refused mint renews the sign-in once.
+            const response = await sendSigned(authenticated => plan('/api/auth/ws-ticket', 'POST', Object.freeze({
               ...authenticated, 'Content-Type': 'application/json',
             }), 16384, '{}'), controller.signal);
             const body = record(response.body);
@@ -453,8 +509,9 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
             headers = proxy;
             protocols = Object.freeze(['hermes-gateway-v1', `hermes-gateway-ticket.${ticket}`]);
           } else {
-            url += `?token=${encodeURIComponent(auth.token)}`;
-            headers = authenticated;
+            const used = credential ? await token(controller.signal) : auth.token;
+            url += `?token=${encodeURIComponent(used)}`;
+            headers = headersFor(used);
             // Hermes selects hermes-gateway-v1 only on the ticket path. Offering it
             // here makes a compliant client reject the server's protocol-less accept.
             protocols = Object.freeze([]);

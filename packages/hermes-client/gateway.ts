@@ -1,5 +1,5 @@
 import { createTransportPolicy, safeDetail } from '../platform/transport-policy.ts';
-import type { HttpPlan, SocketPlan, HttpOperation, HttpResult } from '../platform/transport-policy.ts';
+import type { CredentialSource, HttpPlan, SocketPlan, HttpOperation, HttpResult } from '../platform/transport-policy.ts';
 import { boundedHttp } from '../platform/http-transport.ts';
 import { decodeRpcFrame, encodeBoundedJson, encodeServerReply, jsonObject, RPC_LIMITS } from '../contracts/rpc.ts';
 import type { JsonObject, RpcEvent, RpcServerRequest, ServerReply, RpcResult, RpcFailure } from '../contracts/rpc.ts';
@@ -34,6 +34,8 @@ export class GatewayOperationError extends Error {
 type Pending = { resolve(reply: Reply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; mutation: boolean };
 export async function connectGateway(options: Readonly<{
  configuration: unknown; isCurrent(): boolean;
+ // Main-owned sign-in renewal for this lease (fresh/rotated token, never logged).
+ credential?: CredentialSource;
  http?: (plan: HttpPlan, signal: AbortSignal) => Promise<unknown>;
  socket(plan: SocketPlan, signal: AbortSignal, onFrame: (frame: unknown) => void, onClosed: () => void): Promise<GatewaySocket>;
  onEvent(event: RpcEvent): void;
@@ -131,6 +133,7 @@ export async function connectGateway(options: Readonly<{
  let policy: ReturnType<typeof createTransportPolicy>;
  try { policy = createTransportPolicy(options.configuration, {
   http: options.http ?? boundedHttp, isCurrent: options.isCurrent, now: () => performance.now(),
+  ...(options.credential ? { credential: options.credential } : {}),
   socket: async (plan, signal, callback) => {
    const opened = await options.socket(plan, signal, callback, () => { close(); });
    handle = opened;

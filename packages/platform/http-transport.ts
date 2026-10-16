@@ -4,7 +4,7 @@ import type { HttpPlan } from './transport-policy.ts';
 
 // Reuse the RPC scanner for duplicate decoded keys, depth, numbers and Unicode.
 // Only JSON whitespace outside strings is folded; invalid literal newlines stay invalid.
-function parseJson(text: string): unknown {
+export function parseJson(text: string): unknown {
   let quoted = false, escaped = false, compact = '';
   for (const character of text) {
     if (!quoted && (character === '\n' || character === '\r')) { compact += ' '; continue; }
@@ -66,6 +66,9 @@ export async function boundedHttp(plan: HttpPlan, signal: AbortSignal): Promise<
       if (cacheControl.length > 1024 || !/^[\x20-\x7e]+$/u.test(cacheControl)) throw new Error();
       headers['cache-control'] = cacheControl;
     }
+    // Only whether something in front of Hermes challenged the request. A 401
+    // without a challenge is Hermes turning the sign-in away; the value is unused.
+    if (response.headers.has('www-authenticate')) headers['www-authenticate'] = 'present';
     return Object.freeze({ status: response.status, url: response.url, redirected: false, body, headers: Object.freeze(headers) });
   } catch {
     controller.abort();
