@@ -36,6 +36,7 @@ The current shell is not a completed application. The 57-row feature matrix rema
 - Linux x64 unsigned portable archive produced and checksums verified. Final packaged headless Electron smoke passed 20/20 with the OS sandbox enabled; earlier development/fixture runs explicitly disabled it. Target Windows 11/Ubuntu Wayland/X11 and real OS key stores remain qualification requirements.
 - Source and security review found and fixed parent-directory durability, post-dispatch persistence failure, stale history overwrite, fast terminal/receipt ordering, stale startup, and newer-draft preservation issues. Pending prompts restored from validated `open_requests` after resume.
 - Read-only workspace clients and finite desktop actions cover Projects, basic usage, scheduled catalog and text-only Feed/Ideas/Goals. UI bodies await the static A/B/C pick; the publishing skill is unavailable and browser policy blocked local-HTML screenshots. Local HTML artifacts are reviewable in `docs/design/function-alternatives/`.
+- [PR #10](https://github.com/promptclickrun/bighelp-win-linux/pull/10) is open. [Windows/Ubuntu CI at cdf0351](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38856296020) passed tests, compilation, portable packaging and 20 sandboxed packaged smoke checks on each OS. Windows skips five POSIX-only tests. The disposable Hermes test process was stopped after verification. Product parity and physical-machine qualification remain unfinished.
 
 ## Interface ownership
 

@@ -24,7 +24,7 @@ During initial host setup, the first environment filter missed the inherited `GH
 
 **Desktop runtime:** actual Electron 44.7.2 / Chromium 152 under headless Ozone. The final packaged Linux smoke passed 20/20 with the default OS sandbox enabled; no `--no-sandbox`, permission or ownership changes were needed. Earlier development/fixture runs explicitly disabled the OS sandbox, and are separate evidence (20 connected-shell checks and 28 fixture checks passed). Renderer isolation, denied networking/navigation, finite preload, keyboard navigation and synthetic input were checked. A successful sandboxed headless launch is not Wayland/X11, IME, screen-reader, kernel security or physical-hardware qualification. Normal application and packaging scripts do not add `--no-sandbox`.
 
-**Packages:** unsigned Linux x64 portable archive, independently verified SHA-256 manifest and archive checksum, production bundle boundaries. CI is configured to build Windows and Ubuntu and run packaged smoke checks; execution results are recorded separately. Windows Server CI does not qualify Windows 11 hardware. See [packaging evidence](packaging.md).
+**Packages:** unsigned Linux x64 portable archive, independently verified SHA-256 manifest and archive checksum, production bundle boundaries. [Windows and Ubuntu CI](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38856296020) at `cdf0351` both passed, produced portable artifacts, and passed 20 packaged smoke checks per OS with the sandbox enabled. Windows passed 223 tests with five POSIX-specific skips; Linux passed all 228. Windows Server CI does not qualify Windows 11 hardware. See [packaging evidence and artifact links](packaging.md).
 
 ## Remaining acceptance work
 
