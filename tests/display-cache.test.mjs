@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { createProtectedRepository } from '../packages/platform/protected-repository.ts';
-import { createDisplayCache, displayCacheKey } from '../packages/platform/display-cache.ts';
+import { createDisplayCache, displayCacheKey, normalizeDisplayCache } from '../packages/platform/display-cache.ts';
 
 // Synthetic authenticated encryption only; not an OS-secret-store qualification.
 const secret = randomBytes(32);
@@ -188,4 +188,17 @@ test('concurrent replacements honor repository CAS without retrying over the win
   assert.equal(attempts.filter(result => result.status === 'rejected').length, 1);
   assert.deepEqual(await cache.read(scope), winner.value);
   assert.equal(winner.value.revision, 2);
+});
+
+test('pure normalization applies persistence bounds before admission without retaining caller mutations', async t => {
+  const { cache } = await setup(t), input = snapshot();
+  input.sessions[0].transcript = Array.from({ length: 600 }, (_, index) => ({ kind: 'day', id: `day-${index}`, label: 'Day' }));
+  const normalized = normalizeDisplayCache(scope, input);
+  assert.equal(normalized.sessions[0].transcript.length, 512);
+  assert.equal(normalized.sessions[0].transcript[0].id, 'day-88');
+  assert.deepEqual((await cache.replace(scope, null, input)).data, normalized);
+  input.sessions[0].transcript.at(-1).label = 'Caller mutation';
+  assert.equal(normalized.sessions[0].transcript.at(-1).label, 'Day');
+  assert.ok(Object.isFrozen(normalized.sessions[0].transcript));
+  assert.throws(() => normalizeDisplayCache(scope, { ...input, runtimeId: 'forbidden' }), /display cache/i);
 });

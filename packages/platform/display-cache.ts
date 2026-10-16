@@ -160,6 +160,13 @@ function decoded(scope: DisplayCacheScope, key: string, value: unknown): Display
   return freeze(data);
 }
 
+// Pure admission boundary shared by retained memory and protected persistence.
+// Returns a detached frozen projection within the exact stored-envelope bounds.
+export function normalizeDisplayCache(input: DisplayCacheScope, value: DisplayCacheData): DisplayCacheData {
+  const scope = scopeCopy(input);
+  return trim(keyFor(scope), scope, dataCopy(value));
+}
+
 export function createDisplayCache(repository: Repository) {
   return Object.freeze({
     async read(input: DisplayCacheScope): Promise<DisplayCacheRecord | null> {
@@ -169,7 +176,7 @@ export function createDisplayCache(repository: Repository) {
     async replace(input: DisplayCacheScope, expectedRevision: number | null, value: DisplayCacheData): Promise<DisplayCacheRecord> {
       // Synchronous validation/copy before the first await prevents caller edits
       // from changing a queued write. Never auto-retry CAS conflicts.
-      const scope = scopeCopy(input), key = keyFor(scope), data = trim(key, scope, dataCopy(value));
+      const scope = scopeCopy(input), key = keyFor(scope), data = normalizeDisplayCache(scope, value);
       const current = await repository.read(key);
       // Preserve unsupported/corrupted existing data even with a matching CAS.
       if (current !== null) decoded(scope, key, current.value);

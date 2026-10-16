@@ -1,7 +1,7 @@
 // Main-only display recovery. None of these records authorize host operations.
 import { createHash } from 'node:crypto';
-import { createDisplayCache } from '../../../../packages/platform/display-cache.ts';
-import type { DisplayCacheData, DisplayCacheScope, CachedSession } from '../../../../packages/platform/display-cache.ts';
+import { createDisplayCache, normalizeDisplayCache } from '../../../../packages/platform/display-cache.ts';
+import type { DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
 import type { ProtectedValue } from '../../../../packages/platform/protected-repository.ts';
 import type { JsonValue } from '../../../../packages/contracts/rpc.ts';
 import { jsonObject } from '../../../../packages/contracts/rpc.ts';
@@ -31,12 +31,82 @@ export function offlineDisplay(saved: DisplayCacheData): ViewData {
 }
 export function createChatDisplayRecovery(repository: Repository) {
   const cache = createDisplayCache(repository);
-  // This queue never participates in credential, draft, canonical or send barriers.
-  // Serialize owner updates so an old in-flight write cannot rebind a newer one.
-  let ownerWrites = Promise.resolve();
-  const scopedWrites = new Map<string, Promise<void>>();
+  // One serial worker for the single selected host. It retains one admitted
+  // immutable write and the latest bounded active projection, never one closure
+  // per update/scope. These tasks never enter draft/canonical/send barriers.
+  type State = {
+    scope: DisplayCacheScope; isCurrent: () => boolean; ownerValue: JsonValue;
+    empty: DisplayCacheData; data: DisplayCacheData; seed: DisplayCacheData | null;
+    catalogSeen: boolean; loaded: boolean; writable: boolean; dirty: boolean; revision: number | null;
+  };
+  let active: State | null = null, worker: Promise<void> | null = null;
+  const current = (state: State) => active === state && state.isCurrent();
+  const needsWork = () => active !== null && current(active) && (!active.loaded || (active.writable && active.dirty));
+  function retire(state: State) {
+    state.data = state.empty; state.seed = null; state.dirty = false; state.writable = false;
+  }
+  function mergeHistory(state: State, data: DisplayCacheData, saved: DisplayCacheData): DisplayCacheData {
+    return normalizeDisplayCache(state.scope, { ...data, sessions: data.sessions.map(session => {
+      const history = saved.sessions.find(row => row.profileId === session.profileId && row.storedSessionId === session.storedSessionId);
+      return history && session.historyUpdatedAt === 0
+        ? { ...session, preview: history.preview, transcript: history.transcript, historyUpdatedAt: history.historyUpdatedAt } : session;
+    }) });
+  }
+  async function run() {
+    while (active && current(active)) {
+      const state = active;
+      if (!state.loaded) {
+        state.loaded = true;
+        try {
+          const previous = await repository.read('desktop:cacheOwner');
+          if (previous) pointer(previous.value); // Preserve unsupported/corrupt versions.
+          if (current(state)) await repository.write('desktop:cacheOwner', previous?.revision ?? null, state.ownerValue);
+        } catch { /* Owner-local failure cannot enter send barriers. */ }
+        if (!current(state)) continue;
+        try {
+          const record = await cache.read(state.scope);
+          if (!current(state)) continue;
+          state.revision = record?.revision ?? null;
+          if (record) {
+            // A seed is bounded and needed only until the first live catalog.
+            // Never resurrect sessions removed from that catalog.
+            if (state.catalogSeen) state.data = mergeHistory(state, state.data, record.data);
+            else state.seed = record.data;
+          }
+        } catch { state.writable = false; }
+      }
+      if (!current(state)) continue;
+      if (!state.writable || !state.dirty) return;
+      state.dirty = false;
+      const captured = state.data; // Already copied, frozen and bounded before admission.
+      try {
+        const saved = await cache.replace(state.scope, state.revision, captured);
+        if (current(state)) {
+          state.revision = saved.revision;
+          if (state.data === captured) state.data = saved.data;
+        }
+      } catch { state.writable = false; state.dirty = false; } // No stale CAS retry.
+    }
+  }
+  function schedule() {
+    if (worker || !needsWork()) return;
+    const pending = Promise.resolve().then(run).finally(() => {
+      if (worker === pending) worker = null;
+      if (needsWork()) schedule();
+    });
+    worker = pending;
+  }
+  function update(state: State, project: () => DisplayCacheData) {
+    if (!current(state)) return;
+    try {
+      // Replace the sole latest projection synchronously. Invalid/oversized
+      // inputs are never retained, nor queued as deferred full-history copies.
+      state.data = normalizeDisplayCache(state.scope, project());
+      state.dirty = true; schedule();
+    } catch { state.writable = false; state.dirty = false; }
+  }
   return Object.freeze({
-    async drain(): Promise<void> { await Promise.all([ownerWrites, ...scopedWrites.values()]); },
+    async drain(): Promise<void> { while (worker) await worker; },
     async restore(host: HostInput, isCurrent: () => boolean): Promise<Readonly<{scope: DisplayCacheScope; data: DisplayCacheData}> | null> {
       try {
         const stored = await repository.read('desktop:cacheOwner');
@@ -52,67 +122,32 @@ export function createChatDisplayRecovery(repository: Repository) {
         return { scope, data: record.data };
       } catch { return null; }
     },
-    activate(host: HostInput, scope: DisplayCacheScope, isCurrent: () => boolean) {
-      const ownerValue = { version: 1, fingerprint: recoveryBinding(host), ...scope };
-      ownerWrites = ownerWrites.then(async () => {
-        if (!isCurrent()) return;
-        const previous = await repository.read('desktop:cacheOwner');
-        if (previous) pointer(previous.value); // Preserve unsupported/corrupt versions.
-        if (isCurrent()) await repository.write('desktop:cacheOwner', previous?.revision ?? null, ownerValue);
-      }).catch(() => {});
-      let revision: number | null = null, writable = true;
-      let catalog: DisplayCacheData = { hostLabel: host.label, profiles: [], sessions: [] };
-      const histories = new Map<string, CachedSession>();
-      const key = (profile: string, session: string) => JSON.stringify([profile, session]);
-      const project = (): DisplayCacheData => ({ ...catalog, sessions: catalog.sessions.map(session => {
-        const saved = histories.get(key(session.profileId, session.storedSessionId));
-        return saved ? { ...session, preview: saved.preview, transcript: saved.transcript, historyUpdatedAt: saved.historyUpdatedAt } : session;
-      }) });
-      let base: DisplayCacheData | null = null;
-      const scopeKey = JSON.stringify([scope.hostId, scope.principalId]);
-      let queue = (scopedWrites.get(scopeKey) ?? Promise.resolve()).then(async () => {
-        if (!isCurrent()) return;
-        const record = await cache.read(scope);
-        if (!isCurrent()) return;
-        revision = record?.revision ?? null; base = record?.data ?? null;
-        for (const session of base?.sessions ?? []) {
-          const identity = key(session.profileId, session.storedSessionId);
-          if (!histories.has(identity)) histories.set(identity, session);
-        }
-      }).catch(() => { writable = false; });
-      scopedWrites.set(scopeKey, queue);
-      function persist() {
-        // Capture before awaiting; never cache a mutable renderer/live projection.
-        const captured = structuredClone(project());
-        queue = (scopedWrites.get(scopeKey) ?? queue).then(async () => {
-          if (!writable || !isCurrent()) return;
-          const value = { ...captured, sessions: captured.sessions.map(session => {
-            const saved = base?.sessions.find(row => row.profileId === session.profileId && row.storedSessionId === session.storedSessionId);
-            return saved && session.historyUpdatedAt === 0
-              ? { ...session, preview: saved.preview, transcript: saved.transcript, historyUpdatedAt: saved.historyUpdatedAt } : session;
-          }) };
-          const saved = await cache.replace(scope, revision, value);
-          revision = saved.revision;
-        }).catch(() => { writable = false; }); // No CAS retry, overwrite or send failure.
-        scopedWrites.set(scopeKey, queue);
-        const pending = queue;
-        void pending.then(() => { if (scopedWrites.get(scopeKey) === pending) scopedWrites.delete(scopeKey); });
-      }
+    activate(host: HostInput, input: DisplayCacheScope, isCurrent: () => boolean) {
+      if (active) retire(active);
+      const scope = { ...input };
+      const empty = normalizeDisplayCache(scope, { hostLabel: host.label, profiles: [], sessions: [] });
+      const state: State = { scope, isCurrent, ownerValue: { version: 1, fingerprint: recoveryBinding(host), ...scope },
+        empty, data: empty, seed: null, catalogSeen: false, loaded: false, writable: true, dirty: false, revision: null };
+      active = state; schedule();
       return Object.freeze({
-        get data(): DisplayCacheData { return project(); },
+        get data(): DisplayCacheData { return state.data; },
         catalog(view: ViewData) {
-          catalog = { hostLabel: view.host?.label ?? host.label,
-            profiles: view.agents.map(agent => ({ profileId: agent.id, name: agent.name, summary: agent.summary, color: agent.color })),
-            sessions: view.chats.map(chat => ({ profileId: chat.agentId, storedSessionId: chat.id, title: chat.title,
-              preview: chat.preview, historyUpdatedAt: 0, transcript: [] })) };
-          persist();
+          update(state, () => {
+            const catalog = { hostLabel: view.host?.label ?? host.label,
+              profiles: view.agents.map(agent => ({ profileId: agent.id, name: agent.name, summary: agent.summary, color: agent.color })),
+              sessions: view.chats.map(chat => ({ profileId: chat.agentId, storedSessionId: chat.id, title: chat.title,
+                preview: chat.preview, historyUpdatedAt: 0, transcript: [] })) };
+            const next = mergeHistory(state, catalog, state.data);
+            const result = state.seed ? mergeHistory(state, next, state.seed) : next;
+            state.catalogSeen = true; state.seed = null;
+            return result;
+          });
         },
         history(chat: ChatView) {
-          // Only service.history() calls this, after authoritative-history fences.
-          // The strict cache validator rejects any accidental delivery/live fields.
-          histories.set(key(chat.agentId, chat.id), structuredClone({ profileId: chat.agentId, storedSessionId: chat.id,
-            title: chat.title, preview: chat.preview, historyUpdatedAt: Date.now(), transcript: chat.transcript }));
-          persist();
+          // Only fenced authoritative history from the current catalog is admitted.
+          update(state, () => ({ ...state.data, sessions: state.data.sessions.map(session =>
+            session.profileId === chat.agentId && session.storedSessionId === chat.id
+              ? { ...session, preview: chat.preview, transcript: chat.transcript, historyUpdatedAt: Date.now() } : session) }));
         },
       });
     },
