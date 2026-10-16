@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {encodeSessionOperation,decodeProfiles,decodeSessionList,decodeSessionReceipt,decodeSessionHistory} from '../packages/contracts/session.ts';
 test('finite source-backed session requests',()=>{
+ assert.deepEqual(JSON.parse(encodeSessionOperation('1',{kind:'projectsList',profile:'p'})),{jsonrpc:'2.0',id:'1',method:'projects.list',params:{profile:'p'}});
  assert.deepEqual(JSON.parse(encodeSessionOperation('1',{kind:'sessionResume',profile:'p',storedSessionId:'saved'})).params,{session_id:'saved',profile:'p',source:'bighelp',close_on_disconnect:false,defer_history:true,omit_messages:true});
  assert.throws(()=>encodeSessionOperation('1',{kind:'arbitrary'}));
  assert.throws(()=>encodeSessionOperation('1',{kind:'sessionList',profile:''}));

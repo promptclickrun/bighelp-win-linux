@@ -158,7 +158,7 @@ export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>();
   const [error, setError] = useState('');
   const latest = useRef(-1);
-  const accept = (next: DesktopSnapshot) => { if (next.generation >= latest.current) { latest.current = next.generation; setSnapshot(next); } };
+  const accept = (next: DesktopSnapshot) => { if (next.revision > latest.current) { latest.current = next.revision; setSnapshot(next); } };
   const act = async (operation: Promise<DesktopResult>): Promise<boolean> => {
     try { const result = await operation; if (result.ok) { accept(result.snapshot); setError(''); return true; } setError(result.message); }
     catch { setError('The desktop connection is unavailable.'); }

@@ -8,13 +8,14 @@ function coordinate(value: unknown): string { const text=contractText(value); if
 export function contractObject(value: unknown): Record<string, unknown> { if (!jsonObject(value)) return fail(); return value; }
 function bounded(value: unknown) { encodeBoundedJson(value,RPC_LIMITS.inboundBytes); return contractObject(value); }
 export type DesktopRpcOperation = Readonly<
- {kind:'profilesList'} | {kind:'sessionList'|'sessionCreate';profile:string} |
+ {kind:'profilesList'} | {kind:'sessionList'|'sessionCreate'|'projectsList';profile:string} |
  {kind:'sessionResume';profile:string;storedSessionId:string} |
  {kind:'sessionHistory'|'sessionInterrupt';profile:string;runtimeId:string}>;
 export function encodeSessionOperation(id:string, operation:DesktopRpcOperation):string {
  rpcId(id); if(!id) return fail(); const op=contractObject(operation); let method:string; let params:Record<string,unknown>;
  switch(op.kind) {
  case 'profilesList':method='profiles.list';params={include_sessions:false};break;
+ case 'projectsList':method='projects.list';params={profile:coordinate(op.profile)};break;
  case 'sessionList':method='session.list';params={profile:coordinate(op.profile),limit:200};break;
  case 'sessionCreate':method='session.create';params={profile:coordinate(op.profile),source:'bighelp',close_on_disconnect:false};break;
  case 'sessionResume':method='session.resume';params={session_id:coordinate(op.storedSessionId),profile:coordinate(op.profile),source:'bighelp',close_on_disconnect:false,defer_history:true,omit_messages:true};break;
