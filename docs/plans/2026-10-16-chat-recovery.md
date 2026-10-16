@@ -47,3 +47,21 @@ replay, rewrite, or automatically retry a mutation. Verify pending request
 settlement, one closure notification, rejected-request non-dispatch, and a fresh
 connection's independent budget. Own only gateway client, focused gateway tests,
 and dedicated evidence; do not overlap Task 3's service edits.
+
+## Final review fixes
+
+The independent whole-branch review at `7c776cf` reproduced three defects to fix
+before the final packages are handed over:
+
+- Coalesce cache writes and bound retained projections before queueing; discard
+  history removed from the active catalog. Stored-record bounds alone do not
+  bound memory while a writer is slow.
+- Flush dirty drafts under their original authority before intentional chat or
+  host navigation, preserving newer typing and refusing navigation after a
+  failed save. Delayed actions must not target a replacement owner.
+- Include complete license and notice texts for every bundled npm runtime
+  package, derived from the actual bundle graph and covered by package checksums.
+
+These fixes have separate cache, renderer and packaging file ownership. Re-review
+the exact fixes, rerun affected tests and integration/build qualification, and
+retain the existing no-dependency, no-new-layout and release boundaries.
