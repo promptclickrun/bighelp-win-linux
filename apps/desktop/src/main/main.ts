@@ -1,8 +1,8 @@
 // Privileged desktop entry point. Host transport and protected persistence stay
 // here; the renderer receives only validated actions and safe snapshots.
-import { app, BrowserWindow, Menu, clipboard, protocol, session, shell, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, dialog, protocol, session, shell, ipcMain, safeStorage } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
-import { readFile } from 'node:fs/promises';
+import { open, readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
   APP_ORIGIN, APP_SCHEME, CONTENT_SECURITY_POLICY, isAppRequest, launchOptions, resolveAppAsset, secureWebPreferences,
@@ -105,6 +105,29 @@ app.on('web-contents-created', (_event, contents) => {
   });
 });
 
+// The system file picker. Only files the person chose are read, each bounded
+// before allocation; paths never leave main.
+async function pickFiles(): Promise<readonly Readonly<{ name: string; bytes: Uint8Array }>[] | null> {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  const options = { title: 'Add files', properties: ['openFile', 'multiSelections'] as ('openFile' | 'multiSelections')[] };
+  const result = window ? await dialog.showOpenDialog(window, options) : await dialog.showOpenDialog(options);
+  if (result.canceled || !result.filePaths.length) return null;
+  const files: { name: string; bytes: Uint8Array }[] = [];
+  for (const path of result.filePaths.slice(0, 10)) {
+    const handle = await open(path, 'r');
+    try {
+      const stat = await handle.stat();
+      if (!stat.isFile()) continue;
+      // Oversized files are reported as such by the caller's limit check.
+      const size = Math.min(stat.size, 8 * 1024 * 1024 + 1);
+      const bytes = new Uint8Array(size);
+      const { bytesRead } = await handle.read(bytes, 0, size, 0);
+      files.push({ name: path.split(/[\\/]/u).pop() ?? 'attachment', bytes: bytes.subarray(0, bytesRead) });
+    } finally { await handle.close(); }
+  }
+  return files;
+}
+
 function sendCommand(command: AppCommand): void {
   const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
   if (window && !window.webContents.isDestroyed()) { window.show(); window.webContents.send(COMMAND_CHANNEL, command); }
@@ -139,7 +162,7 @@ app.whenReady().then(async () => {
           encryptString: text => safeStorage.encryptString(text), decryptString: bytes => safeStorage.decryptString(Buffer.from(bytes)) } });
     } catch { /* No plaintext fallback. The UI reports unavailable secure storage. */ }
   }
-  desktop = createDesktopService({ repository,
+  desktop = createDesktopService({ repository, pickFiles,
     connect: options => connectGateway({ ...options, socket: connectSocket }),
     onChange: snapshot => {
       for (const window of BrowserWindow.getAllWindows()) if (!window.webContents.isDestroyed()) window.webContents.send(SNAPSHOT_CHANNEL, snapshot);

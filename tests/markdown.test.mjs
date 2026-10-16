@@ -81,3 +81,12 @@ test('bounded: very long or deeply nested input stays fast and literal', () => {
   parseMarkdown('- '.repeat(500) + 'x'); parseMarkdown('[' .repeat(3000) + 'x' + ']'.repeat(3000));
   assert.ok(performance.now() - started < 2000);
 });
+
+test('previews drop Markdown syntax but keep the words', async () => {
+  const { plainPreview } = await import('../packages/ui/markdown.ts');
+  assert.equal(plainPreview('### README.txt First Line\n1|Hello **world**'), 'README.txt First Line 1 Hello world');
+  assert.equal(plainPreview('| Fruit | Color |\n|---|---|\n| Apple | Red |'), 'Fruit Color Apple Red');
+  assert.equal(plainPreview('- [x] done\n- see [docs](https://x.y) and `code`'), 'done see docs and code');
+  assert.equal(plainPreview('```py\nprint(1)\n```'), 'print(1)');
+  assert.equal(plainPreview('snake_case_name'), 'snake_case_name');
+});

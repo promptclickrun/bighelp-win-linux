@@ -34,7 +34,7 @@ export function Composer(props: Readonly<{
 }>): JSX.Element {
   const { palette, font } = useTheme();
   const input = useRef<HTMLTextAreaElement>(null);
-  const hasText = !!props.draft.trim();
+  const hasText = !!props.draft.trim() || !!props.attachments;
   const sendable = !!props.canSend && hasText;
   const showStop = !!props.running && !hasText;
   // Grow with the text up to a limit, then scroll inside the box.

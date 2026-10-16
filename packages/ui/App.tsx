@@ -9,6 +9,7 @@ import type { Place, SettingsSection } from '../domain/shell.ts';
 import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
 import { Conversation } from './components/Conversation.tsx';
+import { PendingAttachments } from './components/PendingAttachments.tsx';
 import { Label, Notice, PageHead, Tag } from './components/primitives.tsx';
 import { Rail } from './components/Rail.tsx';
 import { SettingsOverview, SettingsPage } from './components/Settings.tsx';
@@ -153,6 +154,10 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         turn={snapshot?.turn && snapshot.selectedChatId === chat?.id ? snapshot.turn : undefined} liveTurn={snapshot?.turn?.key ?? null}
         actions={api ? { openLink: url => { void api.openLink(url); }, copy: text => api.copyText(text) } : {}}
         onCheckHistory={api && snapshot && chat && act ? () => { void act(api.openChat(snapshot.generation, chat.id)); } : undefined}
+        onAttach={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
+          ? () => { void act(api.attach(snapshot.generation, chat.id)); } : undefined}
+        attachments={snapshot?.attachments?.length && chat && snapshot.selectedChatId === chat.id ? <PendingAttachments files={snapshot.attachments}
+          onRemove={api && act ? id => { void act(api.detach(snapshot.generation, chat.id, id)); } : undefined} /> : null}
         board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?
           <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}
@@ -177,7 +182,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           sending.current = true; setSendPending(true);
           void (async () => {
             try {
-            if (!snapshot.canSend || snapshot.selectedChatId !== chatId || !text.trim()) return;
+            if (!snapshot.canSend || snapshot.selectedChatId !== chatId || (!text.trim() && !snapshot.attachments?.length)) return;
             if (!await persistDraft(chatId, text) || currentGeneration.current !== expectedGeneration) return;
             if (await act(api.send(expectedGeneration, chatId, text)) && currentGeneration.current === expectedGeneration) {
               if (dirty.current.get(chatId) === text) dirty.current.set(chatId, '');

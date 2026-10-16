@@ -11,6 +11,8 @@ import { decodeProfiles, decodeSessionList, decodeSessionReceipt } from '../../.
 import { decodeRestHistory, decodeRpcHistory, HISTORY_LIMITS } from '../../../../packages/contracts/history.ts';
 import { EMPTY_LIVE, addOutgoing, afterHistory, reduceLive } from '../../../../packages/domain/live-turn.ts';
 import type { LiveTurn } from '../../../../packages/domain/live-turn.ts';
+import { admit, referenceText } from '../../../../packages/domain/attachments.ts';
+import type { StagedFile } from '../../../../packages/domain/attachments.ts';
 import { parseInteractivePrompt, encodeInteractiveAnswer } from '../../../../packages/contracts/prompts.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
 import type { Gateway } from '../../../../packages/hermes-client/gateway.ts';
@@ -22,6 +24,7 @@ import type { WorkspaceIdentity, WorkspaceOwner } from '../../../../packages/con
 import { parseEndpoint } from '../../../../packages/platform/transport-policy.ts';
 import type { ProtectedValue } from '../../../../packages/platform/protected-repository.ts';
 import { EMPTY_DATA } from '../../../../packages/ui/view-model.ts';
+import { plainPreview } from '../../../../packages/ui/markdown.ts';
 import type { ViewData, ChatView, TranscriptItem } from '../../../../packages/ui/view-model.ts';
 import { parseDesktopAction } from '../shared/desktop-api.ts';
 import type { DesktopAction, DesktopAlert, DesktopSnapshot, DesktopResult, DesktopWorkspace, HostInput } from '../shared/desktop-api.ts';
@@ -61,6 +64,8 @@ export function createDesktopService(adapters: Readonly<{
   // Optional desktop integrations owned by main (notifications, tray, login item).
   onPreferences?: (preferences: Preferences) => void;
   notify?: (alert: DesktopAlert) => void;
+  // System file picker owned by main; returns names and bytes, or null if cancelled.
+  pickFiles?: () => Promise<readonly Readonly<{ name: string; bytes: Uint8Array }>[] | null>;
 }>) {
   let preferences: Preferences = DEFAULT_PREFERENCES;
   const displayRecovery = adapters.repository ? createChatDisplayRecovery(adapters.repository) : null;
@@ -88,6 +93,8 @@ export function createDesktopService(adapters: Readonly<{
   let base: readonly TranscriptItem[] = [];
   let live: LiveTurn = EMPTY_LIVE;
   let publishTimer: ReturnType<typeof setTimeout> | undefined;
+  // Files chosen for the next message of exactly one chat, held in main only.
+  let staged: { chatId: string; files: readonly StagedFile[] } | null = null;
   let turnBookends = 0;
   let historyRevision = 0;
   // Accepted sends awaiting a live terminal bookend and saved history. Several can
@@ -105,7 +112,9 @@ export function createDesktopService(adapters: Readonly<{
   function snapshot(): DesktopSnapshot {
     return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend() || canSendBusy(), notice,
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
-      preferences, turn: { key: live.turn, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt } });
+      preferences, attachments: staged && staged.chatId === selectedChatId
+        ? staged.files.map(file => ({ id: file.id, name: file.name, size: file.bytes.byteLength, kind: file.kind })) : [],
+      turn: { key: live.turn, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt } });
   }
   const publish = () => { clearTimeout(publishTimer); publishTimer = undefined; adapters.onChange(snapshot()); };
   // Streaming text arrives many times a second; coalesce those updates.
@@ -150,7 +159,7 @@ export function createDesktopService(adapters: Readonly<{
     if (liveRecovery) recovered = { binding: liveBinding, scope: {hostId, principalId}, data: liveRecovery.data };
     liveRecovery = null;
     navigation = null; navigationIds = null; ++hostGeneration; ++generation; owner = null; acceptedSends = []; reconciled = false; running = false; sending = false; navigating = false;
-    ++workspaceRevision; workspace = null; identity = null; base = []; live = EMPTY_LIVE; clearTimeout(publishTimer); publishTimer = undefined;
+    ++workspaceRevision; workspace = null; identity = null; base = []; live = EMPTY_LIVE; clearTimeout(publishTimer); publishTimer = undefined; staged = null;
     clearPrompts(); const old = gateway; gateway = undefined; old?.close(); status = 'disconnected';
     if (clear) { recovered = null; data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
     else if (recovered) data = offlineDisplay(recovered.data);
@@ -180,7 +189,7 @@ export function createDesktopService(adapters: Readonly<{
     const items = [...base, ...live.items];
     const last = [...items].reverse().find(item => item.kind === 'message' && item.paragraphs.join('').trim());
     updateChat(chatId, chat => ({ ...chat, transcript: items,
-      preview: last?.kind === 'message' ? last.paragraphs.join(' ').replace(/\s+/gu, ' ').slice(0, 160) : chat.preview }));
+      preview: last?.kind === 'message' ? plainPreview(last.paragraphs.join('\n')) : chat.preview }));
   }
   async function history(captured: Owner, connection: Gateway) {
     const revision = ++historyRevision;
@@ -240,7 +249,7 @@ export function createDesktopService(adapters: Readonly<{
         if (wasRunning) {
           const reply = [...live.items].reverse().find(item => item.kind === 'message' && item.direction === 'in');
           alert(live.failure ? 'failed' : 'reply', captured.storedSessionId, captured.profileId,
-            live.failure ?? (reply?.kind === 'message' ? reply.paragraphs.join(' ') : ''));
+            live.failure ?? (reply?.kind === 'message' ? plainPreview(reply.paragraphs.join('\n'), 400) : ''));
         }
         void history(captured, connection).catch(() => { if (owner === captured) { notice = 'Could not check saved history. Reopen the chat before sending.'; publish(); } });
       }
@@ -361,7 +370,7 @@ export function createDesktopService(adapters: Readonly<{
   async function open(profile: string, storedSessionId?: string, canonical = false, requestId?: string, initiatingGeneration = generation) {
     if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
     const connection = gateway, current = hostGeneration;
-    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSends = []; clearPrompts(); ++generation;
+    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSends = []; clearPrompts(); ++generation; staged = null;
     navigation = requestId ? {requestId, initiatingGeneration, generation} : null; publish();
     // Ordinary/saved-chat supersession admits no more entries from the older
     // canonical initiating generation, so its tombstones can be retired.
@@ -503,13 +512,30 @@ export function createDesktopService(adapters: Readonly<{
       const key = `draft:${scope(captured.profileId, action.chatId)}`; await save(key, action.text);
       if (owner === captured) { drafts = { ...drafts, [action.chatId]: action.text }; publish(); } return;
     }
+    if (action.kind === 'attach') {
+      if (!adapters.pickFiles) throw new UserFacingError('Adding files is not available here.');
+      const chosen = await adapters.pickFiles();
+      if (!chosen?.length || owner !== captured) return;
+      const result = admit(staged?.chatId === action.chatId ? staged.files : [], chosen, () => randomUUID());
+      staged = { chatId: action.chatId, files: result.files };
+      notice = result.problem; publish(); return;
+    }
+    if (action.kind === 'detach') {
+      if (staged?.chatId === action.chatId) staged = { chatId: action.chatId, files: staged.files.filter(file => file.id !== action.attachmentId) };
+      publish(); return;
+    }
     if (action.kind === 'interrupt') {
       await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId }); return;
     }
+    // Capture before dispatch: a fast host can start the reply before its receipt.
+    const busyAtDispatch = running;
+    const files = staged?.chatId === action.chatId ? staged.files : [];
+    if (!action.text.trim() && !files.length) throw new UserFacingError('Write a message first.');
     if (running) {
       if (!canSendBusy()) throw new UserFacingError('Wait a moment, then send again.');
-      if (preferences.busyMode === 'steer') { await steer(captured, connection, action.chatId, action.text); return; }
-      if (preferences.busyMode === 'interrupt') {
+      // Files can only wait in the queue; they never steer or interrupt a reply.
+      if (preferences.busyMode === 'steer' && !files.length) { await steer(captured, connection, action.chatId, action.text); return; }
+      if (preferences.busyMode === 'interrupt' && !files.length) {
         let stopped = false;
         try { const reply = await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId }); stopped = jsonObject(reply) && reply.status === 'interrupted'; }
         catch { stopped = false; }
@@ -523,19 +549,23 @@ export function createDesktopService(adapters: Readonly<{
     const draftRevision = revisions.get(draftKey) ?? null;
     let bookendAtDispatch = turnBookends; publish();
     try {
-      const result = await createTextSend({ id: randomUUID(), requestId: randomUUID(), owner: captured, text: action.text }, {
+      const references = files.length ? await upload(captured, connection, files) : [];
+      if (owner !== captured) return;
+      const text = [action.text, ...references].filter(part => part.trim()).join('\n');
+      const result = await createTextSend({ id: randomUUID(), requestId: randomUUID(), owner: captured, text }, {
         currentOwner: () => owner === captured && status === 'connected' ? captured : null,
         commit: intent => commitIntent(intentKey, intent), submit: request => { dispatchAttempted = true; bookendAtDispatch = turnBookends; return connection.submitText(request); },
       })();
       if (owner !== captured) return;
-      live = addOutgoing(live, result.id, action.text, result.phase === 'accepted' ? 'pending' : 'unknown');
+      live = addOutgoing(live, result.id, action.text, result.phase === 'accepted' ? 'pending' : 'unknown', files.map(file => file.kind === 'image' ? 'Photo' : file.name));
+      if (staged?.chatId === action.chatId) staged = { chatId: action.chatId, files: staged.files.filter(file => !files.includes(file)) };
       applyTranscript(action.chatId);
       if (result.phase === 'accepted') {
         acceptedSends = [...acceptedSends, { intent: result, key: intentKey, bookend: bookendAtDispatch }];
         const cleared = await clearSentDraft(draftKey, draftRevision, action.text);
         if (owner !== captured) return;
         if (cleared) drafts = { ...drafts, [action.chatId]: '' };
-        if (running) notice = 'Queued. It runs when the current reply finishes.';
+        if (busyAtDispatch) notice = 'Queued. It runs when the current reply finishes.';
         else if (turnBookends === bookendAtDispatch) { running = true; notice = ''; }
         else { await history(captured, connection); }
       } else { reconciled = false; notice = 'Not sure this arrived. Reopen the chat to check saved history. Nothing will be resent automatically.'; }
@@ -543,6 +573,40 @@ export function createDesktopService(adapters: Readonly<{
       if (owner === captured && dispatchAttempted) { reconciled = false; notice = 'The send outcome could not be saved. Reopen the chat to check history before sending again.'; }
       throw error;
     } finally { if (owner === captured) { sending = false; publish(); } }
+  }
+  // Stage files on the live session in the chosen order. Images join the session's
+  // image queue (claimed by the next prompt); other files return @file: references.
+  // Hermes binds neither to one message: another client could interleave.
+  async function upload(captured: Owner, connection: Gateway, files: readonly StagedFile[]): Promise<string[]> {
+    const references: string[] = [], queued: string[] = [];
+    const options = { mutation: true, timeoutMs: 120000, maxBytes: 12 * 1024 * 1024 } as const;
+    for (const file of files) {
+      const base64 = Buffer.from(file.bytes).toString('base64');
+      let reply: unknown;
+      try {
+        reply = file.kind === 'image'
+          ? await connection.call('image.attach_bytes', { session_id: captured.runtimeId, filename: file.name, content_base64: base64 }, options)
+          : await connection.call('file.attach', { session_id: captured.runtimeId, name: file.name, data_url: `data:${file.mime};base64,${base64}` }, options);
+      } catch (error) {
+        if (error instanceof GatewayOperationError) {
+          // A definite refusal: take back images already queued, then stop.
+          for (const path of queued) await connection.call('image.detach', { session_id: captured.runtimeId, path }).catch(() => undefined);
+          throw new UserFacingError(`Couldn't add ${file.name}${error.detail ? `: ${error.detail.replace(/[.!?]?$/u, '.')}` : '.'} Nothing was sent.`);
+        }
+        notice = 'Not sure the files finished uploading. Nothing was sent. Check the chat before sending again.';
+        throw new UserFacingError(notice);
+      }
+      if (file.kind === 'image') {
+        if (!jsonObject(reply) || reply.attached !== true) throw new UserFacingError(`Hermes didn't accept ${file.name}. Nothing was sent.`);
+        if (typeof reply.path === 'string' && reply.path.length <= 4096) queued.push(reply.path);
+      } else {
+        const reference = referenceText(reply);
+        if (!reference) throw new UserFacingError(`Hermes didn't accept ${file.name}. Nothing was sent.`);
+        references.push(reference);
+      }
+      if (owner !== captured) throw Error('Chat changed');
+    }
+    return references;
   }
   // Steer adds the message to the reply in progress. It is not a new turn, so it
   // is not journaled; a lost reply keeps the draft and says so, never resends.

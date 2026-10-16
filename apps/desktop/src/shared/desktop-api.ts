@@ -30,8 +30,11 @@ export type DesktopSnapshot = Readonly<{
   workspace: DesktopWorkspace | null;
   preferences: Preferences;
   // The open chat's reply in progress: still status words, to-dos, context use.
+  // Files chosen for the open chat's next message (names and sizes only).
+  attachments: readonly PendingAttachment[];
   turn: Readonly<{ key: string | null; status: string; todos: readonly TodoItem[]; context: Readonly<{ used: number; max: number }> | null; startedAt: number | null }>;
 }>;
+export type PendingAttachment = Readonly<{ id: string; name: string; size: number; kind: 'image' | 'file' }>;
 // Something that needs a person while bighelp runs. Main decides whether to show
 // an OS notification (preferences, focus, the chat on screen); never a decision path.
 export type DesktopAlert = Readonly<{
@@ -52,6 +55,8 @@ export type DesktopAction =
   | Readonly<{ kind: 'interrupt'; generation: number; chatId: string }>
   | Readonly<{ kind: 'answer'; generation: number; promptId: string; answer: unknown }>
   | Readonly<{ kind: 'draft'; generation: number; chatId: string; text: string }>
+  | Readonly<{ kind: 'attach'; generation: number; chatId: string }>
+  | Readonly<{ kind: 'detach'; generation: number; chatId: string; attachmentId: string }>
   | Readonly<{ kind: 'workspace'; generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays }>
   | { [K in CallName]: Readonly<{ kind: 'call'; connection: number; name: K; input: CallInput<K> }> }[CallName];
 
@@ -69,6 +74,9 @@ export type DesktopApi = Readonly<{
   interrupt(generation: number, chatId: string): Promise<DesktopResult>;
   answer(generation: number, promptId: string, answer: unknown): Promise<DesktopResult>;
   draft(generation: number, chatId: string, text: string): Promise<DesktopResult>;
+  // Main opens the system file picker; the window only ever sees names and sizes.
+  attach(generation: number, chatId: string): Promise<DesktopResult>;
+  detach(generation: number, chatId: string, attachmentId: string): Promise<DesktopResult>;
   workspace(generation: number, profile: string, page: WorkspacePage, days: WorkspaceDays): Promise<DesktopResult>;
   call<K extends CallName>(connection: number, name: K, input: CallInput<K>): Promise<CallResult<K>>;
   openLink(url: string): Promise<boolean>;
@@ -172,10 +180,17 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   if (kind === 'openChat' || kind === 'interrupt') {
     keys(input, ['kind', 'generation', 'chatId']); return { kind, generation, chatId: text(input.chatId) };
   }
+  if (kind === 'attach') {
+    keys(input, ['kind', 'generation', 'chatId']); return { kind, generation, chatId: text(input.chatId) };
+  }
+  if (kind === 'detach') {
+    keys(input, ['kind', 'generation', 'chatId', 'attachmentId']);
+    return { kind, generation, chatId: text(input.chatId), attachmentId: text(input.attachmentId, 64) };
+  }
   if (kind === 'send' || kind === 'draft') {
     keys(input, ['kind', 'generation', 'chatId', 'text']);
-    if (typeof input.text !== 'string' || input.text.length > 262144 || !input.text.isWellFormed() || input.text.includes('\0')
-      || (kind === 'send' && !input.text.trim())) throw new TypeError('Invalid message');
+    // An empty send is allowed only with attachments; main checks that.
+    if (typeof input.text !== 'string' || input.text.length > 262144 || !input.text.isWellFormed() || input.text.includes('\0')) throw new TypeError('Invalid message');
     return { kind, generation, chatId: text(input.chatId), text: input.text };
   }
   if (kind === 'answer') {

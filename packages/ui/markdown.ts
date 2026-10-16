@@ -291,3 +291,16 @@ export function inlineText(nodes: readonly Inline[]): string {
   return nodes.map(node => node.kind === 'text' || node.kind === 'code' ? node.text : node.kind === 'break' ? '\n'
     : inlineText(node.children)).join('');
 }
+
+// One calm line for chat-list previews and notifications: Markdown syntax removed.
+export function plainPreview(source: string, max = 160): string {
+  const text = source.slice(0, 4000)
+    .replace(/```[^\n]*\n?/gu, ' ').replace(/`([^`]*)`/gu, '$1')
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/gu, '$1')
+    .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?|[-*+]\s+(?:\[[ xX]\]\s+)?|\d{1,9}[.)]\s+)/gmu, '')
+    .replace(/^\s*\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)*\|?\s*$/gmu, ' ')
+    .replace(/\|/gu, ' ').replace(/(\*\*|~~|\*)(?=\S)([^*~]*?\S)\1/gu, '$2')
+    .replace(/(?<![\p{L}\p{N}])(__|_)(?=\S)([^_]*?\S)\1(?![\p{L}\p{N}])/gu, '$2')
+    .replace(/\s+/gu, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
