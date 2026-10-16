@@ -156,7 +156,8 @@ function KanbanBoard(props: PageProps): JSX.Element {
   const history = full ? [
     ...full.events.flatMap(event => { const label = eventLabel(event, agentName); return label ? [{ key: `e${event.id}`, at: event.createdAt ?? 0, text: label }] : []; }),
     ...full.runs.map(run => ({ key: `r${run.id}`, at: run.endedAt ?? run.startedAt ?? 0,
-      text: `${run.agent ? agentName(run.agent) : 'An agent'}: ${runLabel(run.outcome, run.failed)}${run.summary ? `. ${run.summary}` : ''}` })),
+      // A run with no agent is Hermes recording a person's own Done note.
+      text: `${run.agent ? `${agentName(run.agent)}: ` : ''}${runLabel(run.outcome, run.failed)}${run.summary ? `. ${run.summary}` : ''}` })),
   ].sort((a, b) => a.at - b.at).slice(-40) : [];
 
   return <>
@@ -231,7 +232,7 @@ function KanbanBoard(props: PageProps): JSX.Element {
                 else void give(selected, next).then(error => { if (error) setNotice({ tone: 'error', text: error }); });
               }} />
           </View>
-          {selected.summary ? <Section title="Latest from the agent"><Label selectable>{selected.summary}</Label></Section> : null}
+          {selected.summary ? <Section title="Latest update"><Label selectable>{selected.summary}</Label></Section> : null}
           {full?.result ? <Section title="Result"><Label selectable>{full.result}</Label></Section> : null}
           <Section title="Details">{detail.status === 'failed' ? <Label tone="muted">{detail.message}</Label>
             : !full ? <Label tone="muted">Loading…</Label>

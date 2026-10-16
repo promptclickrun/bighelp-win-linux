@@ -175,7 +175,8 @@ export function eventLabel(event: KanbanEvent, agentName: (id: string) => string
     case 'assigned': return event.assignee === undefined ? null : event.assignee === null ? 'Set to anyone' : `Given to ${agentName(event.assignee)}`;
     case 'edited': return 'Edited';
     case 'blocked': return 'Put on hold';
-    case 'unblocked': return 'Taken off hold';
+    // unblock_task: how Hermes lets a held (Later) or blocked task go to Ready.
+    case 'unblocked': return 'Moved to Ready';
     case 'completed': return 'Marked done';
     case 'archived': return 'Archived';
     case 'spawned': return 'An agent started';
