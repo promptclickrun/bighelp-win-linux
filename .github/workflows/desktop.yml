@@ -1,4 +1,4 @@
-name: Desktop development packages
+name: Desktop beta packages
 on:
   push:
   pull_request:
@@ -47,16 +47,28 @@ jobs:
         if: runner.os == 'Linux'
         shell: bash
         run: |
-          cp -a artifacts/bighelp-development-linux-x64 "$RUNNER_TEMP/bighelp-smoke"
+          package=$(echo artifacts/bighelp-beta-*-linux-x64)
+          test -x "$package/bighelp"
+          test ! -e "$package/electron"
+          test -x "$package/install-desktop-entry.sh"
+          test -f "$package/bighelp.desktop"
+          test -f "$package/README.txt"
+          cp -a "$package" "$RUNNER_TEMP/bighelp-smoke"
           sudo chown root:root "$RUNNER_TEMP/bighelp-smoke/chrome-sandbox"
           sudo chmod 4755 "$RUNNER_TEMP/bighelp-smoke/chrome-sandbox"
-          xvfb-run -a node scripts/desktop/smoke.mjs --workspace-fixture --executable "$RUNNER_TEMP/bighelp-smoke/electron"
+          xvfb-run -a node scripts/desktop/smoke.mjs --workspace-fixture --executable "$RUNNER_TEMP/bighelp-smoke/bighelp"
       - name: Packaged Windows smoke and synthetic workspace interactions
         if: runner.os == 'Windows'
-        run: node scripts/desktop/smoke.mjs --workspace-fixture --executable artifacts/bighelp-development-win32-x64/electron.exe
+        shell: bash
+        run: |
+          package=$(echo artifacts/bighelp-beta-*-win32-x64)
+          test -f "$package/bighelp.exe"
+          test ! -e "$package/electron.exe"
+          test -f "$package/README.txt"
+          node scripts/desktop/smoke.mjs --workspace-fixture --executable "$package/bighelp.exe"
       - uses: actions/upload-artifact@v4
         with:
-          name: bighelp-development-${{ matrix.os }}
+          name: bighelp-beta-${{ matrix.os }}
           path: |
             artifacts/*.tar.gz
             artifacts/*.zip
