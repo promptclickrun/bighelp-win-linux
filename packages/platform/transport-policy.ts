@@ -15,7 +15,12 @@ export type RouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 export type RouteOperation = Readonly<{
   kind: 'route'; method: RouteMethod; path: string; query?: Readonly<Record<string, string>>;
   body?: string; maxBytes: number; native?: Readonly<{ etag: string; requestId: string }>;
+  // Only for host operations that answer after long work (cron Run now). Bounded.
+  timeoutMs?: number;
 }>;
+// Default and ceiling for one HTTP exchange. A longer wait is never retried.
+export const HTTP_TIMEOUT_MS = 20000;
+export const LONG_HTTP_TIMEOUT_MS = 15 * 60 * 1000;
 export type HttpResult = Readonly<{ body: unknown; status?: number; etag?: string; requestId?: string; cacheControl?: string }>;
 // Status plus, at most, one short plain-text host explanation. Never a transport
 // error, URL, headers or raw body.
@@ -50,7 +55,7 @@ function errorDetail(body: unknown): string {
 }
 export type HttpPlan = Readonly<{
   url: string; method: RouteMethod; headers: Readonly<Record<string, string>>;
-  body?: string; redirect: 'error'; credentials: 'omit'; maxResponseBytes: number;
+  body?: string; redirect: 'error'; credentials: 'omit'; maxResponseBytes: number; timeoutMs?: number;
 }>;
 export type SocketPlan = Readonly<{
   url: string; headers: Readonly<Record<string, string>>; protocols: readonly string[];
@@ -198,7 +203,7 @@ function routePath(value: unknown): string {
   return path;
 }
 function parseRoute(input: Record<string, unknown>): RouteOperation {
-  exactKeys(input, ['kind', 'method', 'path', 'query', 'body', 'maxBytes', 'native']);
+  exactKeys(input, ['kind', 'method', 'path', 'query', 'body', 'maxBytes', 'native', 'timeoutMs']);
   const method = input.method;
   if (typeof method !== 'string' || !ROUTE_METHODS.includes(method as RouteMethod)) throw new TypeError('Invalid method');
   const path = routePath(input.path);
@@ -231,8 +236,12 @@ function parseRoute(input: Record<string, unknown>): RouteOperation {
     if (!NATIVE_ETAG.test(etag) || !UUID.test(requestId) || !path.startsWith('/api/plugins/loopdy/')) throw new TypeError('Invalid native preconditions');
     native = Object.freeze({ etag, requestId });
   }
+  const timeoutMs = input.timeoutMs;
+  if (timeoutMs !== undefined && (typeof timeoutMs !== 'number' || !Number.isSafeInteger(timeoutMs)
+    || timeoutMs < 1000 || timeoutMs > LONG_HTTP_TIMEOUT_MS)) throw new TypeError('Invalid timeout');
   return Object.freeze({ kind: 'route', method: method as RouteMethod, path, maxBytes,
-    ...(query === undefined ? {} : { query }), ...(body === undefined ? {} : { body }), ...(native === undefined ? {} : { native }) });
+    ...(query === undefined ? {} : { query }), ...(body === undefined ? {} : { body }), ...(native === undefined ? {} : { native }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }) });
 }
 
 export function parseHttpOperation(value: unknown): HttpOperation {
@@ -297,9 +306,9 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
     if (signal.aborted || !adapters.isCurrent()) throw new Error('Transport cancelled or stale');
   }
   function plan(path: string, method: RouteMethod, headers: Readonly<Record<string, string>>,
-    maxResponseBytes: number, body?: string): HttpPlan {
+    maxResponseBytes: number, body?: string, timeoutMs?: number): HttpPlan {
     return Object.freeze({ url: endpoint.origin + path, method, headers, maxResponseBytes,
-      redirect: 'error', credentials: 'omit', ...(body === undefined ? {} : { body }) });
+      redirect: 'error', credentials: 'omit', ...(body === undefined ? {} : { body }), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
   }
   async function send(request: HttpPlan, signal: AbortSignal): Promise<Record<string, unknown>> {
     current(signal);
@@ -322,7 +331,7 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
         const headers: Record<string, string> = { ...authenticated };
         if (operation.body !== undefined) headers['Content-Type'] = 'application/json';
         if (operation.native) { headers['If-Match'] = operation.native.etag; headers['X-Loopdy-Request-ID'] = operation.native.requestId; }
-        prepared = plan(operation.path + (search ? `?${search}` : ''), operation.method, Object.freeze(headers), operation.maxBytes, operation.body);
+        prepared = plan(operation.path + (search ? `?${search}` : ''), operation.method, Object.freeze(headers), operation.maxBytes, operation.body, operation.timeoutMs);
         break;
       }
       case 'status': prepared = plan('/api/status', 'GET', authenticated, 65536); break;
