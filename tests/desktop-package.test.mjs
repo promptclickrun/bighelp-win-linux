@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, chmod } from 'node:fs
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateTarget, validateAppSource, checksumManifest, regularFiles, validateRuntime } from '../scripts/desktop/package-policy.mjs';
+import { writeBundledLicenses } from '../scripts/desktop/package-licenses.mjs';
 
 async function temporary(body) {
   const directory = await mkdtemp(join(tmpdir(), 'bighelp-package-test-'));
@@ -12,6 +13,7 @@ async function temporary(body) {
 async function bundle(directory) {
   await mkdir(join(directory, 'renderer'));
   for (const file of ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js']) await writeFile(join(directory, file), 'bundle');
+  await writeBundledLicenses(directory, directory, { main: { inputs: {} }, preload: { inputs: {} }, renderer: { inputs: {} } });
 }
 test('only qualified portable target combinations are accepted', () => {
   validateTarget('linux', 'x64'); validateTarget('win32', 'x64');
@@ -19,7 +21,7 @@ test('only qualified portable target combinations are accepted', () => {
 });
 test('complete application resources pass; credentials, source and fixture files fail closed', async () => temporary(async directory => {
   await bundle(directory);
-  assert.equal((await validateAppSource(directory)).length, 4);
+  assert.equal((await validateAppSource(directory)).length, 6);
   for (const file of ['.env', 'renderer/fixtures.json', 'main.ts', 'renderer/renderer.js.map']) {
     await writeFile(join(directory, file), 'must not ship');
     await assert.rejects(validateAppSource(directory), /Unexpected file/u);

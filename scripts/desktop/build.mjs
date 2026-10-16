@@ -7,6 +7,7 @@ import { copyFile, mkdir, rm } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { isBuiltin } from 'node:module';
+import { writeBundledLicenses } from './package-licenses.mjs';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const app = join(root, 'apps', 'desktop');
@@ -49,10 +50,15 @@ const mainExternal = Object.values(mainResult.metafile.outputs).flatMap(output =
   .filter(entry => entry.external && entry.path !== 'electron' && !isBuiltin(entry.path)).map(entry => entry.path);
 if (mainExternal.length > 0) throw new Error(`Main bundle has unexpected externals: ${mainExternal.join(', ')}`);
 
+const licenses = await writeBundledLicenses(root, out, {
+  main: mainResult.metafile, preload: preloadResult.metafile, renderer: rendererResult.metafile,
+});
+
 const size = result => Object.values(result.metafile.outputs).reduce((sum, output) => sum + output.bytes, 0);
 process.stdout.write(`${JSON.stringify({
   mode: production ? 'production' : 'development',
   outputs: { main: size(mainResult), preload: size(preloadResult), renderer: size(rendererResult) },
   rendererPackages: [...new Set(rendererInputs.map(file => /node_modules\/((?:@[^/]+\/)?[^/]+)/u.exec(file)?.[1]).filter(Boolean))].sort(),
+  licensedPackages: licenses.packages.map(pkg => `${pkg.name}@${pkg.version}`),
   out: relative(root, out),
 }, null, 2)}\n`);

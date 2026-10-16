@@ -45,6 +45,7 @@ try {
   await rm(join(output, 'resources/default_app.asar'), { force: true });
   const app = join(output, 'resources/app');
   await mkdir(app, { recursive: true });
+  // appFiles includes the required graph-derived full npm notices and provenance.
   for (const file of appFiles) {
     await mkdir(dirname(join(app, file)), { recursive: true });
     await copyFile(join(source, file), join(app, file));
