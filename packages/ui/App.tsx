@@ -160,7 +160,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       <Conversation agent={agent} chat={chat} host={data.host} tab={state.agentTab} sample={data.sample}
         options={snapshot?.preferences ? { showReasoning: snapshot.preferences.showReasoning, foldFinishedTurns: snapshot.preferences.foldFinishedTurns,
           enterToSend: snapshot.preferences.enterToSend, busyMode: snapshot.preferences.busyMode, nerdMode } : undefined}
-        turn={snapshot?.turn && snapshot.selectedChatId === chat?.id ? snapshot.turn : undefined} liveTurn={snapshot?.turn?.key ?? null}
+        turn={snapshot?.turn && snapshot.selectedChatId === chat?.id ? (snapshot.prompts.length
+          ? { ...snapshot.turn, status: snapshot.prompts.some(item => item.prompt.kind === 'approval') ? 'Waiting for your OK' : 'Waiting for your answer' }
+          : snapshot.turn) : undefined} liveTurn={snapshot?.turn?.key ?? null}
         actions={api ? { openLink: url => { void api.openLink(url); }, copy: text => api.copyText(text) } : {}}
         onCheckHistory={api && snapshot && chat && act ? () => { void act(api.openChat(snapshot.generation, chat.id)); } : undefined}
         headerActions={api && snapshot && chat && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id

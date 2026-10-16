@@ -16,7 +16,7 @@ const REASONING_LABELS: Readonly<Record<typeof REASONING_LEVELS[number], string>
 export function ModelButton(props: Readonly<{ chatId: string; running: boolean; current: Readonly<{ name: string; provider: string; reasoning: string }> | null }>): JSX.Element {
   const [open, setOpen] = useState(false);
   return <>
-    <IconButton icon="agents" label={props.current ? `Model: ${props.current.name}. Change for this chat` : 'Model and reasoning for this chat'} onPress={() => setOpen(true)} />
+    <IconButton icon="model" label={props.current ? `Model: ${props.current.name}. Change for this chat` : 'Model and reasoning for this chat'} onPress={() => setOpen(true)} />
     {open ? <ModelDialog chatId={props.chatId} running={props.running} current={props.current} onClose={() => setOpen(false)} /> : null}
   </>;
 }
