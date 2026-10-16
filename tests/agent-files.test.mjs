@@ -6,6 +6,7 @@ import { parseDesktopAction } from '../apps/desktop/src/shared/desktop-api.ts';
 import { createSaveCopy, safeFileName } from '../apps/desktop/src/main/save-copy.ts';
 import { decodeMediaChunk, decodeWorkspaceListing, hostPath, relativeFilePath, textPreview } from '../packages/contracts/agent-files.ts';
 import { ALL_FEATURES, etag, nativeHost, run } from './native-host-fixture.mjs';
+import { control, harness, has, nodes, textContent } from './ui-hook-harness.mjs';
 
 const ROOT = '/home/ana/agent-work';
 const workspace = (profileId = 'default') => ({ origin: 'config', profileId, root: ROOT, source: 'terminal.cwd' });
@@ -237,4 +238,116 @@ test('media lists this agent’s pictures and videos and saves them chunk by chu
   for (const input of [{ profile: 'agent', id: 'short' }, { profile: 'agent', id: '../../etc/passwd/xxxxxxxx' }, { profile: 'agent', id, path: '/x' }]) {
     assert.throws(() => CALLS['media.save'].parse(input));
   }
+});
+
+// ---- The Files tab page ----
+const uiData = { sample: false, host: { label: 'Studio Mac', state: 'connected' }, chats: [], workflows: [],
+  agents: [{ id: 'one', name: 'One', summary: '', color: 'blue' }, { id: 'default', name: 'Main', summary: '', color: 'red' }] };
+const uiSnapshot = (overrides = {}) => ({ generation: 1, connection: 4, revision: 1, status: 'connected', data: uiData, selectedChatId: null,
+  running: false, canSend: false, notice: '', storageAvailable: true, prompts: [], drafts: {}, workspace: null, ...overrides });
+const file = (path, overrides = {}) => ({ name: path.slice(path.lastIndexOf('/') + 1), path, folder: false, size: 34, mimeType: 'text/markdown',
+  modifiedAt: '2026-10-16T21:27:57.327Z', ...overrides });
+function filesApi() {
+  const calls = [];
+  const api = { call(connection, name, input) { let resolve; const promise = new Promise(done => { resolve = done; }); calls.push({ connection, name, input, resolve }); return promise; },
+    send() { throw new Error('Files never send a message'); } };
+  const answer = (name, value) => { const call = calls.find(entry => entry.name === name && !entry.done); assert.ok(call, `no pending ${name}`); call.done = true; call.resolve(value); return call; };
+  return { api, calls, answer };
+}
+async function filesPage(extra = {}) {
+  const io = filesApi();
+  const props = { api: io.api, snapshot: uiSnapshot(), data: uiData, profile: 'one', narrow: false, ...extra };
+  const h = await harness('packages/ui/components/AgentFiles.tsx', 'AgentFiles', props);
+  h.render(); await h.settle();
+  return { h, io, props };
+}
+const folderValue = (entries, overrides = {}) => ({ ok: true, value: { servingProfileId: 'one', folder: '', parent: null, recent: true, entries, ...overrides } });
+
+test('Artifacts shows recent files from the Hermes computer, previews text and saves a copy through main', async () => {
+  const { h, io } = await filesPage();
+  const recent = io.answer('files.recent', folderValue([file('reports/summary.md'), file('notes.md')]));
+  assert.deepEqual([recent.connection, recent.input], [4, { profile: 'one' }]);
+  await h.settle();
+  const text = textContent(h.value);
+  assert.match(text, /Made or changed lately/);
+  assert.match(text, /These files are on Studio Mac, in One’s working folder\. bighelp only reads them; Save a copy puts one on this computer\./);
+  assert.match(text, /in Working folder › reports|in reports/);
+  control(h, 'summary.md').onPress(); h.render(); await h.settle();
+  const preview = io.answer('files.preview', { ok: true, value: { servingProfileId: 'one', name: 'summary.md', path: 'reports/summary.md', size: 18,
+    mimeType: 'text/markdown', saveable: true, preview: { kind: 'text', text: '# Summary\nAll good', truncated: true } } });
+  assert.deepEqual(preview.input, { profile: 'one', path: 'reports/summary.md' });
+  await h.settle();
+  assert.match(textContent(h.value), /# Summary\nAll good/);
+  assert.match(textContent(h.value), /Showing the first part of this file/);
+  control(h, 'Save a copy of summary.md on this computer').onPress(); h.render();
+  assert.equal(control(h, 'Save a copy of summary.md on this computer').disabled, true, 'one save at a time');
+  const save = io.answer('files.save', { ok: true, value: { saved: true, fileName: 'summary copy.md' } });
+  assert.deepEqual(save.input, { profile: 'one', path: 'reports/summary.md' }, 'the renderer names the file, never where to write');
+  await h.settle();
+  assert.match(textContent(h.value), /Saved “summary copy\.md” on this computer\./);
+  control(h, 'Save a copy of summary.md on this computer').onPress(); h.render();
+  io.answer('files.save', { ok: true, value: { saved: false } }); await h.settle();
+  assert.doesNotMatch(textContent(h.value), /Saved “/, 'cancelling says nothing');
+  h.unmount();
+});
+
+test('Artifacts says whose working folder it is when the plugin serves another agent', async () => {
+  const { h, io } = await filesPage();
+  io.answer('files.recent', folderValue([file('notes.md')], { servingProfileId: 'default' })); await h.settle();
+  const text = textContent(h.value);
+  assert.match(text, /in Main’s working folder/);
+  assert.match(text, /Showing Main’s files/);
+  assert.match(text, /The bighelp plugin shares the working folder of the agent Hermes runs as, Main\. One may keep its own files somewhere else\./);
+  h.unmount();
+});
+
+test('without recent files the working folder is browsed folder by folder', async () => {
+  const { h, io } = await filesPage();
+  io.answer('files.recent', { ok: false, code: 'unsupported', message: 'Update the bighelp plugin on your Hermes computer, then try again.' }); await h.settle();
+  const root = io.answer('files.list', folderValue([file('notes.md'), { name: 'reports', path: 'reports', folder: true }], { recent: false }));
+  assert.deepEqual(root.input, { profile: 'one', folder: '' });
+  await h.settle();
+  assert.match(textContent(h.value), /Working folder/);
+  assert.equal(has(h, 'Show recent files'), false);
+  control(h, 'Folder reports').onPress(); h.render(); await h.settle();
+  const inner = io.answer('files.list', folderValue([file('reports/a.md')], { recent: false, folder: 'reports', parent: '' }));
+  assert.deepEqual(inner.input, { profile: 'one', folder: 'reports' });
+  await h.settle();
+  control(h, 'Up one folder').onPress(); h.render(); await h.settle();
+  assert.deepEqual(io.calls.at(-1).input, { profile: 'one', folder: '' });
+  h.unmount();
+});
+
+test('refusals are shown in plain words; offline nothing is requested', async () => {
+  const { h, io } = await filesPage();
+  io.answer('files.recent', { ok: false, code: 'unavailable', message: 'This agent works inside a container, so its files aren’t on the computer bighelp can read.' });
+  await h.settle();
+  assert.match(textContent(h.value), /inside a container/);
+  const offline = await filesPage({ snapshot: uiSnapshot({ status: 'disconnected' }) });
+  assert.match(textContent(offline.h.value), /Files are unavailable\. Connect to Hermes, then refresh\./);
+  assert.equal(offline.io.calls.length, 0);
+  h.unmount(); offline.h.unmount();
+});
+
+test('Media lists pictures and videos, previews only images, and saves through main', async () => {
+  const { h, io } = await filesPage();
+  control(h, 'Media').onPress(); h.render(); await h.settle();
+  const id = 'a1b2c3d4e5f60718293a4b5c6d7e8f90', video = 'b1b2c3d4e5f60718293a4b5c6d7e8f90';
+  const list = io.answer('media.list', { ok: true, value: { items: [{ id, name: 'sunset.png', mimeType: 'image/png', size: 67 },
+    { id: video, name: 'clip.mp4', mimeType: 'video/mp4', size: 9_000_000 }] } });
+  assert.deepEqual(list.input, { profile: 'one' });
+  await h.settle();
+  control(h, 'sunset.png').onPress(); h.render(); await h.settle();
+  io.answer('media.preview', { ok: true, value: { id, mimeType: 'image/png', size: 67, saveable: true, preview: { kind: 'image', dataUrl: 'data:image/png;base64,iVBORw0KGgo=' } } });
+  await h.settle();
+  const images = nodes(h.value, node => node.type === 'img');
+  assert.equal(images.length, 1); assert.equal(images[0].props.src, 'data:image/png;base64,iVBORw0KGgo='); assert.equal(images[0].props.alt, 'sunset.png');
+  control(h, 'clip.mp4').onPress(); h.render(); await h.settle();
+  assert.match(textContent(h.value), /Videos can be saved, but not played here yet\./);
+  assert.equal(io.calls.filter(call => call.name === 'media.preview').length, 1, 'videos are not fetched for a preview');
+  control(h, 'Save a copy of clip.mp4 on this computer').onPress(); h.render();
+  assert.deepEqual(io.answer('media.save', { ok: false, code: 'stale', message: 'That file is no longer in Media. Refresh to see the latest.' }).input, { profile: 'one', id: video });
+  await h.settle();
+  assert.match(textContent(h.value), /no longer in Media/);
+  h.unmount();
 });

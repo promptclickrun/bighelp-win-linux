@@ -290,13 +290,15 @@ test('board tab cancels held canonical navigation without reverting to Chat on i
 });
 
 
-test('board chat prefills open a new chat and only fill in its message box',async()=>{
+test('board chat prefills open a new chat and only fill in its message box; Files gets its own page',async()=>{
  const h=harness();const text='Yes, go ahead with this idea: “Plan meals”.';
  try{h.find('Conversation').onTab('ideas');await h.settle();
   h.find('Conversation').board.props.onStartChat(text);await h.settle();
   assert.deepEqual(h.calls.slice(-2).map(call=>[call.kind,call.chatId??call.id,call.text]),[['newChat','C',undefined],['draft','C',text]]);
   const conversation=h.find('Conversation');assert.equal(conversation.tab,'chat');assert.equal(conversation.draft,text);
   assert.ok(!h.calls.some(call=>call.kind==='send'),'nothing is sent');
+  h.find('Conversation').onTab('files');await h.settle();
+  const files=h.find('Conversation').files;assert.equal(files.type,'AgentFiles');assert.equal(files.props.profile,'agent');
  }finally{h.unmount();}
 });
 

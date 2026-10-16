@@ -10,6 +10,7 @@ import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
 import { AddAgentButton, AgentManager, AgentMenu } from './components/AgentManager.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
 import { ChatMenu } from './components/ChatMenu.tsx';
+import { AgentFiles } from './components/AgentFiles.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { PendingAttachments } from './components/PendingAttachments.tsx';
 import { ModelButton } from './components/ModelButton.tsx';
@@ -203,6 +204,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?
           <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow}
             onStartChat={text => startChatWith(agent.id, text)} /> : null}
+        files={state.agentTab === 'files' ? <AgentFiles key={`${agent.id}:files`} profile={agent.id} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}
         onDraft={text => {
           if (snapshot && (snapshot.status !== 'connected' || snapshot.selectedChatId !== chat?.id)) return;

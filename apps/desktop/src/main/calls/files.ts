@@ -13,7 +13,7 @@ import type { CallContext } from './context.ts';
 import { CallError } from './context.ts';
 import type { CallHandlers } from './index.ts';
 import type { PluginContext } from './plugin.ts';
-import { nativePost, pluginAgentId, requirePluginFeature } from './plugin.ts';
+import { nativePost, pluginAgentId, readPluginContext, requirePluginFeature } from './plugin.ts';
 
 const LISTING_BYTES = 196_608;
 // The transport's largest reply; a whole file read or one media chunk fits.
@@ -68,7 +68,12 @@ function decoded<T>(decode: () => T): T {
 type Serving = PluginContext & Readonly<{ servingProfileId: string }>;
 async function workspacePlugin(context: CallContext, profile: string, recent = false): Promise<Serving> {
   context.requireProfile(profile);
-  const plugin = await requirePluginFeature(context, AGENT_FILE_FEATURES.files);
+  // No fallback to stock /api/files: the Mac app does not use it for this tab either.
+  const plugin = await readPluginContext(context);
+  if (!plugin) throw new CallError('unsupported', 'Files need the bighelp plugin on your Hermes computer.');
+  if (!plugin.features.includes(AGENT_FILE_FEATURES.files)) {
+    throw new CallError('unsupported', 'The bighelp plugin on your Hermes computer doesn’t share workspace files yet. Update it there, then try again.');
+  }
   if (recent && !plugin.features.includes(AGENT_FILE_FEATURES.recent)) throw new CallError('unsupported', updatePlugin);
   const serving = plugin.servingProfileId;
   if (serving === null) throw new CallError('unsupported', 'This computer’s Hermes can’t share an agent’s files yet. Update Hermes and the bighelp plugin.');
