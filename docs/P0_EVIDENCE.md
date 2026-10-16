@@ -43,12 +43,16 @@ Node strips TypeScript types to run these tests; it does **not** type-check. A p
 - Original-owner evidence can be persisted after navigation. Publication into the current UI needs a fresh lease check. Returned snapshots are not permission to mutate presentation.
 - A rejected receipt is not inferred from arbitrary RPC errors. Real refusal classification and authoritative turn/history reconciliation remain unimplemented.
 
+## Desktop shell (2026-10-16)
+
+The approved hybrid direction runs as an Electron + RNW shell with no host connection: [desktop-shell.md](evidence/desktop-shell.md). The approved dependencies are installed and the first strict type check of all code is green: [TOOLCHAIN.md](qualification/TOOLCHAIN.md). The evidence is from a development host (ARM64, X11 virtual display, OS sandbox unavailable). It is not target-platform evidence.
+
 ## Next bounded slices
 
-1. Approve the [desktop dependency proposal](P0_DEPENDENCIES.md); add strict compilation and platform CI.
+1. ~~Approve the dependency proposal; add strict compilation~~ (done; see TOOLCHAIN.md). Platform CI for Windows x64 and Ubuntu x64 is still needed.
 2. Prove sandboxed Electron main/preload boundaries and fail-closed OS secret storage on both targets. No renderer token access or generic IPC.
 3. Implement protected transactional journal and owner registry, then exercise crash injection and duplicate-intent exclusion.
 4. Implement bounded RPC framing and socket lifecycle against an authorized disposable Hermes clone.
-5. Publish distinct static mocks and obtain a selection before product UI work.
+5. ~~Publish distinct static mocks and obtain a selection~~ (D picked and approved; the shell implements it).
 
 The initial-bootstrap status sentence in AGENTS.md predates this implementation approval. DECISIONS.md records the current approved choices; the remaining repository safety and approval rules still apply.

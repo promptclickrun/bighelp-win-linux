@@ -4,8 +4,31 @@
   "version": "0.0.0",
   "type": "module",
   "license": "Apache-2.0",
-  "engines": { "node": ">=22.23.0" },
+  "engines": {
+    "node": ">=22.23.0"
+  },
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/*.test.mjs"
+    "test": "node --experimental-strip-types --test tests/*.test.mjs",
+    "typecheck": "tsc -p config/tsconfig.core.json && tsc -p config/tsconfig.desktop.json && tsc -p config/tsconfig.renderer.json",
+    "desktop:build": "npm run typecheck && node scripts/desktop/build.mjs",
+    "desktop:start": "npm run desktop:build && electron apps/desktop/dist/main.cjs",
+    "desktop:preview": "npm run desktop:build && electron apps/desktop/dist/main.cjs --fixture-preview",
+    "desktop:smoke": "node scripts/desktop/smoke.mjs",
+    "electron:fetch": "node node_modules/electron/install.js",
+    "esbuild:verify": "node node_modules/esbuild/install.js",
+    "check": "npm test && npm run typecheck && node scripts/desktop/build.mjs"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "react-native-web": "0.21.4"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "electron": "44.7.2",
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2"
   }
 }

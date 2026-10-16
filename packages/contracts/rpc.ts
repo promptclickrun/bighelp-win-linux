@@ -91,7 +91,7 @@ function parseLine(text: string): JsonValue {
     }
     if (character === '"') return string();
     const start = cursor;
-    while (cursor < text.length && !/[\s,\]}]/.test(text[cursor])) cursor++;
+    while (cursor < text.length && !/[\s,\]}]/.test(text[cursor] ?? '')) cursor++;
     const token = text.slice(start, cursor);
     if (token === 'true') return true;
     if (token === 'false') return false;
@@ -133,7 +133,8 @@ function classify(value: JsonValue): RpcFrame {
   }
   const id = rpcId(value.id);
   if (has(value, 'params') || has(value, 'result') === has(value, 'error')) return invalid();
-  if (has(value, 'result')) return Object.freeze({ kind: 'result', id, result: value.result });
+  const result = value.result;
+  if (result !== undefined) return Object.freeze({ kind: 'result', id, result });
   const error = value.error;
   if (!jsonObject(error) || typeof error.code !== 'number' || !Number.isSafeInteger(error.code)) return invalid();
   const message = boundedString(error.message, RPC_LIMITS.messageBytes);
@@ -229,7 +230,7 @@ export function encodeServerReply(id: string, reply: ServerReply): string {
   if (!jsonObject(value) || Object.keys(value).length !== 1 || (!has(value, 'result') && !has(value, 'error'))) return invalid();
   const text = encodeBoundedJson({ jsonrpc: '2.0', id, ...value }, RPC_LIMITS.serverResponseBytes);
   const frame = decodeRpcFrame(text)[0];
-  if (frame.kind !== 'result' && frame.kind !== 'error') return invalid();
+  if (!frame || (frame.kind !== 'result' && frame.kind !== 'error')) return invalid();
   if (frame.kind === 'error' && !frame.message) return invalid();
   return text;
 }

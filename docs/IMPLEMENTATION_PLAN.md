@@ -79,7 +79,7 @@ Do not pin arbitrary “latest” versions now. Phase 0 must record an exact com
 
 ## 5. Proposed component boundaries
 
-Target structure below is mostly proposed. Only the initial `packages/domain/` and top-level contract tests have been created:
+Target structure below. Created so far: `apps/desktop/` (main, preload, renderer entry), `packages/contracts/`, `packages/hermes-client/`, `packages/domain/`, `packages/platform/`, `packages/ui/`, and top-level tests:
 
 ```text
 apps/desktop/               Shared Electron main/preload + RN Web renderer

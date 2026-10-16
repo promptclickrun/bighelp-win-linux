@@ -48,6 +48,8 @@ No continuous loaders/pulse/weather effects under this workspace's motion policy
 
 ## D6 — Runtime dependencies and storage (after proof)
 
+**Approved (2026-10-15):** Colt picked the PR 4 proposal set with an isolated Node 24.22 toolchain and an exact lockfile. Installed per [TOOLCHAIN.md](qualification/TOOLCHAIN.md), with one deviation: `@types/react-native-web@0.19.3` failed strict checking against RNW 0.21, which was the proposal's own stop condition. It and the `react-native@0.88.0` it required were removed, and a small hand-maintained declaration replaces them. That removed 203 installed packages and all 9 high-severity advisories, and added no package. Storage, secrets, packaging, WebSocket and native-module choices are still open.
+
 **Proposed:** compatible pinned React/RN/RNW stack, bounded runtime validation, transactional protected repositories, native secrets, and vetted Markdown/media/list primitives. Do not choose packages based solely on iOS/Android support. Linux SQLite/key management and RNW WebRTC/editor support are proof gates.
 
 **Approval needed:** exact dependency set and any native module ownership. Do not install toolchains/dependencies during the documentation-only pass.

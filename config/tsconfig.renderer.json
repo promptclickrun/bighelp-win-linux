@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.base.json",
+  // Renderer: DOM only. No Node types, so renderer code cannot name fs, process or child_process.
+  "compilerOptions": { "lib": ["ES2024", "DOM", "DOM.Iterable"], "jsx": "react-jsx", "types": [] },
+  "include": ["../packages/ui/**/*.ts", "../packages/ui/**/*.tsx", "../apps/desktop/src/renderer/**/*.tsx",
+    "../apps/desktop/src/shared/**/*.ts", "../packages/domain/shell.ts"]
+}

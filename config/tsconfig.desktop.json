@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.base.json",
+  // electron.d.ts itself references DOM types (webview tags, MessagePort, VideoFrame),
+  // so the main/preload check needs the DOM lib to type-check Electron's declarations.
+  "compilerOptions": { "lib": ["ES2024", "DOM"], "types": ["node"] },
+  "include": ["../apps/desktop/src/main/**/*.ts", "../apps/desktop/src/preload/**/*.ts", "../apps/desktop/src/shared/**/*.ts"]
+}
