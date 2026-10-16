@@ -2,6 +2,31 @@
 
 Baseline: [Bighelp Mac Catalyst 2.4.0 (122)](../SOURCES.md). **No complete target feature is qualified or shipped.** The [connected development preview](../evidence/connected-runtime.md) implements parts of F01/F06/F11/F12/F13/F14 with protected persistence, real Hermes transport and text chat. [Canonical Bot Chat](../evidence/canonical-chat.md), [offline display recovery](../evidence/chat-recovery.md) and [navigation draft preservation](../evidence/draft-navigation.md) extend F07/F06/F12. [Read-only workspace clients](../evidence/workspace-client.md) and their [approved A list/detail pages and agent boards](../evidence/function-pages.md) support parts of F23/F25/F26/F28; writes, richer data and complete platform acceptance remain unfinished. [Portable development packaging](../evidence/packaging.md) starts F57. [Integrated qualification](../evidence/development-build-qualification.md) separates synthetic, disposable-host, hosted OS and package evidence. These increments do not close the complete rows. Windows and Linux share the requirement unless a platform replacement/gap is called out.
 
+## Beta 0.9.0-beta.1 coverage
+
+The [experimental beta](../BETA.md) covers the everyday rows below. "Beta" means usable end to end against a real Hermes for the scope noted; it is **not** row acceptance (physical Windows 11/Ubuntu, screen reader, IME and visual qualification are still open). Evidence: [beta readiness](../evidence/beta-readiness.md).
+
+| Rows | Beta status |
+|---|---|
+| F01 | Beta: address-first discovery, one-click this computer, Hermes password sign-in with single-flight refresh, pasted tokens. Not: browser PKCE, proxy/Cloudflare credentials. |
+| F02–F05 | Partial: one Settings with Nerd Mode, menus, dialogs, keyboard shortcuts, native context menus, IME-safe Enter, light/dark/system, text size. Not: sidebar resizing, tab customization, bubble/page colors. |
+| F06, F07 | Beta: cache-first offline reading, automatic reconnect with backoff (sleep/wake/network), no resends, canonical Bot Chat. |
+| F08, F09 | Not in beta (one host at a time; no deep links). |
+| F10 | Partial: Help page with versions and a bug-report copy; no update guidance. |
+| F11, F13, F14 | Beta: streamed Markdown/code/tables, reader-controlled scrolling, older messages on request; steer/queue/interrupt; slash commands; approval, clarify, secret, sudo and vault prompts. Not: BTW/background, MCP setup prompts. |
+| F12, F15–F17 | Partial: durable drafts, file/photo attachments, tool steps with failure state, reasoning, to-dos, per-chat model and reasoning, agent-delivered images. Not: reply quotes, subagents, goal/compaction controls, fast mode, PDF page selection. |
+| F18, F19, F22 | Not in beta (cards/forms, reactions display, avatar catalog). |
+| F20, F21 | Beta: chat search, rename, archive, delete; agent create, edit, duplicate, delete. Not: pin, import/export, templates, avatars. |
+| F23, F25, F26, F29 | Beta: Feed/Ideas/Goals actions (no AI spend until asked), projects, scheduled tasks with runs, speaker name. |
+| F24, F28 | Partial: agent Files (browse, preview, save a copy); usage read views. Not: file writes, usage exports. |
+| F27 | Not in beta (group chats). |
+| F30, F32–F34 | Partial: Kanban board core; workflow runs, monitoring, sign-off, retry, cancel. Not: Kanban advanced (F31), workflow editing, triggers, extensions (F35). |
+| F36–F40, F42–F45, F47–F52, F56 | Not in beta (IDE/Git, Dev Factory, connectors, Bot Screen, voice, host administration beyond read-only System and tools, device tools). |
+| F41, F46 | Partial: vault list/add login/remove/lock/unlock; default model for new chats. |
+| F53, F54 | Partial: OS notifications while running for the open chat; opt-in tray and start at sign-in. No alerts after quitting (D3). |
+| F55 | Approved exception (unchanged). |
+| F57 | Partial: unsigned portable `bighelp` packages with README, checksums and a Linux menu entry. Not: signing, installers, updates. |
+
 Disposition: **Port** = same task/contract; **Adapt** = OS-specific equivalent needed; **Gate** = feature/host-dependent; **Retain only** = compatibility contract, no new visible product; **Exclude** = not applicable to shipping Mac parity. Phases refer to the [plan](../IMPLEMENTATION_PLAN.md).
 
 ## Everyday product and desktop shell
