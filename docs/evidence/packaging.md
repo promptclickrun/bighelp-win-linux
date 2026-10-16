@@ -12,7 +12,7 @@ The platform workflow targets Ubuntu 24.04 x64 and Windows Server 2022 x64 hoste
 
 ## Checks in this workspace
 
-- `node --test tests/desktop-package.test.mjs`: 4 passed. Tests exercise supported targets, incomplete bundles, prohibited credentials/source/fixtures/maps, symlink rejection, and manifest coverage with a known digest and changed contents.
-- `node scripts/desktop/package.mjs`: production bundle completed. Runtime download failed with `ECONNREFUSED` connecting to github.com port 443 in this environment. No completed portable artifact or packaged launch is claimed from this attempt.
+- `node --test tests/desktop-package.test.mjs`: 5 passed. Tests exercise supported targets, incomplete bundles, prohibited credentials/source/fixtures/maps, symlink rejection, manifest coverage with a known digest and changed contents, and rejection of Linux runtime binaries without executable permissions.
+- Initial runtime download without Node proxy support failed with `ECONNREFUSED`. `NODE_USE_ENV_PROXY=1 node scripts/desktop/package.mjs` then completed successfully using this environment’s configured proxy. The Linux x64 portable directory and tar.gz were assembled from checksum-verified Electron 44.7.2. All file hashes and the archive hash passed independent SHA256 verification. Tar headers retain executable permissions (0755) for electron, chrome-sandbox, and chrome_crashpad_handler. No ownership or permission relaxation was applied. Application identity and entry point were inspected. Packaged GUI launch is separate evidence; this packaging check does not claim a launch.
 - `npm run typecheck`: passed. Unsupported `darwin/x64` CLI target rejected before building.
 - Windows packaging and both hosted CI jobs have not been run in this Linux workspace. CI configuration is implementation, not executed evidence.

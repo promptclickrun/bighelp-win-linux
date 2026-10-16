@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, readFile, rm, symlink } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateTarget, validateAppSource, checksumManifest, regularFiles } from '../scripts/desktop/package-policy.mjs';
+import { validateTarget, validateAppSource, checksumManifest, regularFiles, validateRuntime } from '../scripts/desktop/package-policy.mjs';
 
 async function temporary(body) {
   const directory = await mkdtemp(join(tmpdir(), 'bighelp-package-test-'));
@@ -42,4 +42,14 @@ test('manifest covers nested binary contents with known SHA256 and is stable acr
   assert.deepEqual(await checksumManifest(directory), expected);
   await writeFile(join(directory, 'resources/data'), 'changed');
   assert.notDeepEqual(await checksumManifest(directory), expected);
+}));
+
+test('Linux package rejects runtime binaries that lost executable permissions', { skip: process.platform === 'win32' }, async () => temporary(async directory => {
+  for (const file of ['electron', 'chrome-sandbox', 'chrome_crashpad_handler', 'LICENSE', 'LICENSES.chromium.html']) {
+    await writeFile(join(directory, file), 'runtime');
+    await chmod(join(directory, file), 0o755);
+  }
+  await validateRuntime(directory, 'linux');
+  await chmod(join(directory, 'electron'), 0o644);
+  await assert.rejects(validateRuntime(directory, 'linux'), /executable permission missing/u);
 }));

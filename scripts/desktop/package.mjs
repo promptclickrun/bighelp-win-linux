@@ -7,7 +7,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { validateTarget, validateAppSource, regularFiles, checksumManifest } from './package-policy.mjs';
+import { validateTarget, validateAppSource, regularFiles, checksumManifest, validateRuntime } from './package-policy.mjs';
 
 const require = createRequire(import.meta.url);
 const root = join(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -38,6 +38,7 @@ const output = join(root, 'artifacts', name);
 try {
   await require('@electron-internal/extract-zip').extract(archive, { dir: staging });
   await regularFiles(staging); // Reject links and special entries before copying.
+  await validateRuntime(staging, platform);
   await rm(output, { recursive: true, force: true });
   await mkdir(dirname(output), { recursive: true });
   await cp(staging, output, { recursive: true });

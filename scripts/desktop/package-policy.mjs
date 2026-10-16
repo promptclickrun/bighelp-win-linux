@@ -36,3 +36,16 @@ export async function checksumManifest(directory) {
   await writeFile(join(directory, 'SHA256SUMS'), `${entries.join('\n')}\n`);
   return entries;
 }
+
+export async function validateRuntime(directory, platform) {
+  const executable = platform === 'linux' ? 'electron' : 'electron.exe';
+  const required = [executable, 'LICENSE', 'LICENSES.chromium.html'];
+  if (platform === 'linux') required.push('chrome-sandbox', 'chrome_crashpad_handler');
+  for (const file of required) {
+    const stat = await lstat(join(directory, file));
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`Invalid runtime file: ${file}`);
+    if (platform === 'linux' && !file.startsWith('LICENSE') && (stat.mode & 0o111) === 0) {
+      throw new Error(`Runtime executable permission missing: ${file}`);
+    }
+  }
+}
