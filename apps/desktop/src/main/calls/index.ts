@@ -8,6 +8,7 @@ import { CHAT_HANDLERS } from './chat.ts';
 import { SETTINGS_HANDLERS } from './settings.ts';
 import { KANBAN_HANDLERS } from './kanban.ts';
 import { CHAT_LIST_HANDLERS } from './chats.ts';
+import { PROJECT_HANDLERS } from './projects.ts';
 import { SCHEDULE_HANDLERS } from './schedules.ts';
 
 export type CallHandler<K extends CallName> = Readonly<{
@@ -26,4 +27,5 @@ export const HANDLERS: CallHandlers = Object.freeze({
   ...AGENT_HANDLERS,
   ...CHAT_LIST_HANDLERS,
   ...SCHEDULE_HANDLERS,
+  ...PROJECT_HANDLERS,
 });
