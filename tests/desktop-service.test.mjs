@@ -152,3 +152,74 @@ test('workspace publication retains only validated display data and retires stal
  release({status:200,body:{daily:[],totals:{total_sessions:0}}});await pending;
  assert.equal(f.service.snapshot().workspace,null);
 });
+test('agent entry resolves a hidden canonical root while ordinary New chat stays isolated',async()=>{
+ const f=setup();await f.service.handle({kind:'connect',host});const original=f.gateway.operation;const operations=[];
+ f.gateway.operation=async op=>{
+  operations.push(op);
+  if(op.kind==='profilesList')return{profiles:[{name:'agent',canonical_session:{id:'hidden-root',resolved_id:'tip'}}]};
+  if(op.kind==='sessionResume')return{session_id:'canonical-runtime',stored_session_id:'tip',info:{profile_name:'agent'},running:false};
+  return original(op);
+ };
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'entry'})).ok,true);
+ assert.equal(f.service.snapshot().selectedChatId,'tip');assert.equal(f.service.snapshot().data.chats[0].title,'Bot Chat');
+ assert.equal(operations.find(op=>op.kind==='sessionResume').storedSessionId,'hidden-root');
+ await f.service.handle({kind:'newChat',generation:f.service.snapshot().generation,profile:'agent'});
+ assert.equal(f.service.snapshot().selectedChatId,'stored');assert.equal(operations.filter(op=>op.kind==='sessionCreate').length,1);
+ assert.equal(operations.some(op=>op.kind==='canonicalSessionCreate'),false);
+});
+test('leaving before incremented generation publication cancels only that canonical navigation',async()=>{
+ const f=setup();await f.service.handle({kind:'connect',host});const initiating=f.service.snapshot().generation;
+ let release;f.gateway.operation=()=>new Promise(resolve=>{release=resolve;});
+ const pending=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'leaving'});
+ while(!release)await new Promise(resolve=>setImmediate(resolve));
+ await f.service.handle({kind:'cancelNavigation',requestId:'leaving'});
+ release({profiles:[{name:'agent',canonical_session:{id:'wrong-after-leaving'}}]});await pending;
+ assert.equal(f.service.snapshot().selectedChatId,null);assert.equal(f.service.snapshot().canSend,false);
+ assert.equal([...f.values.keys()].some(key=>key.startsWith('canonical:')),false);
+});
+test('overlapping agent entries fence old completion and delayed old cancellation',async()=>{
+ const f=setup();await f.service.handle({kind:'connect',host});const initiating=f.service.snapshot().generation;
+ let releaseFirst,releaseSecond,profiles=0;const operations=[];
+ f.gateway.operation=async op=>{
+  operations.push(op);
+  if(op.kind==='profilesList')return new Promise(resolve=>{if(++profiles===1)releaseFirst=resolve;else releaseSecond=resolve;});
+  if(op.kind==='sessionResume')return{session_id:'live-current',stored_session_id:'current-tip',info:{profile_name:'agent'},running:false};
+  if(op.kind==='sessionHistory')return{count:0,messages:[]};throw Error('Unexpected operation');
+ };
+ const first=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'first'});
+ while(!releaseFirst)await new Promise(resolve=>setImmediate(resolve));
+ const second=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'second'});
+ while(!releaseSecond)await new Promise(resolve=>setImmediate(resolve));
+ await f.service.handle({kind:'cancelNavigation',requestId:'first'});
+ releaseSecond({profiles:[{name:'agent',canonical_session:{id:'current-root',resolved_id:'current-tip'}}]});await second;
+ releaseFirst({profiles:[{name:'agent',canonical_session:{id:'old-root'}}]});await first;
+ assert.equal(f.service.snapshot().selectedChatId,'current-tip');
+ assert.deepEqual(operations.filter(op=>op.kind==='sessionResume').map(op=>op.storedSessionId),['current-root']);
+ assert.equal([...f.values.values()].find(entry=>entry.value?.root)?.value.root,'current-root');
+ // Leaving a settled chat does not discard its runtime/send lease.
+ await f.service.handle({kind:'cancelNavigation',requestId:'second'});
+ assert.equal(f.service.snapshot().canSend,true);
+});
+test('late create receipt cannot overwrite canonical recovery state or authorize another create',async()=>{
+ const f=setup();await f.service.handle({kind:'connect',host});let finish;let creates=0;
+ f.gateway.operation=async op=>{
+  if(op.kind==='profilesList')return{profiles:[{name:'agent'}]};
+  if(op.kind==='canonicalSessionList'||op.kind==='sessionList')return{sessions:[]};
+  if(op.kind==='canonicalSessionCreate'){creates++;return new Promise(resolve=>{finish=resolve;});}
+  assert.fail('Unexpected operation');
+ };
+ const first=f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'old-create'});
+ while(!finish)await new Promise(resolve=>setImmediate(resolve));
+ await f.service.handle({kind:'cancelNavigation',requestId:'old-create'});
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'retry-create'})).ok,false);
+ finish({session_id:'old-runtime',stored_session_id:'old-created',info:{profile_name:'agent'},message_count:0,messages:[]});await first;
+ assert.equal(creates,1);assert.equal(f.service.snapshot().selectedChatId,null);
+ assert.equal([...f.values.values()].find(entry=>entry.value?.phase)?.value.phase,'createRequested');
+ // A different authenticated authority receives a separate encrypted state key.
+ await f.service.handle({kind:'connect',host:{...host,token:'different-synthetic-authority'}});
+ const next=f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'other-authority'});
+ while(creates!==2)await new Promise(resolve=>setImmediate(resolve));
+ await f.service.handle({kind:'cancelNavigation',requestId:'other-authority'});
+ finish({session_id:'other-runtime',stored_session_id:'other-created',info:{profile_name:'agent'},message_count:0,messages:[]});await next;
+ assert.equal([...f.values.keys()].filter(key=>key.startsWith('canonical:')).length,2);
+});

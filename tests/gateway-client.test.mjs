@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {connectGateway} from '../packages/hermes-client/gateway.ts';
+import {connectGateway,GatewayOperationError} from '../packages/hermes-client/gateway.ts';
 const configuration={endpoint:'https://fixture.invalid',authentication:{kind:'dashboard',token:'synthetic'}};
 const event=(type,payload)=>JSON.stringify({jsonrpc:'2.0',method:'event',params:{type,...(payload?{payload}: {})}});
 async function fixture(early=true,onRequest=async()=>({error:{code:-32601,message:'Unsupported'}})) {
@@ -69,4 +69,18 @@ test('recovery rejects whole malformed snapshot before dispatch and stale gatewa
  assert.throws(()=>f.gateway.restoreRequests([valid,valid],'live'));assert.equal(calls,0);
  }finally{f.gateway.close();}
  assert.throws(()=>f.gateway.restoreRequests([valid],'live'),/Gateway unavailable/);assert.equal(calls,0);
+});
+test('canonical mutation errors preserve finite codes and lost acknowledgements stay unknown',async()=>{
+ for(const kind of ['canonicalSessionCreate','canonicalSessionTitle','canonicalSessionDiscard']) {
+  let closed,respond=true;
+  const gateway=await connectGateway({configuration,isCurrent:()=>true,onRequest:async()=>({result:{}}),onEvent(){},onClosed(){},
+   socket:async(_plan,_signal,receive,onClosed)=>{closed=onClosed;receive(event('gateway.ready'));return{close(){},send(text){
+    const m=JSON.parse(text);
+    if(['client.capabilities','gateway.capabilities'].includes(m.method))queueMicrotask(()=>receive(JSON.stringify({jsonrpc:'2.0',id:m.id,result:m.method==='gateway.capabilities'?{per_session_exclusive_submit:true}:{}})));
+    else if(respond)queueMicrotask(()=>receive(JSON.stringify({jsonrpc:'2.0',id:m.id,error:{code:4022,message:'Private host detail'}})));
+   }};}});
+  const op={kind,profile:'agent',runtimeId:'runtime',storedSessionId:'created'};
+  await assert.rejects(gateway.operation(op),error=>error instanceof GatewayOperationError&&error.code===4022&&!error.message.includes('Private'));
+  respond=false;const pending=gateway.operation(op);closed();await assert.rejects(pending,/outcome-unknown/);
+ }
 });

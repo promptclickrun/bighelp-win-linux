@@ -25,8 +25,10 @@ export type DesktopResult = Readonly<{ ok: true; snapshot: DesktopSnapshot }> | 
 export type DesktopAction =
   | Readonly<{ kind: 'snapshot' }>
   | Readonly<{ kind: 'disconnect' }>
+  | Readonly<{ kind: 'cancelNavigation'; requestId: string }>
   | Readonly<{ kind: 'refresh' }>
   | Readonly<{ kind: 'connect'; host: HostInput }>
+  | Readonly<{ kind: 'canonicalChat'; generation: number; profile: string; requestId: string }>
   | Readonly<{ kind: 'newChat'; generation: number; profile: string }>
   | Readonly<{ kind: 'openChat'; generation: number; chatId: string }>
   | Readonly<{ kind: 'send'; generation: number; chatId: string; text: string }>
@@ -40,6 +42,8 @@ export type DesktopApi = Readonly<{
   connect(host: HostInput): Promise<DesktopResult>;
   disconnect(): Promise<DesktopResult>;
   refresh(): Promise<DesktopResult>;
+  canonicalChat(generation: number, profile: string, requestId: string): Promise<DesktopResult>;
+  cancelNavigation(requestId: string): Promise<DesktopResult>;
   newChat(generation: number, profile: string): Promise<DesktopResult>;
   openChat(generation: number, chatId: string): Promise<DesktopResult>;
   send(generation: number, chatId: string, text: string): Promise<DesktopResult>;
@@ -77,6 +81,9 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   if (kind === 'snapshot' || kind === 'disconnect' || kind === 'refresh') {
     keys(input, ['kind']); return { kind };
   }
+  if (kind === 'cancelNavigation') {
+    keys(input, ['kind', 'requestId']); return {kind, requestId: text(input.requestId, 128)};
+  }
   if (kind === 'connect') {
     keys(input, ['kind', 'host']);
     const host = object(input.host);
@@ -97,6 +104,10 @@ export function parseDesktopAction(value: unknown): DesktopAction {
     if (page !== 'projects' && page !== 'usage' && page !== 'scheduled' && page !== 'feed' && page !== 'ideas' && page !== 'goals') throw new TypeError('Invalid page');
     if (days !== 7 && days !== 30 && days !== 90) throw new TypeError('Invalid range');
     return { kind, generation, profile: text(input.profile), page, days };
+  }
+  if (kind === 'canonicalChat') {
+    keys(input, ['kind', 'generation', 'profile', 'requestId']);
+    return {kind, generation, profile: text(input.profile), requestId: text(input.requestId, 128)};
   }
   if (kind === 'newChat') {
     keys(input, ['kind', 'generation', 'profile']); return { kind, generation, profile: text(input.profile) };

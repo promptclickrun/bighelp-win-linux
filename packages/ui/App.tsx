@@ -29,6 +29,13 @@ const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
 export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean> }>): JSX.Element {
   const [state, dispatch] = useReducer(reduceShell, undefined, createShellState);
   const sending = useRef(false);
+  const pendingNavigation = useRef<string | null>(null);
+  const suppressNavigation = useRef(false);
+  const leaveChat = () => {
+    suppressNavigation.current = true;
+    const requestId = pendingNavigation.current; pendingNavigation.current = null;
+    if (requestId && props.api && props.act) void props.act(props.api.cancelNavigation(requestId));
+  };
   const [sendPending, setSendPending] = useState(false);
   const dirty = useRef(new Map<string, string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
@@ -38,11 +45,15 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
     currentGeneration.current = generation; dirty.current.clear();
     for (const timer of timers.current.values()) clearTimeout(timer); timers.current.clear();
   }
-  useEffect(() => () => { for (const timer of timers.current.values()) clearTimeout(timer); }, []);
+  useEffect(() => () => {
+    for (const timer of timers.current.values()) clearTimeout(timer);
+    const requestId = pendingNavigation.current;
+    if (requestId && props.api) void props.api.cancelNavigation(requestId).catch(() => {});
+  }, [props.api]);
   useEffect(() => {
     const id = props.snapshot?.selectedChatId;
     const chat = id ? chatById(props.data, id) : null;
-    if (chat) dispatch({ type: 'openChat', chatId: chat.id, agentId: chat.agentId });
+    if (chat && !suppressNavigation.current) dispatch({ type: 'openChat', chatId: chat.id, agentId: chat.agentId });
   }, [props.snapshot?.selectedChatId, generation]);
   const { width } = useWindowDimensions();
   const system = useColorScheme();
@@ -55,7 +66,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const { data } = props;
   const panes = visiblePanes(state);
   const hint = props.snapshot ? (props.error || props.snapshot.notice || (props.snapshot.canSend ? 'Ready to send.' : 'Waiting for a connected chat.')) : composerStatus(data).hint;
-  const back = narrow ? () => dispatch({ type: 'back' }) : undefined;
+  const back = narrow ? () => { leaveChat(); dispatch({ type: 'back' }); } : undefined;
   const openSection = (section: SettingsSection | null) => dispatch({ type: 'settingsSection', section });
 
   const api = props.api;
@@ -84,7 +95,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         }}
         canSend={!sendPending && !!snapshot?.canSend && snapshot.selectedChatId === chat?.id}
         running={!!snapshot?.running && snapshot.selectedChatId === chat?.id}
-        onNewChat={api && snapshot?.status === 'connected' && act ? () => { void act(api.newChat(snapshot.generation, agent.id)); } : undefined}
+        onNewChat={api && snapshot?.status === 'connected' && act ? () => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, agent.id)); } : undefined}
         onSend={api && snapshot && chat && act ? () => {
           if (sending.current) return;
           const text = dirty.current.get(chat.id) ?? snapshot.drafts[chat.id] ?? '';
@@ -138,13 +149,22 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   return (
     <ThemeProvider value={{ theme, palette, font }}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: palette.page, minHeight: 0 }}>
-        <Rail place={state.place} host={data.host} onPlace={place => dispatch({ type: 'place', place })}
-          onHost={() => { dispatch({ type: 'place', place: 'settings' }); openSection('hosts'); }} />
+        <Rail place={state.place} host={data.host} onPlace={place => { leaveChat(); dispatch({ type: 'place', place }); }}
+          onHost={() => { leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts'); }} />
         {panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
             nerdMode={state.nerdMode} settingsSection={state.settingsSection} narrow={narrow}
-            onOpenChat={(chatId, owner) => { if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)).then(ok => { if (ok) dispatch({ type: 'openChat', chatId, agentId: owner }); }); } else dispatch({ type: 'openChat', chatId, agentId: owner }); }}
-            onOpenAgent={id => dispatch({ type: 'openAgent', agentId: id })} onSettingsSection={openSection} />
+            onOpenChat={(chatId, owner) => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); }}
+            onOpenAgent={id => {
+              suppressNavigation.current = false;
+              dispatch({ type: 'openAgent', agentId: id });
+              if (api && snapshot?.status === 'connected' && act) {
+                const requestId = crypto.randomUUID(); pendingNavigation.current = requestId;
+                void act(api.canonicalChat(snapshot.generation, id, requestId)).finally(() => {
+                  if (pendingNavigation.current === requestId) pendingNavigation.current = null;
+                });
+              }
+            }} onSettingsSection={openSection} />
         ) : null}
         {panes.detail || (narrow && state.place === 'settings') ? detail : null}
         {props.error ? <View role="status" style={{ position: 'absolute', bottom: 4, left: 80, right: 8, backgroundColor: palette.card, padding: 8 }}><Label>{props.error}</Label></View> : null}

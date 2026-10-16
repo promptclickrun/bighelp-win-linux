@@ -39,6 +39,15 @@ test('canonical HTTPS keeps the exact scheme, host and effective port', () => {
   });
   assert.deepEqual(parseEndpoint(endpoint), { origin: endpoint, socketOrigin: 'wss://hermes.example:9443' });
 });
+test('canonical retirement detail has one fixed authenticated GET and bounded path identity',async()=>{
+ const f=harness();
+ await f.policy.request({kind:'canonicalSessionDetail',profile:'agent',storedSessionId:'stored:root-1'},signal());
+ const plan=f.state.http.at(-1).plan;
+ assert.equal(plan.url,`${endpoint}/api/sessions/stored:root-1?profile=agent`);
+ assert.equal(plan.method,'GET');assert.equal(plan.headers.Authorization,'Bearer synthetic-bearer');assert.equal(plan.redirect,'error');assert.equal(plan.maxResponseBytes,2*1024*1024);
+ for(const storedSessionId of ['.','..','x/../../auth','x?profile=other','%2e%2e','x\\y',' x'])assert.throws(()=>parseHttpOperation({kind:'canonicalSessionDetail',profile:'agent',storedSessionId}));
+ assert.throws(()=>parseHttpOperation({kind:'canonicalSessionDetail',profile:'agent',storedSessionId:'root',url:'/api/config'}));
+});
 
 test('reject repaired URLs, malicious authorities, paths and encoded path tricks', () => {
   const bad = [

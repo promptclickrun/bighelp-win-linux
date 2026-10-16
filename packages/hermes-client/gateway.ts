@@ -16,6 +16,11 @@ export type Gateway = Readonly<{
  requestHttp(operation: HttpOperation): Promise<HttpResult>;
 }>;
 type Reply = RpcResult | RpcFailure;
+// Preserve only finite error authority. Never expose raw host messages through IPC.
+export class GatewayOperationError extends Error {
+ readonly code: number;
+ constructor(code: number) { super('Host operation failed'); this.code = code; this.name = 'GatewayOperationError'; }
+}
 type Pending = { resolve(reply: Reply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; mutation: boolean };
 export async function connectGateway(options: Readonly<{
  configuration: unknown; isCurrent(): boolean;
@@ -122,7 +127,7 @@ export async function connectGateway(options: Readonly<{
  }); } catch { close(); throw new Error('Gateway unavailable'); }
  try { policyHandle = await policy.createSocketAttempt(frame).open(lifetime.signal); if (!current()) throw new Error(); await completion; }
  catch { close(); throw new Error('Gateway unavailable'); }
- function result(reply: Reply): unknown { if (reply.kind === 'error') throw new Error('Host operation failed'); return reply.result; }
+ function result(reply: Reply): unknown { if (reply.kind === 'error') throw new GatewayOperationError(reply.code); return reply.result; }
  return Object.freeze({
   restoreRequests(requests: unknown, runtimeId: string): void {
    if (!current() || !connected) throw new Error('Gateway unavailable');
@@ -140,7 +145,7 @@ export async function connectGateway(options: Readonly<{
   async operation(operation: DesktopRpcOperation): Promise<unknown> {
    if (!current() || !connected) throw new Error('Gateway unavailable');
    const id = nextId(), wire = encodeSessionOperation(id, operation);
-   const mutation = ['sessionCreate', 'sessionResume', 'sessionInterrupt'].includes(operation.kind);
+   const mutation = ['sessionCreate', 'sessionResume', 'sessionInterrupt', 'canonicalSessionCreate', 'canonicalSessionTitle', 'canonicalSessionDiscard'].includes(operation.kind);
    const reply = await request(id, wire, mutation);
    if (!current()) throw new Error(mutation ? 'outcome-unknown' : 'Gateway unavailable');
    return result(reply);

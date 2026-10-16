@@ -5,6 +5,7 @@ export type HttpOperation =
   | Readonly<{ kind: 'status' | 'providers' | 'identity' | 'health' | 'nativeContext' }>
   | Readonly<{ kind: 'workspaceUsage'; profile: string; days: 7 | 30 | 90 }>
   | Readonly<{ kind: 'workspaceScheduled'; profile: string }>
+  | Readonly<{ kind: 'canonicalSessionDetail'; profile: string; storedSessionId: string }>
   | Readonly<{ kind: 'workspaceBoard'; agentId: string; etag: string; requestId: string }>
   | Readonly<{ kind: 'templateList'; agentId: string; etag: string; requestId: string }>;
 export type HttpResult = Readonly<{ body: unknown; etag?: string; requestId?: string; cacheControl?: string }>;
@@ -165,6 +166,13 @@ export function parseHttpOperation(value: unknown): HttpOperation {
     case 'workspaceScheduled':
       exactKeys(input, ['kind', 'profile']);
       return Object.freeze({ kind: 'workspaceScheduled', profile: workspaceProfile(input.profile) });
+    case 'canonicalSessionDetail': {
+      exactKeys(input, ['kind', 'profile', 'storedSessionId']);
+      const storedSessionId = text(input.storedSessionId, 512);
+      // DirectHermesWorkspaceClient.pathIdentifier:690. Never a URL/path escape hatch.
+      if (!/^[A-Za-z0-9_.:-]+$/u.test(storedSessionId) || storedSessionId === '.' || storedSessionId === '..') throw new TypeError('Invalid stored session');
+      return Object.freeze({kind:'canonicalSessionDetail',profile:workspaceProfile(input.profile),storedSessionId});
+    }
     case 'workspaceBoard': case 'templateList': {
       exactKeys(input, ['kind', 'agentId', 'etag', 'requestId']);
       const agentId = input.kind === 'workspaceBoard' ? workspaceProfile(input.agentId) : text(input.agentId, 256);
@@ -233,6 +241,8 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
         prepared = plan(`/api/analytics/usage?days=${operation.days}&profile=${encodeURIComponent(operation.profile)}`, 'GET', authenticated, 2 * 1024 * 1024); break;
       case 'workspaceScheduled':
         prepared = plan(`/api/cron/jobs?profile=${encodeURIComponent(operation.profile)}`, 'GET', authenticated, 2 * 1024 * 1024); break;
+      case 'canonicalSessionDetail':
+        prepared = plan(`/api/sessions/${operation.storedSessionId}?profile=${encodeURIComponent(operation.profile)}`, 'GET', authenticated, 2 * 1024 * 1024); break;
       case 'workspaceBoard':
         prepared = plan('/api/plugins/loopdy/native/board/list', 'POST', Object.freeze({
           ...authenticated, 'Content-Type': 'application/json', 'If-Match': operation.etag,

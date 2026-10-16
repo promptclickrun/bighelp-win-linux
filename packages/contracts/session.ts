@@ -4,11 +4,13 @@ const fail = (): never => { throw new RpcProtocolError(); };
 export function contractText(value: unknown, max = 512, empty = false): string {
  const text = boundedString(value,max); if ((!empty && !text) || text.includes('\0')) return fail(); return text;
 }
-function coordinate(value: unknown): string { const text=contractText(value); if(text.trim()!==text||/[\u0000-\u001f\u007f-\u009f]/.test(text))return fail();return text; }
+export function coordinate(value: unknown): string { const text=contractText(value); if(text.trim()!==text||/[\u0000-\u001f\u007f-\u009f]/.test(text))return fail();return text; }
 export function contractObject(value: unknown): Record<string, unknown> { if (!jsonObject(value)) return fail(); return value; }
 function bounded(value: unknown) { encodeBoundedJson(value,RPC_LIMITS.inboundBytes); return contractObject(value); }
 export type DesktopRpcOperation = Readonly<
- {kind:'profilesList'} | {kind:'sessionList'|'sessionCreate'|'projectsList';profile:string} |
+ {kind:'profilesList'} | {kind:'sessionList'|'sessionCreate'|'projectsList'|'canonicalSessionList'|'canonicalSessionCreate';profile:string} |
+ {kind:'canonicalSessionTitle';runtimeId:string} |
+ {kind:'canonicalSessionDiscard';profile:string;storedSessionId:string} |
  {kind:'sessionResume';profile:string;storedSessionId:string} |
  {kind:'sessionHistory'|'sessionInterrupt';profile:string;runtimeId:string}>;
 export function encodeSessionOperation(id:string, operation:DesktopRpcOperation):string {
@@ -17,6 +19,10 @@ export function encodeSessionOperation(id:string, operation:DesktopRpcOperation)
  case 'profilesList':method='profiles.list';params={include_sessions:false};break;
  case 'projectsList':method='projects.list';params={profile:coordinate(op.profile)};break;
  case 'sessionList':method='session.list';params={profile:coordinate(op.profile),limit:200};break;
+ case 'canonicalSessionList':method='session.list';params={profile:coordinate(op.profile),title:'Bot Chat',include_hidden:true,limit:200};break;
+ case 'canonicalSessionCreate':method='session.create';params={profile:coordinate(op.profile),source:'bighelp',close_on_disconnect:false,title:'Bot Chat',hidden:true,follow_profile_config:true};break;
+ case 'canonicalSessionTitle':method='session.title';params={session_id:coordinate(op.runtimeId),title:'Bot Chat'};break;
+ case 'canonicalSessionDiscard':method='session.delete';params={session_id:coordinate(op.storedSessionId),profile:coordinate(op.profile)};break;
  case 'sessionCreate':method='session.create';params={profile:coordinate(op.profile),source:'bighelp',close_on_disconnect:false};break;
  case 'sessionResume':method='session.resume';params={session_id:coordinate(op.storedSessionId),profile:coordinate(op.profile),source:'bighelp',close_on_disconnect:false,defer_history:true,omit_messages:true};break;
  case 'sessionHistory':case 'sessionInterrupt':method=op.kind==='sessionHistory'?'session.history':'session.interrupt';params={session_id:coordinate(op.runtimeId),profile:coordinate(op.profile)};break;

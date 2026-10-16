@@ -9,6 +9,8 @@ import { decodeProfiles, decodeSessionList, decodeSessionReceipt, decodeSessionH
 import { parseInteractivePrompt, encodeInteractiveAnswer } from '../../../../packages/contracts/prompts.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
 import type { Gateway } from '../../../../packages/hermes-client/gateway.ts';
+import { createCanonicalChatClient } from '../../../../packages/hermes-client/canonical-chat.ts';
+import type { CanonicalState } from '../../../../packages/contracts/canonical-chat.ts';
 import { createWorkspaceClient } from '../../../../packages/hermes-client/workspace.ts';
 import type { WorkspaceIdentity, WorkspaceOwner } from '../../../../packages/contracts/workspace.ts';
 import { parseEndpoint } from '../../../../packages/platform/transport-policy.ts';
@@ -49,6 +51,8 @@ export function createDesktopService(adapters: Readonly<{
   let hostId = '', principalId = '', selectedChatId: string | null = null;
   let identity: WorkspaceIdentity | null = null, workspace: DesktopWorkspace | null = null;
   let workspaceRevision = 0;
+  let navigation: {requestId: string; initiatingGeneration: number; generation: number} | null = null;
+  const navigationIds = new Set<string>();
   let owner: Owner | null = null;
   let running = false, sending = false, navigating = false, reconciled = false;
   let notice = adapters.repository ? '' : 'Secure storage is unavailable. Unlock your system key store to connect.';
@@ -104,7 +108,7 @@ export function createDesktopService(adapters: Readonly<{
   const scope = (profile: string, chatId: string) => digest(JSON.stringify([hostId, principalId, profile, chatId]));
   function clearPrompts() { for (const entry of [...prompts.values()]) entry.cancel(); prompts.clear(); }
   function retire(clear = false) {
-    ++hostGeneration; ++generation; owner = null; acceptedSend = null; reconciled = false; running = false; sending = false; navigating = false;
+    navigation = null; ++hostGeneration; ++generation; owner = null; acceptedSend = null; reconciled = false; running = false; sending = false; navigating = false;
     ++workspaceRevision; workspace = null; identity = null;
     clearPrompts(); const old = gateway; gateway = undefined; old?.close(); status = 'disconnected';
     if (clear) { data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
@@ -250,22 +254,46 @@ export function createDesktopService(adapters: Readonly<{
     if (active && !chats.some(chat => chat.id === active.id)) chats.unshift(active);
     data = { ...data, chats }; publish();
   }
-  async function open(profile: string, storedSessionId?: string) {
-    if (navigating || sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
+  async function open(profile: string, storedSessionId?: string, canonical = false, requestId?: string, initiatingGeneration = generation) {
+    if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
     const connection = gateway, current = hostGeneration;
-    navigating = true; reconciled = false; owner = null; acceptedSend = null; clearPrompts(); ++generation; publish();
+    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSend = null; clearPrompts(); ++generation;
+    navigation = requestId ? {requestId, initiatingGeneration, generation} : null; publish();
     ++workspaceRevision; workspace = null;
+    const selection = generation;
+    const isCurrent = () => current === hostGeneration && connection === gateway && selection === generation;
     try {
-      const receipt = decodeSessionReceipt(await connection.operation(storedSessionId === undefined
+      let receipt;
+      if (canonical) {
+        const captured: WorkspaceOwner = { hostId, principalId, profileId: profile, authGeneration: current, connectionGeneration: selection };
+        const stateKey = `canonical:${digest(JSON.stringify([hostId, principalId, profile]))}`;
+        const client = createCanonicalChatClient({ owner: captured, currentOwner: () => isCurrent() ? captured : null,
+          operation: operation => connection.operation(operation),
+          sessionDetail: async storedSessionId => (await connection.requestHttp({kind:'canonicalSessionDetail',profile,storedSessionId})).body,
+          readState: async () => { await writes; return (await adapters.repository?.read(stateKey))?.value; },
+          saveState: (state: CanonicalState) => {
+            const result = writes.then(async () => {
+              if (!isCurrent() || !adapters.repository) throw Error('Selection changed');
+              const previous = await adapters.repository.read(stateKey);
+              if (!isCurrent()) throw Error('Selection changed');
+              const stored = await adapters.repository.write(stateKey, previous?.revision ?? null, safeJson(state));
+              revisions.set(stateKey, stored.revision);
+            });
+            writes = result.catch(() => {}); return result;
+          },
+        });
+        receipt = (await client.resolve()).receipt;
+      } else receipt = decodeSessionReceipt(await connection.operation(storedSessionId === undefined
         ? { kind: 'sessionCreate', profile } : { kind: 'sessionResume', profile, storedSessionId }), profile);
-      if (current !== hostGeneration || connection !== gateway) return;
+      if (!isCurrent()) return;
+      if (data.chats.some(chat => chat.id === receipt.storedSessionId && chat.agentId !== profile)) throw Error('Ambiguous session identity');
       selectedChatId = receipt.storedSessionId; running = receipt.running; lastSequence = null; stream = ''; streamId = '';
       const captured: Owner = { hostId, principalId, profileId: profile, storedSessionId: receipt.storedSessionId, runtimeId: receipt.runtimeId,
         authGeneration: current, connectionGeneration: generation };
       owner = captured;
       if (receipt.openRequests.length) connection.restoreRequests(receipt.openRequests, captured.runtimeId);
       if (!data.chats.some(chat => chat.id === selectedChatId && chat.agentId === profile)) data = { ...data, chats: [{ id: selectedChatId,
-        agentId: profile, title: 'New chat', preview: '', transcript: [] }, ...data.chats].slice(0, 10000) };
+        agentId: profile, title: canonical ? 'Bot Chat' : 'New chat', preview: '', transcript: [] }, ...data.chats].slice(0, 10000) };
       const savedDraft = await adapters.repository?.read(`draft:${scope(profile, selectedChatId)}`);
       if (owner !== captured) return;
       if (typeof savedDraft?.value === 'string') drafts = { ...drafts, [selectedChatId]: savedDraft.value };
@@ -274,14 +302,21 @@ export function createDesktopService(adapters: Readonly<{
       notice = journal(pending?.value).some(entry => ['prepared', 'dispatched', 'accepted', 'reconciling', 'unknown'].includes(String(entry.phase)))
         ? 'An earlier send may have run. Check saved history before sending again. Nothing was resent.' : '';
       await history(captured, connection);
-    } finally { if (current === hostGeneration) { navigating = false; publish(); } }
+    } finally { if (isCurrent()) { navigation = null; navigating = false; publish(); } }
   }
   async function act(action: DesktopAction) {
     if (action.kind === 'snapshot') return;
     if (action.kind === 'connect') { await connect(action.host); return; }
     if (action.kind === 'disconnect') { retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
     if (action.kind === 'refresh') { await refresh(); return; }
-    requireGeneration(action.generation);
+    if (action.kind === 'cancelNavigation') {
+      if (navigation?.requestId === action.requestId) {
+        navigation = null; ++generation; owner = null; selectedChatId = null; acceptedSend = null;
+        clearPrompts(); navigating = false; running = false; reconciled = false; publish();
+      }
+      return;
+    }
+    if (!(['canonicalChat', 'newChat', 'openChat'].includes(action.kind) && navigating && navigation?.initiatingGeneration === action.generation)) requireGeneration(action.generation);
     if (action.kind === 'workspace') {
       if (!identity || !data.agents.some(agent => agent.id === action.profile)) throw Error('Agent unavailable');
       const connection = gateway!, current = hostGeneration, selection = generation, revision = ++workspaceRevision;
@@ -307,6 +342,11 @@ export function createDesktopService(adapters: Readonly<{
         }
       } catch { if (isCurrent()) workspace = { profile: action.profile, page: action.page, status: 'unavailable' }; }
       if (isCurrent()) publish(); return;
+    }
+    if (action.kind === 'canonicalChat') {
+      if (navigationIds.has(action.requestId) || navigationIds.size >= 4096) throw Error('Navigation unavailable');
+      navigationIds.add(action.requestId);
+      await open(action.profile, undefined, true, action.requestId, action.generation); return;
     }
     if (action.kind === 'newChat') { await open(action.profile); return; }
     if (action.kind === 'openChat') {
