@@ -24,7 +24,7 @@ export function SecretField(props: Readonly<{
   label: string; secretRef: SecretRef; maxLength: number; onFilled: (filled: boolean) => void;
   hint?: string | undefined; error?: string | undefined; disabled?: boolean; autoFocus?: boolean;
   // A one-time code is shown as typed; everything else is masked.
-  visible?: boolean; onSubmit?: () => void;
+  visible?: boolean; autoComplete?: 'off' | 'username'; onSubmit?: () => void;
 }>): JSX.Element {
   const { palette, font } = useTheme();
   const id = useId();
@@ -33,7 +33,7 @@ export function SecretField(props: Readonly<{
   return (
     <FieldLabel label={props.label} hint={props.hint} error={props.error} htmlFor={id}>
       <input id={id} ref={props.secretRef} type={props.visible ? 'text' : 'password'} maxLength={props.maxLength}
-        autoComplete={props.visible ? 'one-time-code' : 'new-password'} autoCapitalize="off" autoCorrect="off" spellCheck={false}
+        autoComplete={props.autoComplete ?? (props.visible ? 'one-time-code' : 'new-password')} autoCapitalize="off" autoCorrect="off" spellCheck={false}
         disabled={props.disabled} autoFocus={props.autoFocus} aria-invalid={props.error ? true : undefined}
         onInput={event => props.onFilled(event.currentTarget.value.length > 0)}
         onKeyDown={event => { if (event.key === 'Enter' && props.onSubmit) { event.preventDefault(); props.onSubmit(); } }}

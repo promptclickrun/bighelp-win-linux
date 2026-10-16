@@ -8,6 +8,7 @@ import { useTheme } from '../theme.tsx';
 import { MONO_STACK } from '../tokens.ts';
 import { Button, TextField } from './controls.tsx';
 import { Icon, Label } from './primitives.tsx';
+import { SecureRequest } from './SecurePrompt.tsx';
 
 const CHOICES: Readonly<Record<ApprovalChoice, readonly [label: string, tone: 'primary' | 'secondary' | 'quiet']>> = Object.freeze({
   once: ['Allow once', 'primary'], session: ['Allow for this chat', 'secondary'], always: ['Always allow', 'secondary'], deny: ['Deny', 'quiet'],
@@ -107,6 +108,8 @@ export function InteractiveRequests(props: Readonly<{ prompts: readonly Readonly
     <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center', paddingHorizontal: 20, paddingTop: 6, gap: 8, maxHeight: 360, overflow: 'auto' }}>
       {props.prompts.map(item => item.prompt.kind === 'approval'
         ? <Approval key={item.id} prompt={item.prompt} agentName={name} disabled={props.disabled} onAnswer={answer => props.onAnswer(item.id, answer)} />
+        : item.prompt.kind === 'secure'
+        ? <SecureRequest key={item.id} prompt={item.prompt} agentName={name} disabled={props.disabled} onAnswer={answer => props.onAnswer(item.id, answer)} />
         : <Clarify key={item.id} prompt={item.prompt} agentName={name} disabled={props.disabled} onAnswer={answer => props.onAnswer(item.id, answer)} />)}
     </View>
   );

@@ -6,6 +6,7 @@ import { VAULT_HANDLERS, VAULT_UNSUPPORTED } from '../apps/desktop/src/main/call
 import { callFailure } from '../apps/desktop/src/main/calls/context.ts';
 import { GatewayOperationError } from '../packages/hermes-client/gateway.ts';
 import { decodeVaultItems, decodeVaultSources, encodeVaultLogin, vaultSite, usernameType } from '../packages/contracts/vault.ts';
+import { parseInteractivePrompt, encodeInteractiveAnswer } from '../packages/contracts/prompts.ts';
 
 // Obviously fake values. Every published or returned byte is searched for them.
 const PASSWORD = 'FAKE-vault-password-7f3c9d';
@@ -187,11 +188,12 @@ const ui = await (async () => {
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { AddLogin, VaultPage } from './packages/ui/components/VaultPage.tsx';
+import { SecureRequest } from './packages/ui/components/SecurePrompt.tsx';
 import { HostProvider } from './packages/ui/host.tsx';
 import { ThemeProvider } from './packages/ui/theme.tsx';
 import { PALETTES } from './packages/ui/tokens.ts';
 export function render(component, props, host = null) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}>
-  <HostProvider value={host}>{React.createElement(component === 'add' ? AddLogin : VaultPage, props)}</HostProvider></ThemeProvider>); }
+  <HostProvider value={host}>{React.createElement(component === 'add' ? AddLogin : component === 'secure' ? SecureRequest : VaultPage, props)}</HostProvider></ThemeProvider>); }
 `, resolveDir: process.cwd(), loader: 'tsx' }, jsx: 'automatic', bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false });
   const compiled = { exports: {} };
   new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
@@ -230,4 +232,99 @@ test('the vault page says what it needs instead of showing an empty or invented 
   const choose = ui.render('page', { ...page, data: { ...page.data, agents: [...page.data.agents, { id: 'two', name: 'Second', summary: '', color: 'red' }] } },
     { api, snapshot: { status: 'connected', connection: 1 }, act: async () => true });
   assert.match(choose, /Choose an agent to open its vault\./u);
+});
+
+// Secure server requests during a chat (tui_gateway/contracts/server_requests.py shapes).
+const REQUESTS = {
+  'vault.unlock_prompt': { session_id: 'runtime', backend: 'onepassword', display_name: '1Password' },
+  'vault.save_login': { session_id: 'runtime', origin: 'https://shop.example.org', site: 'shop.example.org' },
+  'vault.code': { session_id: 'runtime', site: 'shop.example.org', hint: null },
+  sudo: { session_id: 'runtime', command: 'sudo apt-get install synthetic-package' },
+  secret: { session_id: 'runtime', env_var: 'SYNTHETIC_API_KEY', prompt: 'Paste the synthetic key', metadata: { source: 'agent' } },
+};
+
+test('secure prompts parse display context only and refuse bad routing or origins', () => {
+  const parsed = Object.fromEntries(Object.entries(REQUESTS).map(([method, params]) => [method, parseInteractivePrompt(method, params, 'runtime')]));
+  assert.deepEqual(parsed['vault.unlock_prompt'], { kind: 'secure', method: 'vault.unlock_prompt', runtimeId: 'runtime', manager: '1Password' });
+  assert.deepEqual(parsed['vault.save_login'], { kind: 'secure', method: 'vault.save_login', runtimeId: 'runtime', site: 'https://shop.example.org' });
+  assert.deepEqual(parsed['vault.code'], { kind: 'secure', method: 'vault.code', runtimeId: 'runtime', site: 'shop.example.org' });
+  assert.deepEqual(parsed.sudo, { kind: 'secure', method: 'sudo', runtimeId: 'runtime', command: 'sudo apt-get install synthetic-package' });
+  assert.deepEqual(parsed.secret, { kind: 'secure', method: 'secret', runtimeId: 'runtime', envVar: 'SYNTHETIC_API_KEY', prompt: 'Paste the synthetic key' });
+  assert.deepEqual(parseInteractivePrompt('vault.unlock_prompt', { session_id: 'runtime', backend: 'bitwarden', display_name: '' }, 'runtime').manager, 'bitwarden');
+  for (const [method, params] of [['vault.unlock_prompt', { ...REQUESTS['vault.unlock_prompt'], session_id: 'other' }],
+    ['vault.unlock_prompt', { session_id: 'runtime', backend: 'bad name', display_name: 'X' }],
+    ['vault.save_login', { session_id: 'runtime', origin: 'javascript:alert(1)', site: 'x' }],
+    ['vault.save_login', { session_id: 'runtime', origin: 'https://user:pw@example.com', site: 'x' }],
+    ['vault.save_login', { session_id: 'runtime', site: 'x' }], ['vault.code', { session_id: 'runtime', site: 'a\u202eb' }],
+    ['secret', { session_id: 'runtime', prompt: 'x' }], ['secret', { session_id: 'runtime', env_var: 'A B', prompt: 'x' }],
+    ['preview.read', { session_id: 'runtime' }]]) {
+    assert.throws(() => parseInteractivePrompt(method, params, 'runtime'), `${method} ${JSON.stringify(params)}`);
+  }
+});
+
+test('secure answers are one value, validated, and refusals never repeat it', () => {
+  const prompt = method => parseInteractivePrompt(method, REQUESTS[method], 'runtime');
+  for (const method of Object.keys(REQUESTS)) assert.deepEqual(encodeInteractiveAnswer(prompt(method), ''), { value: '' });
+  assert.deepEqual(encodeInteractiveAnswer(prompt('vault.unlock_prompt'), MASTER), { value: MASTER });
+  assert.deepEqual(encodeInteractiveAnswer(prompt('vault.code'), ' 123-456 '), { value: '123456' });
+  const saved = encodeInteractiveAnswer(prompt('vault.save_login'), { identifier: ' sam@example.com ', password: PASSWORD });
+  assert.deepEqual(JSON.parse(saved.value), { identifier: 'sam@example.com', password: PASSWORD });
+  for (const [method, answer] of [['vault.code', 'abc!'], ['vault.code', '1'.repeat(65)], ['vault.save_login', PASSWORD],
+    ['vault.save_login', { identifier: 'sam', password: PASSWORD, extra: 'x' }], ['vault.save_login', { identifier: ' ', password: PASSWORD }],
+    ['vault.unlock_prompt', `${PASSWORD}\0`], ['secret', 'x'.repeat(10001)], ['sudo', 7]]) {
+    assert.throws(() => encodeInteractiveAnswer(prompt(method), answer), error => !String(error).includes(PASSWORD) && !String(error.stack).includes(PASSWORD));
+  }
+  // Only prompts this codec parsed can be answered.
+  assert.throws(() => encodeInteractiveAnswer({ ...prompt('sudo') }, 'x'));
+});
+
+test('a chat answers a vault unlock prompt once and nothing keeps the master password', async () => {
+  const published = [], alerts = [];
+  let callbacks;
+  const values = new Map();
+  const repository = { async read(key) { return values.get(key) ?? null; },
+    async write(key, revision, value) { const next = { revision: (revision ?? 0) + 1, value: structuredClone(value) }; values.set(key, next); return next; } };
+  const gateway = { exclusiveSubmit: true, close() {}, restoreRequests() {}, async requestHttp() { return { body: { ok: true, auth_required: false } }; },
+    async operation(op) {
+      if (op.kind === 'profilesList') return { profiles: [{ name: 'agent', display_name: 'Test Agent' }] };
+      if (op.kind === 'sessionList') return { sessions: [] };
+      if (op.kind === 'sessionCreate') return { session_id: 'runtime', stored_session_id: 'stored', info: { profile_name: 'agent' }, running: false };
+      if (op.kind === 'sessionHistory') return { count: 0, messages: [] };
+      return {};
+    } };
+  const service = createDesktopService({ repository, connect: async options => { callbacks = options; return gateway; },
+    onChange: snapshot => published.push(JSON.stringify(snapshot)), notify: alert => alerts.push(JSON.stringify(alert)) });
+  await service.handle({ kind: 'connect', host: { label: 'Test', endpoint: 'https://test.invalid', authentication: 'dashboard', token: 'synthetic', allowPrivateHttp: false } });
+  await service.handle({ kind: 'newChat', generation: service.snapshot().generation, profile: 'agent' });
+  const signal = new AbortController().signal;
+  // Methods this build still has no prompt for are refused, never auto-answered.
+  assert.equal((await callbacks.onRequest({ kind: 'request', id: 'r0', method: 'preview.read', params: { session_id: 'runtime' } }, signal)).error.code, -32601);
+  const reply = callbacks.onRequest({ kind: 'request', id: 'r1', method: 'vault.unlock_prompt', params: REQUESTS['vault.unlock_prompt'] }, signal);
+  const state = service.snapshot();
+  assert.deepEqual(state.prompts, [{ id: 'r1', prompt: { kind: 'secure', method: 'vault.unlock_prompt', runtimeId: 'runtime', manager: '1Password' } }]);
+  assert.match(alerts.at(-1), /logins in 1Password/u);
+  assert.equal((await service.handle({ kind: 'answer', generation: state.generation, promptId: 'r1', answer: MASTER })).ok, true);
+  assert.deepEqual(await reply, { result: { value: MASTER } });
+  assert.deepEqual(service.snapshot().prompts, []);
+  // A second answer to the same request is refused; nothing is sent twice.
+  assert.equal((await service.handle({ kind: 'answer', generation: state.generation, promptId: 'r1', answer: MASTER })).ok, false);
+  const login = callbacks.onRequest({ kind: 'request', id: 'r2', method: 'vault.save_login', params: REQUESTS['vault.save_login'] }, signal);
+  await service.handle({ kind: 'answer', generation: state.generation, promptId: 'r2', answer: { identifier: 'sam', password: PASSWORD } });
+  assert.deepEqual(JSON.parse((await login).result.value), { identifier: 'sam', password: PASSWORD });
+  const seen = [...published, ...alerts, JSON.stringify(service.snapshot()), JSON.stringify([...values])].join('\n');
+  assert.equal(seen.includes(MASTER) || seen.includes(PASSWORD), false);
+});
+
+test('secure prompts render write-only fields with Skip and say bighelp keeps nothing', () => {
+  const html = ui.render('secure', { agentName: 'Synthetic agent', disabled: false, onAnswer() {},
+    prompt: parseInteractivePrompt('vault.save_login', REQUESTS['vault.save_login'], 'runtime') });
+  assert.match(html, /Save a login for shop\.example\.org/u);
+  assert.match(html, /<input[^>]*type="password"[^>]*autoComplete="new-password"/u);
+  assert.match(html, /<input[^>]*type="text"[^>]*autoComplete="username"/u);
+  assert.doesNotMatch(html, /<input[^>]*value=/u);
+  assert.match(html, /doesn&#x27;t keep it/u); assert.match(html, />Skip</u);
+  const code = ui.render('secure', { agentName: 'Synthetic agent', disabled: false, onAnswer() {},
+    prompt: parseInteractivePrompt('vault.code', REQUESTS['vault.code'], 'runtime') });
+  assert.match(code, /shop\.example\.org is asking for a one-time code/u);
+  assert.match(code, /autoComplete="one-time-code"/u);
 });
