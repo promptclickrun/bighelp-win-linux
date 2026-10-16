@@ -52,7 +52,7 @@ export function createDesktopService(adapters: Readonly<{
   let identity: WorkspaceIdentity | null = null, workspace: DesktopWorkspace | null = null;
   let workspaceRevision = 0;
   let navigation: {requestId: string; initiatingGeneration: number; generation: number} | null = null;
-  const navigationIds = new Set<string>();
+  let navigationIds: {initiatingGeneration: number; ids: Set<string>} | null = null;
   let owner: Owner | null = null;
   let running = false, sending = false, navigating = false, reconciled = false;
   let notice = adapters.repository ? '' : 'Secure storage is unavailable. Unlock your system key store to connect.';
@@ -108,7 +108,7 @@ export function createDesktopService(adapters: Readonly<{
   const scope = (profile: string, chatId: string) => digest(JSON.stringify([hostId, principalId, profile, chatId]));
   function clearPrompts() { for (const entry of [...prompts.values()]) entry.cancel(); prompts.clear(); }
   function retire(clear = false) {
-    navigation = null; ++hostGeneration; ++generation; owner = null; acceptedSend = null; reconciled = false; running = false; sending = false; navigating = false;
+    navigation = null; navigationIds = null; ++hostGeneration; ++generation; owner = null; acceptedSend = null; reconciled = false; running = false; sending = false; navigating = false;
     ++workspaceRevision; workspace = null; identity = null;
     clearPrompts(); const old = gateway; gateway = undefined; old?.close(); status = 'disconnected';
     if (clear) { data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
@@ -259,6 +259,9 @@ export function createDesktopService(adapters: Readonly<{
     const connection = gateway, current = hostGeneration;
     navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSend = null; clearPrompts(); ++generation;
     navigation = requestId ? {requestId, initiatingGeneration, generation} : null; publish();
+    // Ordinary/saved-chat supersession admits no more entries from the older
+    // canonical initiating generation, so its tombstones can be retired.
+    if (!canonical) navigationIds = null;
     ++workspaceRevision; workspace = null;
     const selection = generation;
     const isCurrent = () => current === hostGeneration && connection === gateway && selection === generation;
@@ -302,7 +305,7 @@ export function createDesktopService(adapters: Readonly<{
       notice = journal(pending?.value).some(entry => ['prepared', 'dispatched', 'accepted', 'reconciling', 'unknown'].includes(String(entry.phase)))
         ? 'An earlier send may have run. Check saved history before sending again. Nothing was resent.' : '';
       await history(captured, connection);
-    } finally { if (isCurrent()) { navigation = null; navigating = false; publish(); } }
+    } finally { if (isCurrent()) { navigation = null; navigationIds = null; navigating = false; publish(); } }
   }
   async function act(action: DesktopAction) {
     if (action.kind === 'snapshot') return;
@@ -310,8 +313,8 @@ export function createDesktopService(adapters: Readonly<{
     if (action.kind === 'disconnect') { retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
     if (action.kind === 'refresh') { await refresh(); return; }
     if (action.kind === 'cancelNavigation') {
-      if (navigation?.requestId === action.requestId) {
-        navigation = null; ++generation; owner = null; selectedChatId = null; acceptedSend = null;
+      if (navigation?.requestId === action.requestId && navigation.initiatingGeneration === action.generation) {
+        navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSend = null;
         clearPrompts(); navigating = false; running = false; reconciled = false; publish();
       }
       return;
@@ -344,8 +347,14 @@ export function createDesktopService(adapters: Readonly<{
       if (isCurrent()) publish(); return;
     }
     if (action.kind === 'canonicalChat') {
-      if (navigationIds.has(action.requestId) || navigationIds.size >= 4096) throw Error('Navigation unavailable');
-      navigationIds.add(action.requestId);
+      // Reject before rotating tombstones: a failed admission must leave the
+      // older initiating generation's replay fence intact.
+      if (sending || !gateway || !data.agents.some(agent => agent.id === action.profile)) throw Error('Session unavailable');
+      // Keep tombstones only while this initiating generation can supersede an
+      // in-flight navigation. Settled/replaced generations are already fenced.
+      if (!navigating || navigationIds?.initiatingGeneration !== action.generation) navigationIds = {initiatingGeneration: action.generation, ids: new Set()};
+      if (navigationIds.ids.has(action.requestId) || navigationIds.ids.size >= 4096) throw Error('Navigation unavailable');
+      navigationIds.ids.add(action.requestId);
       await open(action.profile, undefined, true, action.requestId, action.generation); return;
     }
     if (action.kind === 'newChat') { await open(action.profile); return; }

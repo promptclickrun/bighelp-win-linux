@@ -35,6 +35,7 @@ test('workspace reads accept only named pages and bounded ranges',()=>{
 test('canonical entry and local cancellation are finite and request-bound',()=>{
  const action={kind:'canonicalChat',generation:2,profile:'agent',requestId:'navigation-1'};
  assert.deepEqual(parseDesktopAction(action),action);
- assert.deepEqual(parseDesktopAction({kind:'cancelNavigation',requestId:'navigation-1'}),{kind:'cancelNavigation',requestId:'navigation-1'});
- for(const value of [{...action,url:'/api/sessions'},{...action,requestId:''},{kind:'cancelNavigation',requestId:'x',stop:true}])assert.throws(()=>parseDesktopAction(value));
+ assert.deepEqual(parseDesktopAction({kind:'cancelNavigation',generation:2,requestId:'navigation-1'}),{kind:'cancelNavigation',generation:2,requestId:'navigation-1'});
+ for(const value of [{...action,url:'/api/sessions'},{...action,requestId:''},{kind:'cancelNavigation',generation:2,requestId:'x',stop:true},
+  {kind:'cancelNavigation',requestId:'x'},{kind:'cancelNavigation',generation:-1,requestId:'x'}])assert.throws(()=>parseDesktopAction(value));
 });

@@ -29,12 +29,12 @@ const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
 export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean> }>): JSX.Element {
   const [state, dispatch] = useReducer(reduceShell, undefined, createShellState);
   const sending = useRef(false);
-  const pendingNavigation = useRef<string | null>(null);
+  const pendingNavigation = useRef<Readonly<{generation: number; requestId: string}> | null>(null);
   const suppressNavigation = useRef(false);
   const leaveChat = () => {
     suppressNavigation.current = true;
-    const requestId = pendingNavigation.current; pendingNavigation.current = null;
-    if (requestId && props.api && props.act) void props.act(props.api.cancelNavigation(requestId));
+    const pending = pendingNavigation.current; pendingNavigation.current = null;
+    if (pending && props.api && props.act) void props.act(props.api.cancelNavigation(pending.generation, pending.requestId));
   };
   const [sendPending, setSendPending] = useState(false);
   const dirty = useRef(new Map<string, string>());
@@ -47,8 +47,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   }
   useEffect(() => () => {
     for (const timer of timers.current.values()) clearTimeout(timer);
-    const requestId = pendingNavigation.current;
-    if (requestId && props.api) void props.api.cancelNavigation(requestId).catch(() => {});
+    const pending = pendingNavigation.current;
+    if (pending && props.api) void props.api.cancelNavigation(pending.generation, pending.requestId).catch(() => {});
   }, [props.api]);
   useEffect(() => {
     const id = props.snapshot?.selectedChatId;
@@ -159,9 +159,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
               suppressNavigation.current = false;
               dispatch({ type: 'openAgent', agentId: id });
               if (api && snapshot?.status === 'connected' && act) {
-                const requestId = crypto.randomUUID(); pendingNavigation.current = requestId;
-                void act(api.canonicalChat(snapshot.generation, id, requestId)).finally(() => {
-                  if (pendingNavigation.current === requestId) pendingNavigation.current = null;
+                const pending = {generation: snapshot.generation, requestId: crypto.randomUUID()}; pendingNavigation.current = pending;
+                void act(api.canonicalChat(pending.generation, id, pending.requestId)).finally(() => {
+                  if (pendingNavigation.current === pending) pendingNavigation.current = null;
                 });
               }
             }} onSettingsSection={openSection} />

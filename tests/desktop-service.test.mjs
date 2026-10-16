@@ -172,7 +172,7 @@ test('leaving before incremented generation publication cancels only that canoni
  let release;f.gateway.operation=()=>new Promise(resolve=>{release=resolve;});
  const pending=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'leaving'});
  while(!release)await new Promise(resolve=>setImmediate(resolve));
- await f.service.handle({kind:'cancelNavigation',requestId:'leaving'});
+ await f.service.handle({kind:'cancelNavigation',generation:initiating,requestId:'leaving'});
  release({profiles:[{name:'agent',canonical_session:{id:'wrong-after-leaving'}}]});await pending;
  assert.equal(f.service.snapshot().selectedChatId,null);assert.equal(f.service.snapshot().canSend,false);
  assert.equal([...f.values.keys()].some(key=>key.startsWith('canonical:')),false);
@@ -188,16 +188,24 @@ test('overlapping agent entries fence old completion and delayed old cancellatio
  };
  const first=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'first'});
  while(!releaseFirst)await new Promise(resolve=>setImmediate(resolve));
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'first'})).ok,false);
+ assert.equal(profiles,1);
+ // A newer-generation request that cannot enter must not erase old tombstones.
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'missing-agent',requestId:'invalid'})).ok,false);
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'first'})).ok,false);
+ assert.equal(profiles,1);
  const second=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'second'});
  while(!releaseSecond)await new Promise(resolve=>setImmediate(resolve));
- await f.service.handle({kind:'cancelNavigation',requestId:'first'});
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'first'})).ok,false);
+ assert.equal(profiles,2);
+ await f.service.handle({kind:'cancelNavigation',generation:initiating,requestId:'first'});
  releaseSecond({profiles:[{name:'agent',canonical_session:{id:'current-root',resolved_id:'current-tip'}}]});await second;
  releaseFirst({profiles:[{name:'agent',canonical_session:{id:'old-root'}}]});await first;
  assert.equal(f.service.snapshot().selectedChatId,'current-tip');
  assert.deepEqual(operations.filter(op=>op.kind==='sessionResume').map(op=>op.storedSessionId),['current-root']);
  assert.equal([...f.values.values()].find(entry=>entry.value?.root)?.value.root,'current-root');
  // Leaving a settled chat does not discard its runtime/send lease.
- await f.service.handle({kind:'cancelNavigation',requestId:'second'});
+ await f.service.handle({kind:'cancelNavigation',generation:initiating,requestId:'second'});
  assert.equal(f.service.snapshot().canSend,true);
 });
 test('late create receipt cannot overwrite canonical recovery state or authorize another create',async()=>{
@@ -208,18 +216,81 @@ test('late create receipt cannot overwrite canonical recovery state or authorize
   if(op.kind==='canonicalSessionCreate'){creates++;return new Promise(resolve=>{finish=resolve;});}
   assert.fail('Unexpected operation');
  };
- const first=f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'old-create'});
+ const initiating=f.service.snapshot().generation;
+ const first=f.service.handle({kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'old-create'});
  while(!finish)await new Promise(resolve=>setImmediate(resolve));
- await f.service.handle({kind:'cancelNavigation',requestId:'old-create'});
+ await f.service.handle({kind:'cancelNavigation',generation:initiating,requestId:'old-create'});
  assert.equal((await f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'retry-create'})).ok,false);
  finish({session_id:'old-runtime',stored_session_id:'old-created',info:{profile_name:'agent'},message_count:0,messages:[]});await first;
  assert.equal(creates,1);assert.equal(f.service.snapshot().selectedChatId,null);
  assert.equal([...f.values.values()].find(entry=>entry.value?.phase)?.value.phase,'createRequested');
  // A different authenticated authority receives a separate encrypted state key.
  await f.service.handle({kind:'connect',host:{...host,token:'different-synthetic-authority'}});
- const next=f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'other-authority'});
+ const otherGeneration=f.service.snapshot().generation;
+ const next=f.service.handle({kind:'canonicalChat',generation:otherGeneration,profile:'agent',requestId:'other-authority'});
  while(creates!==2)await new Promise(resolve=>setImmediate(resolve));
- await f.service.handle({kind:'cancelNavigation',requestId:'other-authority'});
+ await f.service.handle({kind:'cancelNavigation',generation:otherGeneration,requestId:'other-authority'});
  finish({session_id:'other-runtime',stored_session_id:'other-created',info:{profile_name:'agent'},message_count:0,messages:[]});await next;
  assert.equal([...f.values.keys()].filter(key=>key.startsWith('canonical:')).length,2);
+});
+test('canonical entry remains usable beyond 4096 settled navigations and after reconnect',async()=>{
+ const f=setup();await f.service.handle({kind:'connect',host});const original=f.gateway.operation;
+ f.gateway.operation=op=>op.kind==='profilesList'?Promise.resolve({profiles:[{name:'agent',canonical_session:{id:'root'}}]}):original(op);
+ for(let index=0;index<4100;index++) {
+  const result=await f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:`entry-${index}`});
+  assert.equal(result.ok,true,`settled navigation ${index}`);
+ }
+ await f.service.handle({kind:'disconnect'});await f.service.handle({kind:'connect',host});
+ assert.equal((await f.service.handle({kind:'canonicalChat',generation:f.service.snapshot().generation,profile:'agent',requestId:'entry-0'})).ok,true);
+});
+test('settled request IDs can be reused while old-generation entry and cancellation stay retired',async()=>{
+ const f=setup();await f.service.handle({kind:'connect',host});const original=f.gateway.operation;
+ let release,delayed=false,profiles=0;
+ f.gateway.operation=op=>{
+  if(op.kind!=='profilesList')return original(op);
+  profiles++;const result={profiles:[{name:'agent',canonical_session:{id:'root'}}]};
+  return delayed?new Promise(resolve=>{release=()=>resolve(result);}):Promise.resolve(result);
+ };
+ const firstGeneration=f.service.snapshot().generation;
+ const first={kind:'canonicalChat',generation:firstGeneration,profile:'agent',requestId:'shared-id'};
+ assert.equal((await f.service.handle(first)).ok,true);
+ const secondGeneration=f.service.snapshot().generation;delayed=true;
+ const second={...first,generation:secondGeneration};const pending=f.service.handle(second);
+ while(!release)await new Promise(resolve=>setImmediate(resolve));
+ const activeGeneration=f.service.snapshot().generation;
+ assert.equal((await f.service.handle(second)).ok,false); // same active identity
+ assert.equal((await f.service.handle(first)).ok,false); // old initiating generation
+ await f.service.handle({kind:'cancelNavigation',generation:firstGeneration,requestId:'shared-id'});
+ assert.equal(f.service.snapshot().generation,activeGeneration);assert.equal(profiles,2);
+ release();assert.equal((await pending).ok,true);assert.equal(f.service.snapshot().canSend,true);
+ // Reusing the ID after reconnect is also safe against the earlier cancellation.
+ delayed=false;await f.service.handle({kind:'disconnect'});await f.service.handle({kind:'connect',host});
+ delayed=true;release=undefined;const thirdGeneration=f.service.snapshot().generation;
+ const third=f.service.handle({...first,generation:thirdGeneration});
+ while(!release)await new Promise(resolve=>setImmediate(resolve));
+ const thirdActive=f.service.snapshot().generation;
+ await f.service.handle({kind:'cancelNavigation',generation:secondGeneration,requestId:'shared-id'});
+ assert.equal(f.service.snapshot().generation,thirdActive);
+ release();assert.equal((await third).ok,true);assert.equal(f.service.snapshot().canSend,true);
+});
+test('ordinary and saved-chat supersession retire the older canonical generation without admitting its replay',async()=>{
+ for(const kind of ['newChat','openChat']) {
+  const f=setup();await opened(f);const original=f.gateway.operation;let oldRelease,nextRelease;
+  f.gateway.operation=op=>{
+   if(op.kind==='profilesList')return new Promise(resolve=>{oldRelease=()=>resolve({profiles:[{name:'agent',canonical_session:{id:'old-root'}}]});});
+   if(op.kind===(kind==='newChat'?'sessionCreate':'sessionResume'))return new Promise(resolve=>{nextRelease=()=>resolve({session_id:'new-runtime',stored_session_id:'new-stored',info:{profile_name:'agent'},running:false});});
+   return original(op);
+  };
+  const initiating=f.service.snapshot().generation;
+  const old={kind:'canonicalChat',generation:initiating,profile:'agent',requestId:'old-id'};
+  const first=f.service.handle(old);while(!oldRelease)await new Promise(resolve=>setImmediate(resolve));
+  const second=f.service.handle(kind==='newChat'?{kind,generation:initiating,profile:'agent'}:{kind,generation:initiating,chatId:'stored'});
+  while(!nextRelease)await new Promise(resolve=>setImmediate(resolve));
+  const current=f.service.snapshot().generation;
+  assert.equal((await f.service.handle(old)).ok,false);
+  await f.service.handle({kind:'cancelNavigation',generation:initiating,requestId:'old-id'});
+  assert.equal(f.service.snapshot().generation,current);
+  nextRelease();assert.equal((await second).ok,true);oldRelease();await first;
+  assert.equal(f.service.snapshot().selectedChatId,'new-stored');assert.equal(f.service.snapshot().canSend,true);
+ }
 });

@@ -10,7 +10,9 @@ Canonical creation uses `title:"Bot Chat"`, `hidden:true`, `follow_profile_confi
 
 Encrypted creation state is scoped by stable host, authenticated principal and profile. Create/title barriers are saved before dispatch. Uncertain mutations are never replayed; explicit entry can rediscover a committed canonical result. Missing remembered roots require exact detail confirmation of deliberate archive/rename before replacement. Missing, mismatched, malformed or unavailable detail never authorizes creation.
 
-The finite preload operations are `canonicalChat(generation,profile,requestId)` and `cancelNavigation(requestId)`. Ownership checks fence host/profile/connection and local navigation generations before and after awaits. Cancellation can identify the initiating request before a new snapshot reaches the renderer. Late cancellation cannot retire a newer navigation, and leaving a settled chat does not discard its runtime lease. No remote execution is stopped by navigation.
+The finite preload operations are `canonicalChat(generation,profile,requestId)` and `cancelNavigation(initiatingGeneration,requestId)`. Ownership checks fence host/profile/connection and local navigation generations before and after awaits. Cancellation identifies both the initiating generation and request before a new snapshot reaches the renderer. Late cancellation cannot retire a newer navigation, including reuse of an older request ID, and leaving a settled chat does not discard its runtime lease. No remote execution is stopped by navigation.
+
+Review correction: request deduplication retains at most 4,096 IDs for only the initiating generation that can still supersede an active canonical navigation. Settlement, cancellation, connection retirement, or successful admission from another generation retires that set. Ordinary/saved-chat supersession also retires it because older initiating generations can no longer enter. Failed admission preserves the active generation's tombstones. This removes the previous lifetime limit that rejected entry 4,097 even after reconnect.
 
 ## Pinned source
 
@@ -30,7 +32,7 @@ Local reference HEADs were verified against these exact revisions. No live Herme
 
 ## Checks
 
-- `npm test`: **260 passed**, 0 failed/skipped/cancelled. Deterministic synthetic adapters cover discovery, hidden/compacted identity, duplicate/missing support, collision/retirement, persistence/uncertainty, stale publication/cancellation and principal isolation.
+- `npm test`: **263 passed**, 0 failed/skipped/cancelled. Deterministic synthetic adapters cover discovery, hidden/compacted identity, duplicate/missing support, collision/retirement, persistence/uncertainty, stale publication/cancellation and principal isolation. Navigation regressions cover 4,100 sequential entries plus reconnect, same-ID reuse after settlement/reconnect, active duplicate and superseded-request replay, old-generation cancellation, failed newer admission, ordinary/saved-chat supersession and cancellation before snapshot publication.
 - `npm run typecheck`: core, desktop and renderer passed.
 - `npm run desktop:package`: current production bundle and unsigned local Linux x64 development package built successfully.
 - `node scripts/desktop/smoke.mjs --headless --executable artifacts/bighelp-development-linux-x64/electron`: **20 passed, 0 failed**; Electron 44.7.2 / Chrome 152.0.7977.149, **OS sandbox enabled**. No helper permission changes.

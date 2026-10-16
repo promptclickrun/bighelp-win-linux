@@ -25,7 +25,7 @@ export type DesktopResult = Readonly<{ ok: true; snapshot: DesktopSnapshot }> | 
 export type DesktopAction =
   | Readonly<{ kind: 'snapshot' }>
   | Readonly<{ kind: 'disconnect' }>
-  | Readonly<{ kind: 'cancelNavigation'; requestId: string }>
+  | Readonly<{ kind: 'cancelNavigation'; generation: number; requestId: string }>
   | Readonly<{ kind: 'refresh' }>
   | Readonly<{ kind: 'connect'; host: HostInput }>
   | Readonly<{ kind: 'canonicalChat'; generation: number; profile: string; requestId: string }>
@@ -43,7 +43,7 @@ export type DesktopApi = Readonly<{
   disconnect(): Promise<DesktopResult>;
   refresh(): Promise<DesktopResult>;
   canonicalChat(generation: number, profile: string, requestId: string): Promise<DesktopResult>;
-  cancelNavigation(requestId: string): Promise<DesktopResult>;
+  cancelNavigation(generation: number, requestId: string): Promise<DesktopResult>;
   newChat(generation: number, profile: string): Promise<DesktopResult>;
   openChat(generation: number, chatId: string): Promise<DesktopResult>;
   send(generation: number, chatId: string, text: string): Promise<DesktopResult>;
@@ -81,9 +81,6 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   if (kind === 'snapshot' || kind === 'disconnect' || kind === 'refresh') {
     keys(input, ['kind']); return { kind };
   }
-  if (kind === 'cancelNavigation') {
-    keys(input, ['kind', 'requestId']); return {kind, requestId: text(input.requestId, 128)};
-  }
   if (kind === 'connect') {
     keys(input, ['kind', 'host']);
     const host = object(input.host);
@@ -98,6 +95,9 @@ export function parseDesktopAction(value: unknown): DesktopAction {
     throw new TypeError('Invalid generation');
   }
   const generation = input.generation;
+  if (kind === 'cancelNavigation') {
+    keys(input, ['kind', 'generation', 'requestId']); return {kind, generation, requestId: text(input.requestId, 128)};
+  }
   if (kind === 'workspace') {
     keys(input, ['kind', 'generation', 'profile', 'page', 'days']);
     const page = input.page, days = input.days;
