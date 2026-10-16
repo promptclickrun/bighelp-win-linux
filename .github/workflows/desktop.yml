@@ -21,6 +21,23 @@ jobs:
       - run: npm ci
       - run: npm run esbuild:verify
       - run: npm run electron:fetch
+      - run: node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.protected-storage.json
+      - run: node --test scripts/qualification/protected-storage.test.mjs
+      - name: Require real Windows OS protection across restart
+        if: runner.os == 'Windows'
+        timeout-minutes: 2
+        run: node scripts/qualification/protected-storage.mjs --require-available
+      - name: Observe Linux OS protection across restart
+        if: runner.os == 'Linux'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          probe_runtime=$(mktemp -d "$RUNNER_TEMP/bighelp-protection-runtime.XXXXXX")
+          trap 'rm -rf "$probe_runtime"' EXIT
+          cp -a node_modules/electron/dist/. "$probe_runtime/"
+          sudo chown root:root "$probe_runtime/chrome-sandbox"
+          sudo chmod 4755 "$probe_runtime/chrome-sandbox"
+          node scripts/qualification/protected-storage.mjs --headless --executable "$probe_runtime/electron"
       - run: npm test
       - run: npm run typecheck
       - run: node scripts/desktop/build.mjs --production
