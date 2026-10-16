@@ -50,7 +50,8 @@ export type DesktopAction =
   | Readonly<{ kind: 'connect'; host: HostInput }>
   | Readonly<{ kind: 'canonicalChat'; generation: number; profile: string; requestId: string }>
   | Readonly<{ kind: 'newChat'; generation: number; profile: string }>
-  | Readonly<{ kind: 'openChat'; generation: number; chatId: string }>
+  // profile: only for a chat found by host search that is not in the loaded list.
+  | Readonly<{ kind: 'openChat'; generation: number; chatId: string; profile?: string }>
   | Readonly<{ kind: 'send'; generation: number; chatId: string; text: string }>
   | Readonly<{ kind: 'interrupt'; generation: number; chatId: string }>
   | Readonly<{ kind: 'answer'; generation: number; promptId: string; answer: unknown }>
@@ -70,7 +71,7 @@ export type DesktopApi = Readonly<{
   canonicalChat(generation: number, profile: string, requestId: string): Promise<DesktopResult>;
   cancelNavigation(generation: number, requestId: string): Promise<DesktopResult>;
   newChat(generation: number, profile: string): Promise<DesktopResult>;
-  openChat(generation: number, chatId: string): Promise<DesktopResult>;
+  openChat(generation: number, chatId: string, profile?: string): Promise<DesktopResult>;
   send(generation: number, chatId: string, text: string): Promise<DesktopResult>;
   interrupt(generation: number, chatId: string): Promise<DesktopResult>;
   answer(generation: number, promptId: string, answer: unknown): Promise<DesktopResult>;
@@ -179,6 +180,10 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   }
   if (kind === 'newChat') {
     keys(input, ['kind', 'generation', 'profile']); return { kind, generation, profile: text(input.profile) };
+  }
+  if (kind === 'openChat' && Object.hasOwn(input, 'profile')) {
+    keys(input, ['kind', 'generation', 'chatId', 'profile']);
+    return { kind, generation, chatId: text(input.chatId), profile: text(input.profile) };
   }
   if (kind === 'openChat' || kind === 'interrupt') {
     keys(input, ['kind', 'generation', 'chatId']); return { kind, generation, chatId: text(input.chatId) };

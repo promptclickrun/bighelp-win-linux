@@ -37,6 +37,9 @@ import { HANDLERS } from './calls/index.ts';
 import type { CallHandler } from './calls/index.ts';
 import { CallError, callFailure } from './calls/context.ts';
 import type { CallContext } from './calls/context.ts';
+import { catalogChat, recentActivity, searchedChat } from './chat-catalog.ts';
+import { decodeChatDetail } from '../../../../packages/contracts/chat-list.ts';
+import { sortChats } from '../../../../packages/ui/chat-list.ts';
 
 type Repository = Readonly<{ read(key: string): Promise<ProtectedValue | null>;
   write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue> }>;
@@ -367,16 +370,41 @@ export function createDesktopService(adapters: Readonly<{
     for (const agent of data.agents) {
       const rows = decodeSessionList(await connection.operation({ kind: 'sessionList', profile: agent.id }), agent.id);
       if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
+      // Display-only last-activity times; session.list above decides membership.
+      const activity = await recentActivity(connection, agent.id);
+      if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
       for (const row of rows) {
         if (chats.some(chat => chat.id === row.id)) throw Error('Ambiguous session identity');
-        chats.push({ id: row.id, agentId: row.profile, title: row.title, preview: row.preview,
-          transcript: data.chats.find(chat => chat.id === row.id && chat.agentId === row.profile)?.transcript ?? [] });
+        chats.push(catalogChat(row, activity.get(row.id),
+          data.chats.find(chat => chat.id === row.id && chat.agentId === row.profile)?.transcript ?? []));
       }
     }
+    // Newest first across agents, by the host's last activity.
+    const ordered = [...sortChats(chats)];
     // Newly created sessions can be lazy and absent until their first prompt.
     const active = data.chats.find(chat => chat.id === selectedChatId);
-    if (active && !chats.some(chat => chat.id === active.id)) chats.unshift(active);
-    data = { ...data, chats }; liveRecovery?.catalog(data); publish();
+    if (active && !ordered.some(chat => chat.id === active.id)) ordered.unshift(active);
+    data = { ...data, chats: ordered }; liveRecovery?.catalog(data); publish();
+  }
+  // A chat found by host search outside the loaded list. Hermes' own row titles
+  // it; hidden chats (Bot Chat) open only from the surfaces that own them.
+  async function admitSearched(profile: string, chatId: string): Promise<ChatView> {
+    const connection = gateway, current = hostGeneration, selection = generation;
+    if (sending || !connection || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
+    const detail = decodeChatDetail((await connection.requestHttp({ kind: 'canonicalSessionDetail', profile, storedSessionId: chatId })).body, chatId, profile);
+    if (shuttingDown || current !== hostGeneration || connection !== gateway || selection !== generation) throw Error('Selection changed');
+    if (detail.hidden) throw Error('Chat unavailable');
+    const existing = data.chats.find(chat => chat.id === chatId);
+    if (existing) return existing;
+    const chat = searchedChat(profile, detail);
+    data = { ...data, chats: [chat, ...data.chats].slice(0, 10000) }; return chat;
+  }
+  // The open chat was archived or deleted: select nothing, keep the host lease.
+  function leaveSelection() {
+    navigation = null; navigationIds = null; ++generation; owner = null; selectedChatId = null; acceptedSends = [];
+    reconciled = false; running = false; sending = false; navigating = false; ++workspaceRevision; workspace = null; staged = null;
+    base = []; live = EMPTY_LIVE; clearTimeout(publishTimer); publishTimer = undefined;
+    clearPrompts(); notice = '';
   }
   async function open(profile: string, storedSessionId?: string, canonical = false, requestId?: string, initiatingGeneration = generation) {
     if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
@@ -511,7 +539,9 @@ export function createDesktopService(adapters: Readonly<{
     }
     if (action.kind === 'newChat') { await open(action.profile); return; }
     if (action.kind === 'openChat') {
-      const chat = data.chats.find(chat => chat.id === action.chatId); if (!chat) throw Error('Chat unavailable');
+      const chat = data.chats.find(chat => chat.id === action.chatId)
+        ?? (action.profile === undefined ? undefined : await admitSearched(action.profile, action.chatId));
+      if (!chat) throw Error('Chat unavailable');
       await open(chat.agentId, chat.id); return;
     }
     if (action.kind === 'answer') {
@@ -767,6 +797,10 @@ export function createDesktopService(adapters: Readonly<{
         },
         openChat: () => owner && selectedChatId === owner.storedSessionId
           ? Object.freeze({ profile: owner.profileId, storedSessionId: owner.storedSessionId, runtimeId: owner.runtimeId }) : null,
+        closeChat: (profile: string, storedSessionId: string) => {
+          if (!isCurrent() || selectedChatId !== storedSessionId || (owner && owner.profileId !== profile)) return;
+          leaveSelection(); publish();
+        },
         isCurrent,
         refreshCatalog: async () => { if (isCurrent()) await reloadProfiles(); },
         requestId: () => randomUUID(),

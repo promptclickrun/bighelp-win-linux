@@ -39,8 +39,12 @@ function unique<T extends {id:string}>(items:T[]):readonly Readonly<T>[] { if(ne
 export function decodeProfiles(value:unknown):readonly CatalogAgent[] {
  return Object.freeze(decodeProfileRoster(value).map(catalogAgent));
 }
-export function decodeSessionList(value:unknown,profile:string):readonly Readonly<{id:string;profile:string;title:string;preview:string}>[] {
- coordinate(profile);const obj=bounded(value);return unique(rows(obj.sessions,200).map(value=>{const row=contractObject(value);coordinate(row.id);if(row.profile!==undefined&&row.profile!==profile)return fail();return {id:coordinate(row.resolved_id??row.id),profile,title:display(row.title,'Untitled chat'),preview:display(row.preview)};}));
+// Hermes stores float epoch seconds; 0/absent/garbage is "unknown", never "now".
+export function epochMs(value:unknown):number|null {
+ if(typeof value!=='number'||!Number.isFinite(value)||value<=0)return null;const ms=Math.round(value*1000);return ms<Date.UTC(9999,0,1)?ms:null;
+}
+export function decodeSessionList(value:unknown,profile:string):readonly Readonly<{id:string;profile:string;title:string;preview:string;startedAt:number|null}>[] {
+ coordinate(profile);const obj=bounded(value);return unique(rows(obj.sessions,200).map(value=>{const row=contractObject(value);coordinate(row.id);if(row.profile!==undefined&&row.profile!==profile)return fail();return {id:coordinate(row.resolved_id??row.id),profile,title:display(row.title,'Untitled chat'),preview:display(row.preview),startedAt:epochMs(row.started_at)};}));
 }
 export type OpenServerRequest = Readonly<{id:string;method:string;params:JsonObject}>;
 // Hermes snapshots omit jsonrpc; validate the entire snapshot before dispatch.

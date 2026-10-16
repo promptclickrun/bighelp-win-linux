@@ -6,6 +6,7 @@ import { HOST_CALLS } from './host.ts';
 import { CHAT_CALLS } from './chat.ts';
 import { SETTINGS_CALLS } from './settings.ts';
 import { KANBAN_CALLS } from './kanban.ts';
+import { CHAT_LIST_CALLS } from './chats.ts';
 
 // One line per feature module; keep the list in this order.
 export const CALLS = Object.freeze({
@@ -14,6 +15,7 @@ export const CALLS = Object.freeze({
   ...SETTINGS_CALLS,
   ...KANBAN_CALLS,
   ...AGENT_CALLS,
+  ...CHAT_LIST_CALLS,
 });
 
 export type CallName = keyof typeof CALLS;
