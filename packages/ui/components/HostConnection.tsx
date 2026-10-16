@@ -189,7 +189,7 @@ export function HostConnection(props: Readonly<{
             {live ? <Button label="Disconnect" disabled={busy !== null} onPress={() => change(() => { void run('other', () => api.disconnect()); })} /> : null}
           </View>
         </Card>
-        <Card title="This computer">
+        <Card title="Manage">
           <Row first title="Name" detail={saved.label}>
             <Button compact label="Rename" disabled={disabled} onPress={() => setRenaming(saved.label)} />
           </Row>
