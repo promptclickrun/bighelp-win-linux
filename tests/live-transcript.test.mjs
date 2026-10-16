@@ -122,3 +122,23 @@ test('tool wording stays plain and bounded', () => {
   assert.equal(toolDetail(undefined, { path: 'a'.repeat(200) }).length, 80);
   assert.equal(toolDetail('line\nbreak‮', undefined), 'line break');
 });
+
+test('snapshots carry only the open chat transcript', async () => {
+  const { createDesktopService } = await import('../apps/desktop/src/main/desktop-service.ts');
+  const values = new Map();
+  const repository = { async read(k) { return values.get(k) ?? null; }, async write(k, r, v) { const n = { revision: (r ?? 0) + 1, value: structuredClone(v) }; values.set(k, n); return n; } };
+  let created = 0;
+  const gateway = { exclusiveSubmit: true, close() {}, restoreRequests() {},
+    async requestHttp(op) { if (op.kind === 'route') throw new Error('no REST'); return { body: { ok: true, auth_required: false } }; },
+    async operation(op) {
+      if (op.kind === 'profilesList') return { profiles: [{ name: 'agent' }] }; if (op.kind === 'sessionList') return { sessions: [] };
+      if (op.kind === 'sessionCreate') { created++; return { session_id: `rt${created}`, stored_session_id: `chat${created}`, info: { profile_name: 'agent' }, running: false }; }
+      if (op.kind === 'sessionHistory') return { count: 1, messages: [{ row_id: 1, role: 'user', text: `history of ${op.runtimeId}` }] }; return {}; } };
+  const service = createDesktopService({ repository, connect: async () => gateway, onChange() {} });
+  await service.handle({ kind: 'connect', host: { label: 'T', endpoint: 'https://t.invalid', authentication: 'dashboard', token: 'x', allowPrivateHttp: false } });
+  await service.handle({ kind: 'newChat', generation: service.snapshot().generation, profile: 'agent' });
+  await service.handle({ kind: 'newChat', generation: service.snapshot().generation, profile: 'agent' });
+  const chats = service.snapshot().data.chats;
+  assert.equal(chats.find(chat => chat.id === 'chat2').transcript.length > 0, true);
+  assert.deepEqual(chats.find(chat => chat.id === 'chat1').transcript, []);
+});

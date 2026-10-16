@@ -147,5 +147,8 @@ test('failed reconnect cannot replace newer in-memory authoritative history with
  f.repository.write=async(key,revision,value)=>{if(key.startsWith('display-cache:')&&!release)await new Promise(resolve=>{release=resolve;});return write(key,revision,value);};
  const operation=f.gateway.operation;f.gateway.operation=op=>op.kind==='sessionHistory'?Promise.resolve({count:1,messages:[{row_id:2,role:'assistant',text:'Latest authoritative history'}]}):operation(op);
  await select(live);await until(()=>release);f.callbacks.onClosed();f.failConnect=true;
- assert.equal((await live.handle({kind:'connect',host})).ok,false);assert.equal(live.snapshot().data.chats[0].transcript[0].paragraphs[0],'Latest authoritative history');release();live.dispose();
+ assert.equal((await live.handle({kind:'connect',host})).ok,false);
+ // Snapshots carry only the open chat's transcript: open the saved chat offline.
+ const offline=live.snapshot();assert.equal((await live.handle({kind:'openChat',generation:offline.generation,chatId:offline.data.chats[0].id})).ok,true);
+ assert.equal(live.snapshot().data.chats[0].transcript[0].paragraphs[0],'Latest authoritative history');release();live.dispose();
 });

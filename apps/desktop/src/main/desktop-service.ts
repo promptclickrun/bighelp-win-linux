@@ -110,7 +110,9 @@ export function createDesktopService(adapters: Readonly<{
   const canSendBusy = () => status === 'connected' && !!owner && !!gateway?.exclusiveSubmit && !!adapters.repository
     && reconciled && running && !sending && !navigating;
   function snapshot(): DesktopSnapshot {
-    return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend() || canSendBusy(), notice,
+    // Only the open chat's transcript crosses IPC; lists need titles and previews.
+    const visible: ViewData = { ...data, chats: data.chats.map(chat => chat.id === selectedChatId || !chat.transcript.length ? chat : { ...chat, transcript: [] }) };
+    return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data: visible, selectedChatId, running, canSend: canSend() || canSendBusy(), notice,
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
       preferences, attachments: staged && staged.chatId === selectedChatId
         ? staged.files.map(file => ({ id: file.id, name: file.name, size: file.bytes.byteLength, kind: file.kind })) : [],
@@ -118,7 +120,7 @@ export function createDesktopService(adapters: Readonly<{
   }
   const publish = () => { clearTimeout(publishTimer); publishTimer = undefined; adapters.onChange(snapshot()); };
   // Streaming text arrives many times a second; coalesce those updates.
-  const publishSoon = () => { publishTimer ??= setTimeout(publish, 50); };
+  const publishSoon = () => { publishTimer ??= setTimeout(publish, 80); };
   function save(key: string, value: unknown): Promise<void> {
     const captured = safeJson(value);
     const result = writes.then(async () => {
