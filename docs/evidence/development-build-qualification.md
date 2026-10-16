@@ -2,6 +2,30 @@
 
 These are unsigned Windows/Linux development builds. They do not complete the [57-row parity scope](../parity/FEATURE_MATRIX.md) or qualify a release. The approved device calendar/reminder exception remains unavailable and is not advertised as a capability.
 
+## Approved A function pages — local verification
+
+The user selected A list/detail. The [function-page increment](function-pages.md)
+implements Projects, Scheduled and Usage plus the existing agent Feed/Ideas/Goals
+read views. Independent task reviews approved the scoped implementation; the
+selected title readability fix is included. No main-process, preload, wire or
+privileged read-client change was needed for these pages.
+
+At `007f5e5`, the current product code passed:
+
+- `npm test`: **364 passed**, zero failed or skipped.
+- `npm run typecheck`: all three strict TypeScript projects passed.
+- `npm run desktop:package`: production Linux x64 package built; fixtures excluded.
+- Independent SHA256 verification: **82 package files** and the archive passed.
+  Local archive SHA256: `25ae52555d5b2ca8553fc77230d370e49ca5afb99962fb6a809980c032a25b33`.
+- `node scripts/desktop/smoke.mjs --headless --executable artifacts/bighelp-development-linux-x64/electron`:
+  **20 passed**, zero failed, OS sandbox enabled. No sandbox ownership or
+  permission changes were needed for this local run.
+
+These checks precede the new synthetic Electron interaction stage and do not
+qualify physical keyboard/IME, screen-reader behavior or a real plugin host.
+The historical host and hosted-runner results below retain their tested commits;
+they are not presented as results from this newer UI revision.
+
 ## Integrated implementation and review
 
 The connected preview now includes [canonical Bot Chat](canonical-chat.md), [bounded protected display caching](display-cache.md), [offline recovery](chat-recovery.md), [draft preservation during intentional navigation](draft-navigation.md), and [connection retirement at the request-ID budget](gateway-lifetime.md). Main-process authority, durable send barriers and unknown-outcome rules continue to apply. Cached content never restores send or mutation authority.

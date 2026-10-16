@@ -30,6 +30,8 @@ The current shell is not a completed application. The 57-row feature matrix rema
 
 ## Current evidence
 
+- The approved A read pages at `007f5e5` passed 364 application tests, all three strict compiler projects, production Linux packaging, 82 package-file checksums plus the archive checksum, and 20 sandbox-enabled packaged smoke checks. New renderer interaction and native CI results are recorded separately in [function-page evidence](evidence/function-pages.md).
+
 - Protected encrypted repositories, finite session/interactive prompt codecs, HTTP/WS gateway adapters, finite IPC, connected host/chat UI, and unsigned portable packaging are implemented.
 - At `c877ee2`, 314 synthetic/local tests, all three strict TypeScript projects and production packaging passed. Production bundles exclude fixture data and renderer imports of privileged modules. [Integrated qualification](evidence/development-build-qualification.md) records exact commits, subsequent CI results and limits.
 - Disposable real Hermes `3b2f971133e4e011022ccf33dc6dc1c9050563d8`: dashboard auth, profile discovery, canonical Bot Chat identity, distinct ordinary chat, draft/send barriers, expected provider-free error, authoritative history, saved-session resume and offline repository reconstruction passed. Explicit disconnect made zero automatic connection attempts after reconstruction. No successful model turn or actual Electron app restart is claimed by this synthetic-encryption test.
