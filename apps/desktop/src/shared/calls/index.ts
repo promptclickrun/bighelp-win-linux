@@ -1,6 +1,7 @@
 // The complete list of host calls the renderer can request. Each feature adds
 // its own module; main implements every entry (see main/calls/index.ts).
 import type { CallDefinition, CallFailure } from '../call.ts';
+import { AGENT_CALLS } from './agents.ts';
 import { HOST_CALLS } from './host.ts';
 import { CHAT_CALLS } from './chat.ts';
 import { SETTINGS_CALLS } from './settings.ts';
@@ -12,6 +13,7 @@ export const CALLS = Object.freeze({
   ...CHAT_CALLS,
   ...SETTINGS_CALLS,
   ...KANBAN_CALLS,
+  ...AGENT_CALLS,
 });
 
 export type CallName = keyof typeof CALLS;

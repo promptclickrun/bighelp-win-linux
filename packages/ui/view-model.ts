@@ -16,7 +16,8 @@ export type TranscriptItem =
   | Readonly<{ kind: 'reasoning'; id: string; text: string; turn?: string; streaming?: boolean }>
   | Readonly<{ kind: 'notice'; id: string; tone: 'info' | 'warn' | 'error'; text: string; turn?: string }>;
 
-export type AgentView = Readonly<{ id: string; name: string; summary: string; color: string }>;
+// isDefault and model come from the host roster; model is shown only in Nerd Mode.
+export type AgentView = Readonly<{ id: string; name: string; summary: string; color: string; isDefault?: boolean; model?: string }>;
 export type ChatView = Readonly<{
   id: string; agentId: string; title: string; preview: string; transcript: readonly TranscriptItem[];
 }>;

@@ -7,6 +7,7 @@ import { ScrollView, View, useColorScheme, useWindowDimensions } from 'react-nat
 import { createShellState, reduceShell, showsAgentTabs, visiblePanes } from '../domain/shell.ts';
 import type { Place, SettingsSection } from '../domain/shell.ts';
 import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
+import { AddAgentButton, AgentManager, AgentMenu } from './components/AgentManager.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { PendingAttachments } from './components/PendingAttachments.tsx';
@@ -204,6 +205,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         } : undefined}
         onStop={api && snapshot && chat && act ? () => { void act(api.interrupt(snapshot.generation, chat.id)); } : undefined}
         requests={api && snapshot && act ? <InteractiveRequests key={snapshot.generation} prompts={snapshot.prompts} agentName={agent.name} disabled={snapshot.status !== 'connected'} onAnswer={(id, answer) => { void act(api.answer(snapshot.generation, id, answer)); }} /> : null}
+        agentMenu={<AgentMenu agent={agent} />}
         onTab={tab => {
           if (tab !== 'chat') leaveChat();
           else suppressNavigation.current = false;
@@ -249,8 +251,13 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
 
   const functionPage = state.place === 'projects' || state.place === 'scheduled' || state.place === 'usage' ? state.place : null;
   const ownPage = functionPage !== null || state.place === 'kanban';
+  // Delete refuses while this agent is replying in the open chat.
+  const replyingAgentId = snapshot?.running && snapshot.selectedChatId ? chatById(data, snapshot.selectedChatId)?.agentId ?? null : null;
   return (
     <ThemeProvider value={{ theme, palette, font }}>
+      <AgentManager agents={data.agents}
+        nerdMode={nerdMode} replyingAgentId={replyingAgentId}
+        onDeleted={id => { if (narrow && state.selectedAgentId === id) dispatch({ type: 'back' }); }}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: palette.page, minHeight: 0 }}>
         <Rail place={state.place} host={data.host} onPlace={place => { leaveChat(); dispatch({ type: 'place', place }); }}
           onHost={() => { leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts'); }} />
@@ -261,6 +268,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         {!ownPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
             nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow}
+            addAgent={<AddAgentButton />} agentMenu={agent => <AgentMenu agent={agent} />}
             onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
             onOpenAgent={id => navigate(() => {
               suppressNavigation.current = false;
@@ -276,6 +284,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         {!ownPage && (panes.detail || (narrow && state.place === 'settings')) ? detail : null}
         {props.error ? <View role="status" style={{ position: 'absolute', bottom: 4, left: 80, right: 8, backgroundColor: palette.card, padding: 8 }}><Label>{props.error}</Label></View> : null}
       </View>
+      </AgentManager>
     </ThemeProvider>
   );
 }

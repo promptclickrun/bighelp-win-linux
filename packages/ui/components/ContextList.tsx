@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native-web';
 import type { Place, SettingsSection } from '../../domain/shell.ts';
 import { useTheme } from '../theme.tsx';
-import type { ViewData } from '../view-model.ts';
+import type { AgentView, ViewData } from '../view-model.ts';
 import { agentById } from '../view-model.ts';
 import { Icon, IconButton, Label, Orb, Tag, hoverFill } from './primitives.tsx';
 import { SettingsSectionList } from './Settings.tsx';
@@ -65,6 +65,8 @@ export function ContextList(props: Readonly<{
   place: Place; data: ViewData; selectedChatId: string | null; selectedAgentId: string | null; nerdMode: boolean;
   settingsSection: SettingsSection | null; onOpenChat: (chatId: string, agentId: string) => void;
   onOpenAgent: (agentId: string) => void; onSettingsSection: (section: SettingsSection) => void; narrow: boolean;
+  // Agent management controls, supplied only while a computer is connected.
+  addAgent?: JSX.Element; agentMenu?: ((agent: AgentView) => ReactNode) | undefined;
 }>): JSX.Element {
   const { palette } = useTheme();
   const { data } = props;
@@ -106,7 +108,7 @@ export function ContextList(props: Readonly<{
       );
       break;
     case 'agents':
-      actions = <IconButton icon="plus" label={`Add agent. ${unavailable}`} onPress={() => {}} disabled />;
+      actions = props.addAgent ?? <IconButton icon="plus" label={`Add agent. ${unavailable}`} onPress={() => {}} disabled />;
       body = (
         <>
           <Search label="Search agents" />
@@ -114,14 +116,20 @@ export function ContextList(props: Readonly<{
             <View role="list">
               <Caption tag={data.sample ? 'Sample data' : undefined}>{`On ${data.host?.label ?? 'this computer'}`}</Caption>
               {data.agents.map(agent => (
-                <Row key={agent.id} label={agent.name} active={agent.id === props.selectedAgentId}
-                  onPress={() => props.onOpenAgent(agent.id)}>
-                  <Orb color={agent.color} size={36} />
+                // The menu sits beside the row button, never inside it.
+                <View key={agent.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
                   <View style={{ flex: 1, minWidth: 0 }}>
-                    <Label weight="600" oneLine>{agent.name}</Label>
-                    <Label size={12} tone="muted" oneLine>{agent.summary}</Label>
+                    <Row label={agent.name} active={agent.id === props.selectedAgentId} onPress={() => props.onOpenAgent(agent.id)}>
+                      <Orb color={agent.color} size={36} />
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <Label weight="600" oneLine>{agent.name}</Label>
+                        {agent.summary ? <Label size={12} tone="muted" oneLine>{agent.summary}</Label> : null}
+                        {props.nerdMode ? <Label size={11} tone="muted" mono oneLine>{agent.model ? `${agent.id} · ${agent.model}` : agent.id}</Label> : null}
+                      </View>
+                    </Row>
                   </View>
-                </Row>
+                  {props.agentMenu?.(agent)}
+                </View>
               ))}
             </View>
           )}
