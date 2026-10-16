@@ -1,6 +1,7 @@
 // Privileged desktop entry point. Host transport and protected persistence stay
 // here; the renderer receives only validated actions and safe snapshots.
-import { app, BrowserWindow, Menu, protocol, session, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, protocol, session, shell, ipcMain, safeStorage } from 'electron';
+import type { MenuItemConstructorOptions } from 'electron';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import {
@@ -10,7 +11,9 @@ import { createProtectedRepository } from '../../../../packages/platform/protect
 import { connectGateway } from '../../../../packages/hermes-client/gateway.ts';
 import { connectSocket } from '../../../../packages/platform/socket-transport.ts';
 import { createDesktopService } from './desktop-service.ts';
-import { CALL_CHANNEL, DESKTOP_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
+import { CALL_CHANNEL, COMMAND_CHANNEL, DESKTOP_CHANNEL, SHELL_CHANNEL, SNAPSHOT_CHANNEL, parseShellAction } from '../shared/desktop-api.ts';
+import { safeLink } from '../shared/links.ts';
+import type { AppCommand } from '../shared/links.ts';
 
 // Must run before the app is ready.
 protocol.registerSchemesAsPrivileged([{
@@ -76,15 +79,57 @@ function createWindow(): BrowserWindow {
   return window;
 }
 
-// Links never open inside the app. External opening needs a reviewed allowlist first.
+// Links never open inside the app. Only safeLink() addresses reach the system
+// browser, and only from an explicit click or the right-click menu.
 app.on('web-contents-created', (_event, contents) => {
   contents.setWindowOpenHandler(() => ({ action: 'deny' }));
   contents.on('will-navigate', event => event.preventDefault());
+  // Electron has no default right-click menu. Offer the native edit roles.
+  contents.on('context-menu', (_menuEvent, params) => {
+    const flags = params.editFlags;
+    const template: MenuItemConstructorOptions[] = [];
+    if (params.isEditable) {
+      template.push({ role: 'undo', enabled: flags.canUndo }, { role: 'redo', enabled: flags.canRedo }, { type: 'separator' },
+        { role: 'cut', enabled: flags.canCut }, { role: 'copy', enabled: flags.canCopy }, { role: 'paste', enabled: flags.canPaste },
+        { type: 'separator' }, { role: 'selectAll', enabled: flags.canSelectAll });
+    } else if (params.selectionText.trim()) template.push({ role: 'copy' });
+    const link = params.linkURL ? safeLink(params.linkURL) : null;
+    if (link) {
+      if (template.length) template.push({ type: 'separator' });
+      template.push({ label: 'Open link', click: () => { void shell.openExternal(link); } },
+        { label: 'Copy link address', click: () => clipboard.writeText(link) });
+    }
+    if (!params.isEditable && !link) template.push(...(template.length ? [{ type: 'separator' as const }] : []), { role: 'selectAll' });
+    const window = BrowserWindow.fromWebContents(contents);
+    if (template.length && window) Menu.buildFromTemplate(template).popup({ window });
+  });
 });
+
+function sendCommand(command: AppCommand): void {
+  const window = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+  if (window && !window.webContents.isDestroyed()) { window.show(); window.webContents.send(COMMAND_CHANNEL, command); }
+}
+// Hidden on Windows/Linux until Alt is pressed; it carries the keyboard shortcuts.
+function applicationMenu(): Menu {
+  return Menu.buildFromTemplate([
+    { label: '&File', submenu: [
+      { label: 'New chat', accelerator: 'CmdOrCtrl+N', click: () => sendCommand('newChat') },
+      { label: 'Search chats', accelerator: 'CmdOrCtrl+K', click: () => sendCommand('search') },
+      { label: 'Settings', accelerator: 'CmdOrCtrl+,', click: () => sendCommand('settings') },
+      { type: 'separator' }, { role: 'quit', accelerator: 'CmdOrCtrl+Q' },
+    ] },
+    { label: '&Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' },
+      { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
+      { label: 'Write a message', accelerator: 'CmdOrCtrl+L', click: () => sendCommand('focusComposer') }] },
+    { label: '&View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomIn', accelerator: 'CmdOrCtrl+=', visible: false },
+      { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
+    { label: '&Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },
+  ]);
+}
 
 app.whenReady().then(async () => {
   if (!primaryInstance) return;
-  Menu.setApplicationMenu(null);
+  Menu.setApplicationMenu(applicationMenu());
   installSessionPolicy();
   if (!fixturePreview) {
     try {
@@ -108,6 +153,16 @@ app.whenReady().then(async () => {
   ipcMain.handle(DESKTOP_CHANNEL, async (event, action: unknown) => {
     if (!trusted(event) || !desktop) return { ok: false, message: 'Desktop operation unavailable' };
     return desktop.handle(action);
+  });
+  ipcMain.handle(SHELL_CHANNEL, async (event, action: unknown) => {
+    const frame = event.senderFrame;
+    if (!frame || frame !== event.sender.mainFrame || frame.url !== `${APP_ORIGIN}/index.html` || !BrowserWindow.fromWebContents(event.sender)) return false;
+    try {
+      const parsed = parseShellAction(action);
+      if (parsed.kind === 'openLink') await shell.openExternal(parsed.url);
+      else clipboard.writeText(parsed.text);
+      return true;
+    } catch { return false; }
   });
   ipcMain.handle(CALL_CHANNEL, async (event, action: unknown) => {
     if (!trusted(event) || !desktop) return { ok: false, code: 'unavailable', message: 'Desktop operation unavailable' };

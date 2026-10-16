@@ -2,6 +2,8 @@ import type { ViewData } from '../../../../packages/ui/view-model.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
 import type { WorkspaceBoard, WorkspaceDays, WorkspaceProjects, WorkspaceScheduled, WorkspaceUsage } from '../../../../packages/contracts/workspace.ts';
 import { CALLS, isCallName } from './calls/index.ts';
+import { safeLink } from './links.ts';
+import type { AppCommand } from './links.ts';
 import type { CallInput, CallName, CallResult } from './calls/index.ts';
 
 export type WorkspacePage = 'projects' | 'usage' | 'scheduled' | 'feed' | 'ideas' | 'goals';
@@ -56,11 +58,33 @@ export type DesktopApi = Readonly<{
   draft(generation: number, chatId: string, text: string): Promise<DesktopResult>;
   workspace(generation: number, profile: string, page: WorkspacePage, days: WorkspaceDays): Promise<DesktopResult>;
   call<K extends CallName>(connection: number, name: K, input: CallInput<K>): Promise<CallResult<K>>;
+  openLink(url: string): Promise<boolean>;
+  copyText(text: string): Promise<boolean>;
+  onCommand(listener: (command: AppCommand) => void): () => void;
   subscribe(listener: (snapshot: DesktopSnapshot) => void): () => void;
 }>;
 
 export const DESKTOP_CHANNEL = 'bighelp:desktop';
 export const CALL_CHANNEL = 'bighelp:call';
+export const SHELL_CHANNEL = 'bighelp:shell';
+export const COMMAND_CHANNEL = 'bighelp:command';
+// Window-level conveniences handled by main without any host involvement.
+export type ShellAction = Readonly<{ kind: 'openLink'; url: string }> | Readonly<{ kind: 'copyText'; text: string }>;
+export function parseShellAction(value: unknown): ShellAction {
+  const input = object(value);
+  if (input.kind === 'openLink') {
+    keys(input, ['kind', 'url']);
+    const url = typeof input.url === 'string' ? safeLink(input.url) : null;
+    if (!url) throw new TypeError('Invalid link');
+    return { kind: 'openLink', url };
+  }
+  if (input.kind === 'copyText') {
+    keys(input, ['kind', 'text']);
+    if (typeof input.text !== 'string' || input.text.length > 2 * 1024 * 1024 || !input.text.isWellFormed()) throw new TypeError('Invalid text');
+    return { kind: 'copyText', text: input.text };
+  }
+  throw new TypeError('Unsupported shell action');
+}
 export const SNAPSHOT_CHANNEL = 'bighelp:snapshot';
 
 function object(value: unknown): Record<string, unknown> {

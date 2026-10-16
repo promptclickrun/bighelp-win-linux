@@ -35,7 +35,7 @@ export function Noodle(props: Readonly<{ size?: number }>): JSX.Element {
   );
 }
 
-type Tone = 'ink' | 'muted' | 'action' | 'onAction' | 'onOutgoing' | 'warnInk';
+export type Tone = 'ink' | 'muted' | 'action' | 'onAction' | 'onOutgoing' | 'warnInk' | 'danger' | 'onDanger' | 'successInk';
 export function Label(props: Readonly<{
   children: ReactNode; tone?: Tone; size?: number; weight?: '400' | '600' | '700' | '800'; oneLine?: boolean;
   selectable?: boolean; heading?: number; mono?: boolean; style?: StyleProp; nativeID?: string;

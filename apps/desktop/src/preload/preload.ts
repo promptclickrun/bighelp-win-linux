@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { createShellInfo } from '../shared/shell-info.ts';
-import { CALL_CHANNEL, DESKTOP_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
+import { CALL_CHANNEL, COMMAND_CHANNEL, DESKTOP_CHANNEL, SHELL_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
+import { isAppCommand } from '../shared/links.ts';
 import type { DesktopAction, DesktopApi, DesktopResult, DesktopSnapshot } from '../shared/desktop-api.ts';
 contextBridge.exposeInMainWorld('bighelpShell', createShellInfo(process.argv, process.platform));
 
@@ -20,6 +21,14 @@ const api: DesktopApi = Object.freeze({
   draft: (generation, chatId, text) => invoke({ kind: 'draft', generation, chatId, text }),
   workspace: (generation, profile, page, days) => invoke({ kind: 'workspace', generation, profile, page, days }),
   call: (connection, name, input) => ipcRenderer.invoke(CALL_CHANNEL, { kind: 'call', connection, name, input }),
+  openLink: url => ipcRenderer.invoke(SHELL_CHANNEL, { kind: 'openLink', url }).then(result => result === true, () => false),
+  copyText: text => ipcRenderer.invoke(SHELL_CHANNEL, { kind: 'copyText', text }).then(result => result === true, () => false),
+  onCommand: listener => {
+    if (typeof listener !== 'function') throw new TypeError('Invalid listener');
+    const receive = (_event: Electron.IpcRendererEvent, command: unknown) => { if (isAppCommand(command)) listener(command); };
+    ipcRenderer.on(COMMAND_CHANNEL, receive);
+    return () => { ipcRenderer.removeListener(COMMAND_CHANNEL, receive); };
+  },
   subscribe: listener => {
     if (typeof listener !== 'function') throw new TypeError('Invalid listener');
     const receive = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot) => listener(snapshot);
