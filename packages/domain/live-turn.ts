@@ -3,6 +3,8 @@
 // for sends, approvals or outcomes. See docs/contracts/HERMES_API.md §5.
 import type { TranscriptItem } from '../ui/view-model.ts';
 import { isSilenceMarker, preview, toolDetail, toolFailed, toolPhrase } from './tool-phrases.ts';
+import { extractMedia, mediaRef } from './media.ts';
+import type { MediaRecorder } from './media.ts';
 
 export type TodoItem = Readonly<{ id: string; content: string; status: 'pending' | 'in_progress' | 'completed' | 'cancelled' }>;
 export type LiveTurn = Readonly<{
@@ -136,7 +138,18 @@ function failureSentence(payload: Payload): string {
 }
 
 // Apply one event of the selected session. Unknown types change nothing.
-export function reduceLive(state: LiveTurn, type: string, payload: Payload, now: number): LiveTurn {
+export function reduceLive(state: LiveTurn, type: string, payload: Payload, now: number, record: MediaRecorder = mediaRef): LiveTurn {
+  const sealed = reduceLiveEvent(state, type, payload, now);
+  // Sealed replies hand their MEDIA lines to tiles; streaming rows hide them in the view.
+  if (type !== 'message.complete' && type !== 'message.interim') return sealed;
+  return withItems(sealed, sealed.items.map(item => {
+    if (item.kind !== 'message' || item.direction !== 'in' || item.streaming || item.media || !item.paragraphs.join('').includes('MEDIA:')) return item;
+    const delivered = extractMedia(item.paragraphs.join('\n\n'), record);
+    return delivered.media.length ? Object.freeze({ ...item, paragraphs: Object.freeze([delivered.text]), media: delivered.media }) : item;
+  }));
+}
+
+function reduceLiveEvent(state: LiveTurn, type: string, payload: Payload, now: number): LiveTurn {
   switch (type) {
     case 'message.start': {
       const counter = state.counter + 1, turn = `live:${counter}`;

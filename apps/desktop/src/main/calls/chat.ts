@@ -51,7 +51,23 @@ export function decodeModels(value: unknown): ChatModels {
   return Object.freeze({ current, providers: Object.freeze(providers) });
 }
 
+const PREVIEW = /^data:image\/(?:png|jpeg|gif|webp|bmp);base64,[A-Za-z0-9+/]+={0,2}$/u;
+
 export const CHAT_HANDLERS: Pick<CallHandlers, keyof typeof CHAT_CALLS> = Object.freeze({
+  'chat.media': {
+    mutation: false,
+    async run(context, input) {
+      requireOpen(context, input.chatId);
+      const path = context.mediaPath(input.chatId, input.ref);
+      if (!path) throw new CallError('stale', 'That file is no longer in this chat.');
+      const name = path.split(/[\\/]/u).pop() ?? 'image';
+      // Hermes serves only images inside its own media folders, size-capped.
+      const reply = await context.http({ method: 'GET', path: '/api/media', query: { path }, maxBytes: 4 * 1024 * 1024 - 256 });
+      const dataUrl = jsonObject(reply.body) && typeof reply.body.data_url === 'string' ? reply.body.data_url : '';
+      if (!PREVIEW.test(dataUrl)) throw new CallError('unsupported', 'This file can’t be previewed here.');
+      return Object.freeze({ name: name.slice(0, 180), dataUrl });
+    },
+  },
   'chat.commands': {
     mutation: false,
     async run(context, input) {

@@ -208,7 +208,7 @@ export function Conversation(props: Readonly<{
   } else if (props.chat) {
     body = <Transcript chat={props.chat} options={{ showReasoning: options.showReasoning, foldFinishedTurns: options.foldFinishedTurns,
       liveTurn: props.running ? props.liveTurn ?? null : null, running: !!props.running, status: props.turn?.status ?? '', agentName: props.agent.name,
-      actions: props.actions ?? {}, onCheckHistory: props.onCheckHistory }} />;
+      actions: props.actions ?? {}, onCheckHistory: props.onCheckHistory, chatId: props.chat.id }} />;
   } else {
     body = <Notice title={`New chat with ${props.agent.name}`} body="Nothing has been sent. Use New chat to start a conversation." />;
   }

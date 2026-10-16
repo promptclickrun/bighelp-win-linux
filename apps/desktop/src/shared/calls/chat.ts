@@ -9,6 +9,7 @@ export type ChatModels = Readonly<{
     reasoning: readonly string[] }>[];
 }>;
 export type SetModelResult = Readonly<{ status: 'applied' | 'deferred' | 'confirm'; message: string }>;
+export type ChatMedia = Readonly<{ name: string; dataUrl: string }>;
 export const REASONING_LEVELS = Object.freeze(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'] as const);
 
 const chatId = (input: Record<string, unknown>) => identifier(input.chatId);
@@ -21,6 +22,13 @@ export const CHAT_CALLS = Object.freeze({
     const model = text(value.model, { max: 256 }), provider = identifier(value.provider, 128);
     if (/\s--|^-/u.test(model) || /\s/u.test(provider)) throw new TypeError('Invalid model');
     return Object.freeze({ chatId: chatId(value), model, provider, confirmExpensive: optional(value.confirmExpensive, boolean) ?? false });
+  }),
+  // Preview of an agent-delivered image in the open chat, by opaque reference.
+  'chat.media': defineCall<ChatMedia>()(input => {
+    const value = fields(input, ['chatId', 'ref']);
+    const ref = text(value.ref, { max: 64 });
+    if (!/^media-[0-9a-f]{8}-[0-9a-f]{1,4}$/u.test(ref)) throw new TypeError('Invalid media');
+    return Object.freeze({ chatId: chatId(value), ref });
   }),
   'chat.setReasoning': defineCall<Readonly<{ level: string }>>()(input => {
     const value = fields(input, ['chatId', 'level']);

@@ -12,14 +12,40 @@ import { Banner } from './controls.tsx';
 import { Markdown } from './Markdown.tsx';
 import type { MarkdownActions } from './Markdown.tsx';
 import { Icon, Label } from './primitives.tsx';
+import { useQuery } from '../host.tsx';
 
 type Message = Extract<TranscriptItem, { kind: 'message' }>;
 type Tool = Extract<TranscriptItem, { kind: 'tool' }>;
 
 export type TranscriptOptions = Readonly<{
   showReasoning: boolean; foldFinishedTurns: boolean; liveTurn: string | null; running: boolean;
-  status: string; agentName: string; actions: MarkdownActions; onCheckHistory?: (() => void) | undefined;
+  status: string; agentName: string; actions: MarkdownActions; onCheckHistory?: (() => void) | undefined; chatId?: string;
 }>;
+
+type Media = NonNullable<Message['media']>[number];
+// An image the agent delivered, fetched by main from Hermes's media folders.
+function MediaImage(props: Readonly<{ chatId: string; media: Media }>): JSX.Element {
+  const { palette } = useTheme();
+  const preview = useQuery('chat.media', { chatId: props.chatId, ref: props.media.ref });
+  if (preview.status === 'loaded' && preview.value) {
+    return <img src={preview.value.dataUrl} alt={props.media.name} title={props.media.name}
+      style={{ display: 'block', maxWidth: 'min(100%, 420px)', maxHeight: 360, borderRadius: 12, border: `1px solid ${palette.line}`, objectFit: 'contain' }} />;
+  }
+  return <MediaChip media={props.media} note={preview.status === 'failed' ? preview.message : 'Loading…'} />;
+}
+function MediaChip(props: Readonly<{ media: Media; note?: string }>): JSX.Element {
+  const { palette } = useTheme();
+  return (
+    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10,
+      borderWidth: 1, borderColor: palette.line, backgroundColor: palette.card, maxWidth: 360 }}>
+      <Icon name={props.media.kind === 'image' ? 'palette' : 'files'} color={palette.muted} size={16} />
+      <View style={{ flexShrink: 1, minWidth: 0 }}>
+        <Label size={13} weight="600" oneLine>{props.media.name}</Label>
+        <Label size={11} tone="muted" oneLine>{props.note ?? 'Saved on the Hermes computer'}</Label>
+      </View>
+    </View>
+  );
+}
 
 function CopyButton(props: Readonly<{ text: string; label?: string; actions: MarkdownActions }>): JSX.Element | null {
   const { palette } = useTheme();
@@ -65,7 +91,9 @@ function UnknownSend(props: Readonly<{ text: string; actions: MarkdownActions; o
 function Bubble(props: Readonly<{ item: Message; options: TranscriptOptions; muted?: boolean }>): JSX.Element {
   const { palette } = useTheme();
   const out = props.item.direction === 'out';
-  const text = props.item.paragraphs.join('\n\n');
+  // A reply still streaming may contain MEDIA lines that become tiles when it ends.
+  const joined = props.item.paragraphs.join('\n\n');
+  const text = !out && props.item.streaming && joined.includes('MEDIA:') ? joined.split('\n').filter(line => !/^\s*MEDIA:/u.test(line)).join('\n') : joined;
   return (
     <View style={{ maxWidth: out ? '78%' : '94%', alignSelf: out ? 'flex-end' : 'flex-start', alignItems: out ? 'flex-end' : 'flex-start', gap: 4 }}>
       {props.item.attachments?.length ? (
@@ -87,6 +115,12 @@ function Bubble(props: Readonly<{ item: Message; options: TranscriptOptions; mut
           {out
             ? <Label tone="onOutgoing" selectable style={{ whiteSpace: 'pre-wrap' }}>{text}</Label>
             : <Markdown text={text} tone={props.muted ? 'muted' : 'ink'} actions={props.options.actions} />}
+        </View>
+      ) : null}
+      {props.item.media?.length ? (
+        <View style={{ gap: 6, alignItems: 'flex-start' }}>
+          {props.item.media.map(media => media.kind === 'image' && props.options.chatId
+            ? <MediaImage key={media.ref} chatId={props.options.chatId} media={media} /> : <MediaChip key={media.ref} media={media} />)}
         </View>
       ) : null}
       {!out && !props.item.streaming && !props.muted && text.trim() ? <CopyButton text={text} actions={props.options.actions} /> : null}

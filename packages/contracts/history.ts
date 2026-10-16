@@ -4,6 +4,8 @@
 import { encodeBoundedJson, RPC_LIMITS } from './rpc.ts';
 import type { TranscriptItem } from '../ui/view-model.ts';
 import { isSilenceMarker, preview, toolDetail, toolFailed, toolPhrase } from '../domain/tool-phrases.ts';
+import { extractMedia, mediaRef } from '../domain/media.ts';
+import type { MediaRecorder } from '../domain/media.ts';
 
 export const HISTORY_LIMITS = Object.freeze({ rows: 2000, textBytes: 1024 * 1024, responseBytes: 4 * 1024 * 1024 - 256 });
 const invalid = (): never => { throw new TypeError('Invalid history'); };
@@ -79,7 +81,7 @@ function finish(builder: Builder): readonly TranscriptItem[] {
 }
 
 // REST /api/sessions/{stored}/messages (order=latest page reversed, or oldest).
-export function decodeRestHistory(value: unknown, now: number = Date.now()): readonly TranscriptItem[] {
+export function decodeRestHistory(value: unknown, now: number = Date.now(), record: MediaRecorder = mediaRef): readonly TranscriptItem[] {
   encodeBoundedJson(value, RPC_LIMITS.inboundBytes);
   const response = object(value);
   if (!Array.isArray(response.messages) || response.messages.length > 5000) return invalid();
@@ -110,9 +112,10 @@ export function decodeRestHistory(value: unknown, now: number = Date.now()): rea
       const reasoning = typeof row.reasoning_content === 'string' && row.reasoning_content.trim() ? row.reasoning_content
         : typeof row.reasoning === 'string' ? row.reasoning : '';
       if (reasoning.trim()) builder.items.push(Object.freeze({ kind: 'reasoning', id: `row:${id}:reasoning`, text: clip(reasoning.trim()), turn: builder.turn }));
-      if (text.trim() && !isSilenceMarker(text)) {
-        builder.items.push(Object.freeze({ kind: 'message', id: `row:${id}`, direction: 'in', paragraphs: Object.freeze([text]),
-          turn: builder.turn, ...(at ? { at } : {}) }));
+      const delivered = extractMedia(text, record);
+      if ((delivered.text.trim() && !isSilenceMarker(delivered.text)) || delivered.media.length) {
+        builder.items.push(Object.freeze({ kind: 'message', id: `row:${id}`, direction: 'in', paragraphs: Object.freeze([delivered.text]),
+          turn: builder.turn, ...(at ? { at } : {}), ...(delivered.media.length ? { media: delivered.media } : {}) }));
       }
       if (Array.isArray(row.tool_calls)) {
         row.tool_calls.slice(0, 128).forEach((call, index) => {
@@ -155,7 +158,7 @@ export function decodeRestHistory(value: unknown, now: number = Date.now()): rea
 
 // session.history RPC: user/assistant text, assistant reasoning, tool previews
 // without results. `count` counts raw stored rows, so it may exceed messages.
-export function decodeRpcHistory(value: unknown, now: number = Date.now()): readonly TranscriptItem[] {
+export function decodeRpcHistory(value: unknown, now: number = Date.now(), record: MediaRecorder = mediaRef): readonly TranscriptItem[] {
   encodeBoundedJson(value, RPC_LIMITS.inboundBytes);
   const response = object(value);
   if (!Array.isArray(response.messages) || response.messages.length > 10000) return invalid();
@@ -176,8 +179,9 @@ export function decodeRpcHistory(value: unknown, now: number = Date.now()): read
       addDay(builder, at, now);
       const reasoning = typeof row.reasoning === 'string' ? row.reasoning.trim() : '';
       if (reasoning) builder.items.push(Object.freeze({ kind: 'reasoning', id: `${rowId}:reasoning`, text: clip(reasoning), turn: builder.turn }));
-      if (text.trim() && !isSilenceMarker(text)) builder.items.push(Object.freeze({ kind: 'message', id: rowId, direction: 'in',
-        paragraphs: Object.freeze([text]), turn: builder.turn, ...(at ? { at } : {}) }));
+      const delivered = extractMedia(text, record);
+      if ((delivered.text.trim() && !isSilenceMarker(delivered.text)) || delivered.media.length) builder.items.push(Object.freeze({ kind: 'message', id: rowId, direction: 'in',
+        paragraphs: Object.freeze([delivered.text]), turn: builder.turn, ...(at ? { at } : {}), ...(delivered.media.length ? { media: delivered.media } : {}) }));
     } else if (role === 'tool') {
       const name = typeof row.name === 'string' && row.name ? row.name.slice(0, 128) : 'tool';
       builder.items.push(Object.freeze({ kind: 'tool', id: `${rowId}:tool`, name, label: toolPhrase(name, 'past'),

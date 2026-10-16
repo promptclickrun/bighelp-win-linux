@@ -26,6 +26,8 @@ export type CallContext = Readonly<{
   // it was archived or deleted. Selects nothing; never opens another chat.
   closeChat(profile: string, storedSessionId: string): void;
   isCurrent(): boolean;
+  // Host path behind an agent-delivered file shown in the open chat, or null.
+  mediaPath(chatId: string, ref: string): string | null;
   // Re-read host catalogs after a confirmed change.
   refreshCatalog(): Promise<void>;
   requestId(): string;

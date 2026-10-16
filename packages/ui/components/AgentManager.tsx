@@ -34,7 +34,7 @@ type Changes = { -readonly [K in keyof Omit<AgentUpdateInput, 'profile'>]: Omit<
 type Open = Readonly<{ kind: 'create' }> | Readonly<{ kind: 'edit' | 'duplicate' | 'delete'; id: string }>;
 type PendingModel = Readonly<{ profile: string; name: string; choice: AgentModelChoice; message: string; asked: number }>;
 
-export function AgentMenu(props: Readonly<{ agent: AgentView }>): JSX.Element | null {
+export function AgentMenu(props: Readonly<{ agent: AgentView; header?: boolean }>): JSX.Element | null {
   const actions = useAgentActions();
   if (!actions) return null;
   const items: MenuItem[] = [
@@ -42,7 +42,9 @@ export function AgentMenu(props: Readonly<{ agent: AgentView }>): JSX.Element | 
     { label: 'Duplicate', onPress: () => actions.duplicate(props.agent.id) },
   ];
   if (!props.agent.isDefault && props.agent.id !== 'default') items.push({ label: 'Delete agent', tone: 'danger', onPress: () => actions.remove(props.agent.id) });
-  return <MenuButton label={`More for ${props.agent.name}`} items={items} />;
+  // In the chat header it sits beside the chat's own menu, so it shows the agent mark.
+  return <MenuButton label={props.header ? `Agent options for ${props.agent.name}` : `More for ${props.agent.name}`} items={items}
+    {...(props.header ? { icon: 'agents' as const } : {})} />;
 }
 
 // Disabled with a reason until a computer is connected.

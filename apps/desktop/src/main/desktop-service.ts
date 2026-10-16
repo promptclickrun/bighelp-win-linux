@@ -13,6 +13,7 @@ import { EMPTY_LIVE, addOutgoing, afterHistory, reduceLive } from '../../../../p
 import type { LiveTurn } from '../../../../packages/domain/live-turn.ts';
 import { admit, referenceText } from '../../../../packages/domain/attachments.ts';
 import { sendSpeakerNote } from './speaker-note.ts';
+import { mediaRef } from '../../../../packages/domain/media.ts';
 import type { StagedFile } from '../../../../packages/domain/attachments.ts';
 import { parseInteractivePrompt, encodeInteractiveAnswer } from '../../../../packages/contracts/prompts.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
@@ -97,6 +98,9 @@ export function createDesktopService(adapters: Readonly<{
   let base: readonly TranscriptItem[] = [];
   let live: LiveTurn = EMPTY_LIVE;
   let publishTimer: ReturnType<typeof setTimeout> | undefined;
+  // Host paths of agent-delivered files in the open chat, by opaque reference.
+  const mediaPaths = new Map<string, string>();
+  const recordMedia = (path: string) => { const ref = mediaRef(path); if (mediaPaths.size < 1024 || mediaPaths.has(ref)) mediaPaths.set(ref, path); return ref; };
   // Files chosen for the next message of exactly one chat, held in main only.
   let staged: { chatId: string; files: readonly StagedFile[] } | null = null;
   let turnBookends = 0;
@@ -165,7 +169,7 @@ export function createDesktopService(adapters: Readonly<{
     if (liveRecovery) recovered = { binding: liveBinding, scope: {hostId, principalId}, data: liveRecovery.data };
     liveRecovery = null;
     navigation = null; navigationIds = null; ++hostGeneration; ++generation; owner = null; acceptedSends = []; reconciled = false; running = false; sending = false; navigating = false;
-    ++workspaceRevision; workspace = null; identity = null; base = []; live = EMPTY_LIVE; clearTimeout(publishTimer); publishTimer = undefined; staged = null;
+    ++workspaceRevision; workspace = null; identity = null; base = []; live = EMPTY_LIVE; clearTimeout(publishTimer); publishTimer = undefined; staged = null; mediaPaths.clear();
     clearPrompts(); const old = gateway; gateway = undefined; old?.close(); status = 'disconnected';
     if (clear) { recovered = null; data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
     else if (recovered) data = offlineDisplay(recovered.data);
@@ -186,10 +190,10 @@ export function createDesktopService(adapters: Readonly<{
         const response = await connection.requestHttp({ kind: 'route', method: 'GET', path: `/api/sessions/${encodeURIComponent(captured.storedSessionId)}/messages`,
           query: { profile: captured.profileId, order: 'latest', limit: '500', include_compacted: 'true', inline_images: 'false' },
           maxBytes: HISTORY_LIMITS.responseBytes });
-        return decodeRestHistory(response.body);
+        return decodeRestHistory(response.body, Date.now(), recordMedia);
       } catch { if (owner !== captured || gateway !== connection) throw Error('Chat changed'); }
     }
-    return decodeRpcHistory(await connection.operation({ kind: 'sessionHistory', profile: captured.profileId, runtimeId: captured.runtimeId }));
+    return decodeRpcHistory(await connection.operation({ kind: 'sessionHistory', profile: captured.profileId, runtimeId: captured.runtimeId }), Date.now(), recordMedia);
   }
   function applyTranscript(chatId: string) {
     const items = [...base, ...live.items];
@@ -240,7 +244,7 @@ export function createDesktopService(adapters: Readonly<{
       || (type === 'session.info' && typeof payload.running === 'boolean')) ++historyRevision;
     if (type === 'session.reclaimed') { retire(); notice = 'Another client took over this session. Reconnect to continue.'; publish(); return; }
     const wasRunning = running;
-    live = reduceLive(live, type, payload, Date.now());
+    live = reduceLive(live, type, payload, Date.now(), recordMedia);
     if (type === 'message.start' || type === 'message.delta') running = true;
     if (type === 'session.title' && typeof payload.title === 'string' && payload.session_id === captured.storedSessionId) {
       const title = payload.title.replace(/[\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]+/gu, ' ').trim().slice(0, 200);
@@ -408,7 +412,7 @@ export function createDesktopService(adapters: Readonly<{
   async function open(profile: string, storedSessionId?: string, canonical = false, requestId?: string, initiatingGeneration = generation) {
     if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
     const connection = gateway, current = hostGeneration;
-    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSends = []; clearPrompts(); ++generation; staged = null;
+    navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSends = []; clearPrompts(); ++generation; staged = null; mediaPaths.clear();
     navigation = requestId ? {requestId, initiatingGeneration, generation} : null; publish();
     // Ordinary/saved-chat supersession admits no more entries from the older
     // canonical initiating generation, so its tombstones can be retired.
@@ -449,7 +453,7 @@ export function createDesktopService(adapters: Readonly<{
       owner = captured;
       if (receipt.openRequests.length) connection.restoreRequests(receipt.openRequests, captured.runtimeId);
       if (!data.chats.some(chat => chat.id === selectedChatId && chat.agentId === profile)) data = { ...data, chats: [{ id: selectedChatId,
-        agentId: profile, title: canonical ? 'Bot Chat' : 'New chat', preview: '', transcript: [] }, ...data.chats].slice(0, 10000) };
+        agentId: profile, title: canonical ? 'Bot Chat' : 'New chat', preview: '', transcript: [], updatedAt: Date.now() }, ...data.chats].slice(0, 10000) };
       liveRecovery?.catalog(data);
       const savedDraft = await adapters.repository?.read(`draft:${scope(profile, selectedChatId)}`);
       if (owner !== captured) return;
@@ -801,6 +805,7 @@ export function createDesktopService(adapters: Readonly<{
           leaveSelection(); publish();
         },
         isCurrent,
+        mediaPath: (chatId: string, ref: string) => owner && selectedChatId === chatId ? mediaPaths.get(ref) ?? null : null,
         refreshCatalog: async () => { if (isCurrent()) await reloadProfiles(); },
         requestId: () => randomUUID(),
       });

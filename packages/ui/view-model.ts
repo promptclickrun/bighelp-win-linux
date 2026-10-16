@@ -10,7 +10,7 @@ export type TranscriptItem =
   | Readonly<{ kind: 'day'; id: string; label: string }>
   | Readonly<{ kind: 'message'; id: string; direction: 'in' | 'out'; paragraphs: readonly string[];
       bullets?: readonly string[]; delivery?: Delivery; streaming?: boolean; at?: number; turn?: string;
-      attachments?: readonly string[] }>
+      attachments?: readonly string[]; media?: readonly Readonly<{ ref: string; name: string; kind: 'image' | 'video' | 'file' }>[] }>
   | Readonly<{ kind: 'tool'; id: string; label: string; detail: string; name?: string; state?: ToolState;
       durationMs?: number; input?: string; output?: string; turn?: string }>
   | Readonly<{ kind: 'reasoning'; id: string; text: string; turn?: string; streaming?: boolean }>
