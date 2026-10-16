@@ -73,7 +73,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const snapshot = props.snapshot;
   const act = props.act;
   const persistDraft = (chatId: string, text: string) => {
-    if (!api || !snapshot || !act) return;
+    if (!api || !snapshot || !act || snapshot.status !== 'connected' || snapshot.selectedChatId !== chatId) return;
     return act(api.draft(snapshot.generation, chatId, text));
   };
   let detail: JSX.Element;
@@ -86,6 +86,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       <Conversation agent={agent} chat={chat} host={data.host} tab={state.agentTab} sample={data.sample}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}
         onDraft={text => {
+          if (snapshot && (snapshot.status !== 'connected' || snapshot.selectedChatId !== chat?.id)) return;
           dispatch({ type: 'draft', chatId: draftKey, text });
           if (snapshot && chat) {
             dirty.current.set(draftKey, text);
@@ -93,6 +94,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
             timers.current.set(draftKey, setTimeout(() => { void persistDraft(draftKey, text); }, 300));
           }
         }}
+        editable={!snapshot || (snapshot.status === 'connected' && snapshot.selectedChatId === chat?.id)}
         canSend={!sendPending && !!snapshot?.canSend && snapshot.selectedChatId === chat?.id}
         running={!!snapshot?.running && snapshot.selectedChatId === chat?.id}
         onNewChat={api && snapshot?.status === 'connected' && act ? () => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, agent.id)); } : undefined}

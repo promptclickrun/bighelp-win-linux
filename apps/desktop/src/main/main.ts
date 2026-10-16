@@ -119,6 +119,10 @@ app.on('second-instance', () => {
 });
 app.on('before-quit', event => {
   if (quitting || !repository) return;
-  event.preventDefault(); quitting = true; desktop?.dispose();
-  void repository.close().finally(() => app.quit());
+  event.preventDefault(); quitting = true;
+  const protectedRepository = repository;
+  void (async () => {
+    try { await desktop?.shutdown(); }
+    finally { await protectedRepository.close(); }
+  })().finally(() => app.quit());
 });

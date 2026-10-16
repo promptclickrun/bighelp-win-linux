@@ -102,7 +102,7 @@ function Transcript(props: Readonly<{ chat: ChatView }>): JSX.Element {
   );
 }
 
-export function Composer(props: Readonly<{ agentName: string; draft: string; onDraft: (text: string) => void; hint: string; canSend?: boolean; running?: boolean; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined }>): JSX.Element {
+export function Composer(props: Readonly<{ agentName: string; draft: string; onDraft: (text: string) => void; hint: string; canSend?: boolean; editable?: boolean; running?: boolean; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined }>): JSX.Element {
   const { palette, font } = useTheme();
   const [height, setHeight] = useState(34);
   const disabledNote = 'Not available in this build';
@@ -112,7 +112,7 @@ export function Composer(props: Readonly<{ agentName: string; draft: string; onD
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, backgroundColor: palette.card, borderWidth: 1,
         borderColor: palette.line, borderRadius: 22, padding: 5, boxShadow: '0 4px 14px -6px rgba(60,40,30,.16)' }}>
         <IconButton icon="plus" label={`Add photos or files. ${disabledNote}`} onPress={() => {}} disabled />
-        <TextInput multiline value={props.draft} onChangeText={props.onDraft} aria-label={`Message ${props.agentName}`}
+        <TextInput multiline editable={props.editable ?? true} value={props.draft} onChangeText={props.onDraft} aria-label={`Message ${props.agentName}`}
           aria-describedby="composer-hint" placeholder={`Message ${props.agentName}`} placeholderTextColor={palette.muted}
           maxLength={SHELL_LIMITS.draftCharacters} spellCheck={false}
           onContentSizeChange={event => setHeight(Math.min(200, Math.max(34, Math.ceil(event.nativeEvent.contentSize.height))))}
@@ -153,7 +153,7 @@ function AgentTabs(props: Readonly<{ agentName: string; active: AgentTab; onTab:
 
 export function Conversation(props: Readonly<{
   agent: AgentView; chat: ChatView | null; host: HostView | null; tab: AgentTab; draft: string; hint: string;
-  sample: boolean; canSend?: boolean; running?: boolean; requests?: ReactNode; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void; onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined;
+  sample: boolean; canSend?: boolean; editable?: boolean; running?: boolean; requests?: ReactNode; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void; onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined;
 }>): JSX.Element {
   const { palette } = useTheme();
   const subline = props.sample ? `Sample data · ${props.host?.label ?? ''}` : props.host?.label ?? 'Not connected';
@@ -179,7 +179,7 @@ export function Conversation(props: Readonly<{
       </View>
       {body}
       {props.requests}
-      {props.tab === 'chat' ? <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop} /> : null}
+      {props.tab === 'chat' ? <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} editable={props.editable ?? true} canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop} /> : null}
       <AgentTabs agentName={props.agent.name} active={props.tab} onTab={props.onTab} />
     </View>
   );

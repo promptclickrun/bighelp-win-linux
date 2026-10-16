@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { createChatDisplayRecovery, offlineDisplay, recoveryBinding } from './chat-display-recovery.ts';
+import type { DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
 import { createTextSend } from '../../../../packages/domain/text-send.ts';
 import type { TextIntent } from '../../../../packages/domain/text-send.ts';
 import { transitionSend } from '../../../../packages/domain/chat-contract.ts';
@@ -42,6 +44,11 @@ export function createDesktopService(adapters: Readonly<{
   repository: Repository | null; connect: (options: ConnectOptions) => Promise<Gateway>;
   onChange: (snapshot: DesktopSnapshot) => void;
 }>) {
+  const displayRecovery = adapters.repository ? createChatDisplayRecovery(adapters.repository) : null;
+  let liveRecovery: ReturnType<NonNullable<typeof displayRecovery>['activate']> | null = null;
+  let recovered: { binding: string; scope: DisplayCacheScope; data: DisplayCacheData } | null = null;
+  let liveBinding = '';
+  let shuttingDown = false, shutdownPromise: Promise<void> | undefined;
   let generation = 0, hostGeneration = 0;
   let snapshotRevision = 0;
   let actionRevision = 0;
@@ -108,10 +115,13 @@ export function createDesktopService(adapters: Readonly<{
   const scope = (profile: string, chatId: string) => digest(JSON.stringify([hostId, principalId, profile, chatId]));
   function clearPrompts() { for (const entry of [...prompts.values()]) entry.cancel(); prompts.clear(); }
   function retire(clear = false) {
+    if (liveRecovery) recovered = { binding: liveBinding, scope: {hostId, principalId}, data: liveRecovery.data };
+    liveRecovery = null;
     navigation = null; navigationIds = null; ++hostGeneration; ++generation; owner = null; acceptedSend = null; reconciled = false; running = false; sending = false; navigating = false;
     ++workspaceRevision; workspace = null; identity = null;
     clearPrompts(); const old = gateway; gateway = undefined; old?.close(); status = 'disconnected';
-    if (clear) { data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
+    if (clear) { recovered = null; data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; }
+    else if (recovered) data = offlineDisplay(recovered.data);
     else if (data.host) data = { ...data, host: { ...data.host, state: 'offline' } };
   }
   function updateChat(chatId: string, update: (chat: ChatView) => ChatView) {
@@ -140,10 +150,12 @@ export function createDesktopService(adapters: Readonly<{
     }
     updateChat(captured.storedSessionId, chat => ({ ...chat, transcript: messages.map(row => ({ kind: 'message', id: row.id,
       direction: row.role === 'user' ? 'out' : 'in', paragraphs: [row.text] })), preview: messages.at(-1)?.text.slice(0, 160) ?? '' }));
+    const authoritative = data.chats.find(chat => chat.id === captured.storedSessionId && chat.agentId === captured.profileId);
+    if (authoritative) liveRecovery?.history(authoritative);
     reconciled = true; publish();
   }
   function event(event: RpcEvent, current: number) {
-    if (current !== hostGeneration || !owner || event.params.session_id !== owner.runtimeId) return;
+    if (shuttingDown || current !== hostGeneration || !owner || event.params.session_id !== owner.runtimeId) return;
     const captured = owner, connection = gateway;
     const sequence = event.params.seq;
     if (typeof sequence === 'number') {
@@ -182,7 +194,7 @@ export function createDesktopService(adapters: Readonly<{
     publish();
   }
   async function request(request: RpcServerRequest, signal: AbortSignal, current: number): Promise<ServerReply> {
-    if (current !== hostGeneration || !owner || signal.aborted) return { error: { code: -32000, message: 'Session unavailable' } };
+    if (shuttingDown || current !== hostGeneration || !owner || signal.aborted) return { error: { code: -32000, message: 'Session unavailable' } };
     if (request.method !== 'approval' && request.method !== 'clarify') return { error: { code: -32601, message: 'This prompt is not supported by this desktop build' } };
     let prompt: InteractivePrompt;
     try { prompt = parseInteractivePrompt(request.method, request.params, owner.runtimeId); }
@@ -198,20 +210,39 @@ export function createDesktopService(adapters: Readonly<{
       signal.addEventListener('abort', cancel, { once: true }); publish();
     });
   }
+  async function restoreOffline(host: HostInput, current: number) {
+    const selection = generation;
+    const isCurrent = () => !shuttingDown && current === hostGeneration && selection === generation && status !== 'connected';
+    const saved = await displayRecovery?.restore(host, isCurrent);
+    if (!saved || !isCurrent()) return;
+    const binding = recoveryBinding(host);
+    // A persisted projection can lag authoritative history already held in memory.
+    if (recovered?.binding === binding) return;
+    recovered = { ...saved, binding };
+    data = offlineDisplay(saved.data); selectedChatId = null;
+    notice = 'Saved chats are read-only while offline. Connect to check for updates.'; publish();
+  }
   async function connect(host: HostInput) {
     if (!adapters.repository) throw Error('Secure storage unavailable');
     const endpoint = parseEndpoint(host.endpoint, host.allowPrivateHttp ? host.endpoint.replace(/\/$/u, '') : undefined);
-    retire(true); status = 'connecting'; notice = 'Connecting…'; publish();
+    const binding = recoveryBinding(host);
+    const previous = liveRecovery && liveBinding === binding
+      ? { binding, scope: {hostId, principalId}, data: liveRecovery.data }
+      : recovered?.binding === binding ? recovered : null;
+    retire(true); recovered = previous;
+    if (previous) data = offlineDisplay(previous.data);
+    status = 'connecting'; notice = 'Connecting…'; publish();
     const current = hostGeneration;
     let connection: Gateway;
     try { connection = await adapters.connect({ configuration: {
       endpoint: endpoint.origin, ...(host.allowPrivateHttp ? { approvedPrivateHttpOrigin: endpoint.origin } : {}),
       authentication: { kind: host.authentication, token: host.token }, proxy: {},
-    }, isCurrent: () => current === hostGeneration,
+    }, isCurrent: () => !shuttingDown && current === hostGeneration,
     onEvent: frame => event(frame, current), onRequest: (frame, signal) => request(frame, signal, current),
-    onClosed: () => { if (current === hostGeneration) { retire(); notice = 'Connection closed. Reconnect to check your chats. Nothing is resent automatically.'; publish(); } } }); }
-    catch { if (current === hostGeneration) { retire(); notice = 'Could not connect. Check the address and sign-in token.'; publish(); } throw Error('Unable to connect'); }
-    if (current !== hostGeneration) { connection.close(); throw Error('Host changed'); }
+    onClosed: () => { if (!shuttingDown && current === hostGeneration) { retire(); notice = 'Connection closed. Reconnect to check your chats. Nothing is resent automatically.'; publish(); } } }); }
+    catch { if (!shuttingDown && current === hostGeneration) { retire(); const failed = hostGeneration; await restoreOffline(host, failed);
+      if (!shuttingDown && failed === hostGeneration) { notice = recovered ? 'Saved chats are read-only while offline. Connect to check for updates.' : 'Could not connect. Check the address and sign-in token.'; publish(); } } throw Error('Unable to connect'); }
+    if (shuttingDown || current !== hostGeneration) { connection.close(); throw Error('Host changed'); }
     gateway = connection;
     try {
       let principal = `dashboard:${digest(host.token)}`;
@@ -225,16 +256,24 @@ export function createDesktopService(adapters: Readonly<{
         const health = (await connection.requestHttp({ kind: 'health' })).body;
         if (!jsonObject(health) || health.ok !== true || typeof health.auth_required !== 'boolean') throw Error('Host identity unavailable');
       }
-      const profiles = decodeProfiles(await connection.operation({ kind: 'profilesList' }));
-      if (current !== hostGeneration) throw Error('Host changed');
+      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
+      // A newly verified principal retires the previous display immediately.
+      if (recovered && (recovered.scope.hostId !== digest(endpoint.origin) || recovered.scope.principalId !== principal)) {
+        recovered = null; data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; publish();
+      }
       await save('desktop:host', host);
+      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
       await save('desktop:autoConnect', true);
-      if (current !== hostGeneration) throw Error('Host changed');
+      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
       hostId = digest(endpoint.origin); principalId = principal; identity = verified;
+      recovered = null; liveBinding = binding;
+      liveRecovery = displayRecovery?.activate(host, {hostId, principalId}, () => current === hostGeneration) ?? null;
+      const profiles = decodeProfiles(await connection.operation({ kind: 'profilesList' }));
+      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
       data = { sample: false, host: { label: host.label, state: 'connected' }, agents: profiles.map(row => ({ ...row, color: '#D27B5B' })), chats: [], workflows: [] };
       status = 'connected'; notice = profiles.length ? 'Choose an agent to start a chat.' : 'This computer has no available agents.';
       await refresh();
-    } catch { if (current === hostGeneration) { retire(); notice = 'Could not connect. Check the address, sign-in token, and secure storage.'; publish(); } else connection.close(); throw Error('Unable to connect'); }
+    } catch { if (!shuttingDown && current === hostGeneration) { retire(); notice = 'Could not connect. Check the address, sign-in token, and secure storage.'; publish(); } else connection.close(); throw Error('Unable to connect'); }
   }
   async function refresh() {
     const connection = gateway, current = hostGeneration;
@@ -242,7 +281,7 @@ export function createDesktopService(adapters: Readonly<{
     const chats: ChatView[] = [];
     for (const agent of data.agents) {
       const rows = decodeSessionList(await connection.operation({ kind: 'sessionList', profile: agent.id }), agent.id);
-      if (current !== hostGeneration || connection !== gateway) return;
+      if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
       for (const row of rows) {
         if (chats.some(chat => chat.id === row.id)) throw Error('Ambiguous session identity');
         chats.push({ id: row.id, agentId: row.profile, title: row.title, preview: row.preview,
@@ -252,7 +291,7 @@ export function createDesktopService(adapters: Readonly<{
     // Newly created sessions can be lazy and absent until their first prompt.
     const active = data.chats.find(chat => chat.id === selectedChatId);
     if (active && !chats.some(chat => chat.id === active.id)) chats.unshift(active);
-    data = { ...data, chats }; publish();
+    data = { ...data, chats }; liveRecovery?.catalog(data); publish();
   }
   async function open(profile: string, storedSessionId?: string, canonical = false, requestId?: string, initiatingGeneration = generation) {
     if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
@@ -264,7 +303,7 @@ export function createDesktopService(adapters: Readonly<{
     if (!canonical) navigationIds = null;
     ++workspaceRevision; workspace = null;
     const selection = generation;
-    const isCurrent = () => current === hostGeneration && connection === gateway && selection === generation;
+    const isCurrent = () => !shuttingDown && current === hostGeneration && connection === gateway && selection === generation;
     try {
       let receipt;
       if (canonical) {
@@ -297,6 +336,7 @@ export function createDesktopService(adapters: Readonly<{
       if (receipt.openRequests.length) connection.restoreRequests(receipt.openRequests, captured.runtimeId);
       if (!data.chats.some(chat => chat.id === selectedChatId && chat.agentId === profile)) data = { ...data, chats: [{ id: selectedChatId,
         agentId: profile, title: canonical ? 'Bot Chat' : 'New chat', preview: '', transcript: [] }, ...data.chats].slice(0, 10000) };
+      liveRecovery?.catalog(data);
       const savedDraft = await adapters.repository?.read(`draft:${scope(profile, selectedChatId)}`);
       if (owner !== captured) return;
       if (typeof savedDraft?.value === 'string') drafts = { ...drafts, [selectedChatId]: savedDraft.value };
@@ -308,6 +348,7 @@ export function createDesktopService(adapters: Readonly<{
     } finally { if (isCurrent()) { navigation = null; navigationIds = null; navigating = false; publish(); } }
   }
   async function act(action: DesktopAction) {
+    if (shuttingDown) throw Error('Application is closing');
     if (action.kind === 'snapshot') return;
     if (action.kind === 'connect') { await connect(action.host); return; }
     if (action.kind === 'disconnect') { retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
@@ -319,12 +360,28 @@ export function createDesktopService(adapters: Readonly<{
       }
       return;
     }
+    if (action.kind === 'openChat' && status === 'disconnected' && action.generation === generation && recovered) {
+      const chat = recovered.data.sessions.find(row => row.storedSessionId === action.chatId);
+      if (!chat) throw Error('Chat unavailable');
+      const savedOwner = recovered;
+      const selection = ++generation; selectedChatId = chat.storedSessionId; owner = null; workspace = null;
+      notice = 'Saved chats are read-only while offline. Connect to check for updates.'; publish();
+      // Drafts remain independently protected; reading one grants no edit lease.
+      try {
+        const key = digest(JSON.stringify([savedOwner.scope.hostId, savedOwner.scope.principalId, chat.profileId, chat.storedSessionId]));
+        const draft = await adapters.repository?.read(`draft:${key}`);
+        if (generation === selection && recovered === savedOwner && status === 'disconnected' && typeof draft?.value === 'string') {
+          drafts = { ...drafts, [chat.storedSessionId]: draft.value }; publish();
+        }
+      } catch { /* A missing/corrupt draft does not hide cached saved history. */ }
+      return;
+    }
     if (!(['canonicalChat', 'newChat', 'openChat'].includes(action.kind) && navigating && navigation?.initiatingGeneration === action.generation)) requireGeneration(action.generation);
     if (action.kind === 'workspace') {
       if (!identity || !data.agents.some(agent => agent.id === action.profile)) throw Error('Agent unavailable');
       const connection = gateway!, current = hostGeneration, selection = generation, revision = ++workspaceRevision;
       const captured: WorkspaceOwner = { hostId, principalId, profileId: action.profile, authGeneration: current, connectionGeneration: selection };
-      const isCurrent = () => current === hostGeneration && selection === generation && revision === workspaceRevision && connection === gateway;
+      const isCurrent = () => !shuttingDown && current === hostGeneration && selection === generation && revision === workspaceRevision && connection === gateway;
       const client = createWorkspaceClient({ owner: captured, identity, currentOwner: () => isCurrent() ? captured : null,
         http: operation => connection.requestHttp(operation), projects: profile => connection.operation({ kind: 'projectsList', profile }), nextRequestId: randomUUID });
       workspace = { profile: action.profile, page: action.page, status: 'loading' }; publish();
@@ -403,16 +460,20 @@ export function createDesktopService(adapters: Readonly<{
   }
   return Object.freeze({ snapshot,
     async initialize(): Promise<void> {
-      if (!adapters.repository) return;
+      if (!adapters.repository || shuttingDown) return;
       const current = hostGeneration;
       try {
         const enabled = await adapters.repository.read('desktop:autoConnect');
-        if (enabled?.value !== true || current !== hostGeneration) return;
+        if (shuttingDown || current !== hostGeneration) return;
         const saved = await adapters.repository.read('desktop:host');
-        if (!saved || current !== hostGeneration) return;
+        if (!saved || shuttingDown || current !== hostGeneration) return;
         const action = parseDesktopAction({ kind: 'connect', host: saved.value });
+        if (action.kind !== 'connect') return;
+        const selection = generation;
+        await restoreOffline(action.host, current);
+        if (shuttingDown || current !== hostGeneration || selection !== generation || enabled?.value !== true) return;
         await act(action);
-      } catch { if (current === hostGeneration) { notice = 'Could not restore the connection. Connect again in Settings.'; publish(); } }
+      } catch { if (!shuttingDown && current === hostGeneration) { notice = 'Could not restore the connection. Connect again in Settings.'; publish(); } }
     },
     async handle(value: unknown): Promise<DesktopResult> {
       const revision = ++actionRevision;
@@ -423,6 +484,22 @@ export function createDesktopService(adapters: Readonly<{
         if (revision === actionRevision && current === generation) { notice = message; publish(); }
         return { ok: false, message }; }
     },
-    dispose() { retire(true); },
+    shutdown(): Promise<void> {
+      shutdownPromise ??= (async () => {
+        // Stop every live consumer first, but retain the cache generation until
+        // its already captured authoritative projections have had a short drain.
+        shuttingDown = true; ++generation; ++workspaceRevision;
+        navigation = null; navigationIds = null; workspace = null; owner = null;
+        acceptedSend = null; running = false; sending = false; navigating = false; reconciled = false;
+        clearPrompts(); const connection = gateway; gateway = undefined; status = 'disconnected'; connection?.close();
+        let deadline: ReturnType<typeof setTimeout> | undefined;
+        try {
+          await Promise.race([displayRecovery?.drain() ?? Promise.resolve(),
+            new Promise<void>(resolve => { deadline = setTimeout(resolve, 2000); })]);
+        } finally { clearTimeout(deadline); retire(true); }
+      })();
+      return shutdownPromise;
+    },
+    dispose() { shuttingDown = true; retire(true); },
   });
 }
