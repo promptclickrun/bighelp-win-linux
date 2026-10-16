@@ -88,7 +88,7 @@ app.whenReady().then(async () => {
   installSessionPolicy();
   if (!fixturePreview) {
     try {
-      repository = await createProtectedRepository({ directory: join(app.getPath('userData'), 'protected'), platform: process.platform,
+      repository = await createProtectedRepository({ directory: join(app.getPath('userData'), 'protected'), trustedRoot: app.getPath('appData'), platform: process.platform,
         protection: { isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
           getSelectedStorageBackend: () => process.platform === 'linux' ? safeStorage.getSelectedStorageBackend() : 'os',
           encryptString: text => safeStorage.encryptString(text), decryptString: bytes => safeStorage.decryptString(Buffer.from(bytes)) } });

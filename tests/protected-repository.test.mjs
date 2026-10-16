@@ -172,6 +172,25 @@ test('newer envelopes remain untouched and a symlink directory is rejected', asy
   await assert.rejects(open({ directory: link }), /directory/);
 });
 
+test('links above the trusted root are accepted; app-owned links and escapes are not', async t => {
+  const { directory, open } = await setup(t);
+  // A profile directory reached through a system link (Fedora Atomic /home, macOS /var).
+  const real = join(directory, 'real-home'), linkedHome = join(directory, 'home');
+  await mkdir(real);
+  await symlink(real, linkedHome, process.platform === 'win32' ? 'junction' : 'dir');
+  const appData = join(linkedHome, 'config');
+  const repository = await open({ directory: join(appData, 'bighelp', 'protected'), trustedRoot: appData });
+  await repository.write('key', null, 'value');
+  assert.deepEqual(await repository.read('key'), { revision: 1, value: 'value' });
+  await repository.close();
+  // The app's own folder beneath the trusted root must not be a link.
+  await mkdir(join(real, 'elsewhere'));
+  await symlink(join(real, 'elsewhere'), join(appData, 'linked-app'), process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(open({ directory: join(appData, 'linked-app', 'protected'), trustedRoot: appData }), /directory/);
+  await assert.rejects(open({ directory: join(directory, 'outside'), trustedRoot: appData }), /directory/);
+  await assert.rejects(open({ directory: appData, trustedRoot: appData }), /directory/);
+});
+
 
 test('missing owner metadata and abandoned recovery claims fail closed', async t => {
   const { directory, open } = await setup(t);

@@ -2,7 +2,7 @@
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, rmdir, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { join, resolve, parse, dirname } from 'node:path';
+import { join, resolve, dirname, relative, isAbsolute } from 'node:path';
 import type { JsonValue } from '../contracts/rpc.ts';
 export type { JsonValue } from '../contracts/rpc.ts';
 
@@ -47,10 +47,17 @@ async function syncDirectory(directory: string, platform: NodeJS.Platform): Prom
   const file = await open(directory, constants.O_RDONLY | constants.O_DIRECTORY | (constants.O_NOFOLLOW ?? 0));
   try { await file.sync(); } finally { await file.close(); }
 }
-async function safeDirectory(directory: string, platform: NodeJS.Platform): Promise<string> {
-  const absolute = resolve(directory);
-  let current = parse(absolute).root;
-  for (const component of absolute.slice(current.length).split(/[\\/]/).filter(Boolean)) {
+// Directories at or above the trusted root belong to the OS or user profile and
+// may legitimately be links (macOS /var, Fedora Atomic /home). Every component
+// the app owns beneath that root must be a real directory, never a link.
+async function safeDirectory(directory: string, platform: NodeJS.Platform, trustedRoot: string): Promise<string> {
+  const absolute = resolve(directory), root = resolve(trustedRoot);
+  const inside = relative(root, absolute);
+  if (!inside || inside.startsWith('..') || isAbsolute(inside)) throw Error('Unsafe repository directory');
+  await mkdir(root, { recursive: true, mode: 0o700 });
+  let current = await realpath(root);
+  if (!(await lstat(current)).isDirectory()) throw Error('Unsafe repository directory');
+  for (const component of inside.split(/[\\/]/).filter(Boolean)) {
     current = join(current, component);
     let created = false;
     try { await mkdir(current, { mode: 0o700 }); created = true; } catch (error) {
@@ -60,17 +67,18 @@ async function safeDirectory(directory: string, platform: NodeJS.Platform): Prom
     if (stat.isSymbolicLink() || !stat.isDirectory()) throw Error('Unsafe repository directory');
     if (created) await syncDirectory(dirname(current), platform);
   }
-  return realpath(absolute);
+  return realpath(current);
 }
 
-export async function createProtectedRepository(options: { directory: string; protection: StringProtection; platform: NodeJS.Platform }) {
+export async function createProtectedRepository(options: { directory: string; protection: StringProtection; platform: NodeJS.Platform;
+  trustedRoot?: string }) {
   const { protection, platform } = options;
   function requireProtection() {
     if (!protection.isEncryptionAvailable() || (platform === 'linux' &&
       (!protection.getSelectedStorageBackend || protection.getSelectedStorageBackend() === 'basic_text'))) throw Error('Secure protection unavailable');
   }
   requireProtection();
-  const directory = await safeDirectory(options.directory, platform);
+  const directory = await safeDirectory(options.directory, platform, options.trustedRoot ?? dirname(resolve(options.directory)));
   const lock = join(directory, '.repository.lock');
   const ownerPath = join(lock, 'owner');
   type LockOwner = { pid: number; nonce: string };
