@@ -21,10 +21,19 @@ At `007f5e5`, the current product code passed:
   **20 passed**, zero failed, OS sandbox enabled. No sandbox ownership or
   permission changes were needed for this local run.
 
-These checks precede the new synthetic Electron interaction stage and do not
-qualify physical keyboard/IME, screen-reader behavior or a real plugin host.
-The historical host and hosted-runner results below retain their tested commits;
-they are not presented as results from this newer UI revision.
+The subsequent test-only increment `3092a6a` added an opt-in, in-memory fixture
+stage. Against the same production package it passed **133 checks** with the OS
+sandbox enabled: **26 ordinary packaged checks** and **107 synthetic Electron
+interaction checks**, including **29 controlled workspace reads**. The default
+no-host smoke separately passed 26 checks without fixture injection. DOM-only
+strict compilation and script syntax checks passed. [Function-page evidence](function-pages.md)
+records request retirement, actual DOM draft/focus/accessibility checks, fixture
+isolation and precise limits. Controller inspection of wide Projects/Scheduled/
+Usage/Feed and narrow Projects/Feed screenshots found no visual blocker.
+
+These checks do not qualify physical keyboard/IME, screen-reader behavior or a
+real plugin host. The historical host and hosted-runner results below retain
+their tested commits; they are not results from this newer UI revision.
 
 ## Integrated implementation and review
 
