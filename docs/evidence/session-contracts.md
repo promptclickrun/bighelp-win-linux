@@ -1,0 +1,13 @@
+# Finite session and interactive prompt codecs
+
+Source evidence: shipping Catalyst app at `promptclickrun/bighelp` commit `d62a545386fb1b63f8ca33365766a46b3b1bd636`, inspected read-only under `/workspace/scratch/bighelp-protocol-reference`.
+
+- `Bighelp/DirectHermes/DirectHermesWorkspaceStore.swift:500,545,864,894`: profiles.list, session.list, create and catalog presentation. Canonical profile name is routing identity; display_name is only a label. Summary is empty because this source does not define a profile summary.
+- `Bighelp/DirectHermes/DirectHermesReleaseContract.swift:63`: resume request and strict adoption of runtime, info/profile and agreeing durable aliases. Returned successor durable ID is authoritative.
+- `Bighelp/DirectHermes/DirectHermesSessionActions.swift:837`: RPC history is exactly count/messages. `DirectHermesProjection.swift:523` uses role/text and integer row_id, falling back to position. This implementation projects user/assistant text only. Tool summaries, reasoning, attachments and user-message attachment-envelope stripping remain outside this minimal plain-text projection; no tool execution success is fabricated.
+- `Bighelp/DirectHermes/DirectHermesConversationClient+Submission.swift:233`: session.interrupt; its receipt requests cancellation and does not establish settled execution.
+- `Bighelp/DirectHermes/DirectHermesPrompt.swift:426-499,717-915`: approval and single/batch clarify decoding and exact result objects. Unknown approval choices are skipped; unknown display keys are ignored. Approval answers must be offered. Clarify supports typed Other text and string-encoded multi-select arrays with at most one custom choice. Locked answers stay byte-identical. Null choices/multi_select mean absent; batch answers, if present, must be an object.
+
+All unknown input is size/depth checked using the shared JSON boundary. Models and nested arrays are frozen. Prompt answer encoding accepts only parser-produced objects through a private WeakSet; callers retain responsibility for socket/request ownership, cancellation and stale callback fencing. Unsupported request methods throw instead of producing blank success. The result object is wrapped with the original server request ID by encodeServerReply in the caller.
+
+Synthetic evidence: initial test run failed with missing codec modules before implementation; six focused source-shape tests pass. Full `npm test` passed 138 tests, and `npm run typecheck` passed all three configurations. An earlier full run observed an unrelated protected-repository live-lock test failure; repeat full run passed. No live Hermes server, physical Windows/Linux machine or packaged app was exercised by this increment.
