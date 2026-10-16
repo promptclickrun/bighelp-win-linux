@@ -12,6 +12,7 @@ import { decodeRestHistory, decodeRpcHistory, HISTORY_LIMITS } from '../../../..
 import { EMPTY_LIVE, addOutgoing, afterHistory, reduceLive } from '../../../../packages/domain/live-turn.ts';
 import type { LiveTurn } from '../../../../packages/domain/live-turn.ts';
 import { admit, referenceText } from '../../../../packages/domain/attachments.ts';
+import { sendSpeakerNote } from './speaker-note.ts';
 import type { StagedFile } from '../../../../packages/domain/attachments.ts';
 import { parseInteractivePrompt, encodeInteractiveAnswer } from '../../../../packages/contracts/prompts.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
@@ -564,6 +565,11 @@ export function createDesktopService(adapters: Readonly<{
     try {
       const references = files.length ? await upload(captured, connection, files) : [];
       if (owner !== captured) return;
+      if (preferences.personName && identity) {
+        await sendSpeakerNote(operation => connection.requestHttp(operation), identity, { profile: captured.profileId,
+          storedSessionId: captured.storedSessionId, personId: await personId(), name: preferences.personName });
+        if (owner !== captured) return;
+      }
       const text = [input.submitText, ...references].filter(part => part.trim()).join('\n');
       const result = await createTextSend({ id: randomUUID(), requestId: randomUUID(), owner: captured, text }, {
         currentOwner: () => owner === captured && status === 'connected' ? captured : null,
@@ -640,6 +646,18 @@ export function createDesktopService(adapters: Readonly<{
     applyTranscript(chatId);
     const cleared = await clearSentDraft(draftKey, draftRevision, text);
     if (owner === captured) { if (cleared) drafts = { ...drafts, [chatId]: '' }; notice = ''; publish(); }
+  }
+  // A stable random ID for this person on this computer (a label key, not a credential).
+  let person: Promise<string> | null = null;
+  function personId(): Promise<string> {
+    person ??= (async () => {
+      const stored = await adapters.repository?.read('desktop:personId').catch(() => null);
+      if (typeof stored?.value === 'string' && /^[0-9a-f-]{36}$/u.test(stored.value)) return stored.value;
+      const created = randomUUID();
+      await save('desktop:personId', created).catch(() => undefined);
+      return created;
+    })();
+    return person;
   }
   // Stage files on the live session in the chosen order. Images join the session's
   // image queue (claimed by the next prompt); other files return @file: references.

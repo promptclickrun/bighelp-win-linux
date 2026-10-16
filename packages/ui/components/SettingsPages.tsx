@@ -89,7 +89,7 @@ export function YouPage(props: Readonly<{ preferences: Preferences; onChange: Ch
           {status ? <View role="status"><Label size={13} tone="muted">{status}</Label></View> : null}
         </View>
       </Card>
-      <Note>Kept on this computer only. Your agents don't see your name in this version of bighelp.</Note>
+      <Note>Your agents see your name, so they know who they're talking with. It's sent with each message when the bighelp plugin on your computer supports it.</Note>
     </PageBody>
   );
 }
