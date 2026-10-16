@@ -78,12 +78,17 @@ function-page routes. Real React server markup verifies escaping of hostile agen
 names. Controller/component lifecycle tests exercise held IPC responses without
 claiming browser or physical-input evidence.
 
-Latest checks after final code change:
+Historical checks before the final selectable-title fix:
 
 - `node --experimental-strip-types --test tests/ui-workspace.test.mjs tests/ui-draft-navigation.test.mjs tests/shell-navigation.test.mjs tests/ui-connected.test.mjs`: **57 passed**, zero failed (19 workspace, 18 App/draft, 15 shell, 5 real renderer markup).
 - `npm test`: **339 passed**, zero failed/skipped/cancelled.
 - `npm run typecheck`: all three strict configurations passed.
 - `git diff --check`: passed.
+
+The final Task 1 commit `06fb084` also made full function titles selectable and
+wrapping. Its focused rerun passed **60 tests** (22 workspace, 18 App/draft,
+15 shell, 5 real renderer markup). The historical 57/339 counts above do not
+describe the final whole increment; current Task 2 full-suite evidence is below.
 
 Coverage includes held page/profile/period/generation changes, same-key re-entry,
 refresh before a new render, cleanup, offline completion, unsupported/failed and
@@ -169,3 +174,78 @@ layout, native undo/IME or screen-reader behavior. Task 3 owns those renderer
 checks. No Task 2 live/disposable host, packaged smoke, hosted CI or physical
 Windows/Linux qualification is claimed. No dependency or wire/API changes,
 automatic AI calls, host mutations, push, merge or release were performed.
+
+## Task 3 — packaged and synthetic Electron interaction qualification
+
+Test-only implementation `3092a6a`, exercised 2026-10-16 against the production
+Linux package built from reviewed product `007f5e5`. No product, preload, main,
+wire/API or dependency changes were needed. The production renderer entry never
+imports the qualification fixture. `--workspace-fixture` builds its separate
+entry with existing esbuild `write:false` and evaluates that in-memory bundle
+through the existing loopback CDP connection only after the original packaged
+no-host/isolation checks pass.
+
+The fixture mounts the actual `ConnectedApp`/`App`, function pages, boards and
+loader in a disposable DOM root. Its finite synthetic `DesktopApi` keeps held
+workspace promises and draft updates entirely in renderer memory; it does not
+reference the real preload API, IPC, files, secrets, shell, network or a host.
+The packaged app root is hidden/inert during this separate stage, then restored;
+fixture root, subscriptions, timers and control references are cleaned up.
+The fixture does not change CSP, sandbox or browser connection policy.
+
+Local commands and results:
+
+- `node scripts/desktop/smoke.mjs --headless --workspace-fixture --executable artifacts/bighelp-development-linux-x64/electron --screenshots /workspace/scratch/function-pages-electron`: **133 passed, zero failed**, comprising 26 ordinary packaged checks and 107 synthetic interaction checks; **29** explicitly controlled workspace reads.
+- `node scripts/desktop/smoke.mjs --headless --executable artifacts/bighelp-development-linux-x64/electron`: **26 passed, zero failed**, opt-in fixture stage absent.
+- `node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.workspace-ui.json`: passed, strict DOM-only project with `types: []` and no emitted files.
+- `node --check scripts/desktop/smoke.mjs`, `node --check scripts/qualification/workspace-ui-smoke.mjs` and `git diff --check`: passed.
+
+Both Electron runs used **OS sandbox enabled**, Chrome **152.0.7977.149** /
+Electron **44.7.2**, with a temporary app profile and guaranteed child/profile
+cleanup. No `--no-os-sandbox`, fixture-preview package, host, credentials or
+key-store bypass was used. The ordinary checks cover unavailable Projects,
+Scheduled and Usage with disabled Refresh and no agent tab bar, in addition to
+existing renderer/preload/network/navigation isolation checks.
+
+Actual React/DOM interactions cover explicit Agent choice, real search inputs,
+row selection and Refresh, exact 7/30/90 period requests, held old versus new
+profile/page/period/generation results and same-key re-entry. Count assertions
+require one request per deliberate load; unrelated snapshot revisions and new
+parent callbacks do not reload. Removed selection, empty/restored catalogs,
+unsupported/failed reads and pending-read offline/reconnect transitions retain
+honest states. Missing usage metrics stay Unavailable, supplied zero stays zero,
+and Estimated cost / Actual cost remain separate. Scheduled error, disabled and
+missing next-run/result metadata retain supplied meaning.
+
+The loaded wide function surface measures one 76 px rail and 300 px context
+column, with no agent tab strip. Narrow function/board details expose complete
+selectable wrapping titles; Back preserves selection without a new read, and
+search remains reachable by Chromium Tab events after Back. Adversarial image,
+script-like and URL text renders as inert selectable text with no links/images,
+script execution or external network requests.
+
+For Feed, Ideas, Goals and Files, Chromium retains the identical textarea node
+and protected typed draft on return to Chat. On each non-chat tab the wrapper is
+hidden/inert/aria-hidden/display:none; focusing the textarea fails, and the
+Chromium accessibility tree omits its textbox. Board search is exposed in that
+tree and keyboard reachable; this is also checked at narrow width. Board rows
+retain supplied unknown status, Unread and missing fields. Board tab/generation
+held responses, same-key re-entry, Refresh, empty/error/unsupported/offline and
+local narrow Back are exercised. Browsing produces zero fake send/new/canonical,
+board-mutation or unrelated-operation calls; protected draft persistence and one
+explicit saved-chat reopen are the only non-workspace actions. The finite API
+has no board-write capability. The synthetic reopen advances generation, matching
+main's `open()` lifecycle even when reopening the already-selected chat.
+
+Ten local screenshots (two ordinary no-host, eight synthetic) are retained under
+`/workspace/scratch/function-pages-electron` for controller inspection. They are
+synthetic Electron UI evidence and do not claim actual-host or physical-machine
+behavior. Native Windows/Ubuntu CI is configured to compile the fixture and run
+this optional stage after ordinary packaged checks using the existing sandboxed
+launch setup. Hosted results/artifact links and final whole-increment checks are
+owned by the controller and remain separate from this local evidence.
+
+Chromium DOM/focus/accessibility checks do not qualify physical screen readers,
+keyboard layouts, native undo/IME, OS protection availability or visual parity
+on Windows/Linux hardware. The prior disposable-host read-client evidence still
+qualifies unchanged clients separately; no host probe was repeated here.
