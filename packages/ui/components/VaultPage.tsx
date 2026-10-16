@@ -3,7 +3,7 @@
 // Passwords are typed into write-only fields and sent once; bighelp keeps no copy.
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
-import { Pressable, ScrollView, View } from 'react-native-web';
+import { ScrollView, View } from 'react-native-web';
 import { LOCAL_SOURCE, siteName, vaultSite, VAULT_LIMITS } from '../../contracts/vault.ts';
 import type { VaultItem, VaultSource } from '../../contracts/vault.ts';
 import { useCall, useHost, useQuery } from '../host.tsx';
@@ -11,16 +11,15 @@ import { useTheme } from '../theme.tsx';
 import type { ViewData } from '../view-model.ts';
 import { ContextColumn } from './ContextList.tsx';
 import { Banner, Button, ConfirmDialog, Dialog, PageBody, SelectField, TextField, Toggle } from './controls.tsx';
-import { Icon, IconButton, Label, PageHead, hoverFill } from './primitives.tsx';
+import { Fact, useAgentChoice } from './FunctionLayout.tsx';
+import { Caption, Empty, ListRow } from './ListParts.tsx';
+import { Icon, IconButton, Label, PageHead } from './primitives.tsx';
 import { SecretField, takeSecret, useSecretRef } from './SecretField.tsx';
 
 type Selection = Readonly<{ kind: 'item'; id: string }> | Readonly<{ kind: 'manager'; name: string }> | Readonly<{ kind: 'add' }> | null;
 type Message = Readonly<{ tone: 'success' | 'error' | 'warn'; text: string }> | null;
 const KIND_NAMES: Readonly<Record<VaultItem['kind'], string>> = Object.freeze({ login: 'Login', payment: 'Card', address: 'Address' });
 
-function Fact(props: Readonly<{ label: string; value: string; mono?: boolean }>): JSX.Element {
-  return <View style={{ gap: 2 }}><Label tone="muted" size={12}>{props.label}</Label><Label selectable mono={props.mono ?? false}>{props.value}</Label></View>;
-}
 function sourceName(name: string, sources: readonly VaultSource[]): string {
   return name === LOCAL_SOURCE ? 'Hermes vault' : sources.find(source => source.name === name)?.displayName ?? name;
 }
@@ -45,9 +44,7 @@ export function VaultPage(props: Readonly<{
   const host = useHost();
   const call = useCall();
   const agents = props.data.agents;
-  const [chosen, setChosen] = useState<string | null>(agents.length === 1 ? agents[0]!.id : null);
-  const profile = agents.some(agent => agent.id === chosen) ? chosen : null;
-  useEffect(() => { if (chosen !== null && profile === null) setChosen(null); }, [chosen, profile]);
+  const [profile, setChosen] = useAgentChoice(agents);
   const agentName = agents.find(agent => agent.id === profile)?.name ?? 'This agent';
   const connected = host?.snapshot.status === 'connected';
   const vault = useQuery('vault.read', connected && profile ? { profile } : null);
@@ -156,27 +153,26 @@ export function VaultPage(props: Readonly<{
           options={[{ value: '', label: 'Choose an agent' }, ...agents.map(agent => ({ value: agent.id, label: agent.name }))]}
           onChange={value => { setChosen(value || null); setSelection(null); setMessage(null); }} /> : null}
         {status !== null ? <View role="status"><Label tone="muted">{status}</Label></View> : <>
-          <Label size={12} weight="700" tone="muted">{`Saved for ${agentName}`}</Label>
-          {items.length === 0 ? <Label tone="muted" size={13}>Nothing saved yet. Use + to add a login.</Label> : <View role="list">
-            {items.map(item => <Pressable key={item.id} role="button" aria-label={`${item.label}, ${itemLine(item, sources)}`}
-              aria-current={selectedItem?.id === item.id ? 'true' : false} onPress={() => open({ kind: 'item', id: item.id })}
-              style={({ hovered }) => [{ flexDirection: 'row', alignItems: 'center', gap: 10, padding: 8, borderRadius: 10 },
-                hoverFill(palette, hovered, selectedItem?.id === item.id)]}>
+          <Caption>{`Saved for ${agentName}`}</Caption>
+          {items.length === 0 ? <Empty>Nothing saved yet. Use + to add a login.</Empty> : <View role="list">
+            {items.map(item => <ListRow key={item.id} label={`${item.label}, ${itemLine(item, sources)}`}
+              active={selectedItem?.id === item.id} onPress={() => open({ kind: 'item', id: item.id })}>
               <Icon name={item.kind === 'login' ? 'lock' : 'shield'} color={palette.muted} size={18} />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Label weight="600" oneLine>{item.label}</Label>
                 <Label size={12} tone="muted" oneLine>{itemLine(item, sources)}</Label>
               </View>
-            </Pressable>)}
+            </ListRow>)}
           </View>}
           {managers.length ? <>
-            <Label size={12} weight="700" tone="muted">Password managers</Label>
-            <View role="list">{managers.map(source => <Pressable key={source.name} role="button" aria-label={`${source.displayName}, ${managerState(source)}`}
-              aria-current={selectedManager?.name === source.name ? 'true' : false} onPress={() => open({ kind: 'manager', name: source.name })}
-              style={({ hovered }) => [{ padding: 8, borderRadius: 10 }, hoverFill(palette, hovered, selectedManager?.name === source.name)]}>
-              <Label weight="600" oneLine>{source.displayName}</Label>
-              <Label size={12} tone="muted" oneLine>{managerState(source)}</Label>
-            </Pressable>)}</View>
+            <Caption>Password managers</Caption>
+            <View role="list">{managers.map(source => <ListRow key={source.name} label={`${source.displayName}, ${managerState(source)}`}
+              active={selectedManager?.name === source.name} onPress={() => open({ kind: 'manager', name: source.name })}>
+              <View style={{ flex: 1, minWidth: 0 }}>
+                <Label weight="600" oneLine>{source.displayName}</Label>
+                <Label size={12} tone="muted" oneLine>{managerState(source)}</Label>
+              </View>
+            </ListRow>)}</View>
           </> : null}
         </>}
       </View>
