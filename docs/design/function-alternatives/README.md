@@ -2,6 +2,8 @@
 
 Start with [the comparison](index.html). Open the files directly in a browser; no server, scripts, packages, fonts, or network resources are required.
 
+**Selected 2026-10-16:** Colt chose **A — List and detail**. This is the approved function-page body direction inside hybrid D; see [D5](../../DECISIONS.md#d5--visual-parity-exceptions-before-real-ui). The alternatives below remain the original review artifacts.
+
 These static proposals keep the [approved hybrid D](../p0-alternatives/d-hybrid.html) structure: global rail → context list → selected detail, with one Settings entry per illustrated window. Noodle colors, surface tokens, rail labels, and glyph paths are reused from D. Typography uses installed system fonts. The two frames per option show the same synthetic Workflow and Scheduled content in light and dark themes.
 
 | Option | Tradeoff | Applicable surfaces |
@@ -21,7 +23,7 @@ A is the recommended default because it carries D's list/detail proportions dire
 
 ## Review and publication
 
-The `html-communication` skill is unavailable in this session. **Nothing is published.** These are local review artifacts, not product implementation or parity evidence. The parent task will present the alternatives for a pick before implementing a function body.
+The `html-communication` skill was unavailable when these alternatives were prepared. **Nothing was published.** These are local review artifacts, not product implementation or parity evidence. The user subsequently selected A before function-body implementation.
 
 Visual capture was attempted with the installed Chromium, but its organization policy blocks `file://` navigation ("This page is blocked. Your organization doesn’t allow you to view this site"). No rendered mock screenshots or browser layout verification are claimed. The block-page evidence is saved outside the repository at `/workspace/scratch/function-mocks/chromium-file-policy.png`; it is not committed. The HTML remains the review source.
 

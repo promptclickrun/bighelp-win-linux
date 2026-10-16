@@ -46,7 +46,9 @@ No continuous loaders/pulse/weather effects under this workspace's motion policy
 
 **Direction confirmed (2026-10-15):** after reviewing the rendered hybrid D sheet, Colt said, "In general, yes I agree with the direction." Use D as the visual direction for the first implementation slice; another broad layout-selection round is not required. This is general direction approval, not pixel-level acceptance or proof of native behavior.
 
-**Still not approved or verified:** exact rail order, widths, spacing, narrow interaction details, Workflows/function page bodies (static placeholders), and unrelated parity exceptions (fonts, glyphs, surfaces, motion). Full visual parity is not accepted. The mocks use synthetic content and have not been compared with shipping-app screenshots. The separate D6 dependency approval gate remains in force.
+**Function-page direction picked (2026-10-16):** Colt chose **A — List and detail** from `docs/design/function-alternatives/a-list-detail.html`. Implement that body pattern inside hybrid D, preserving the existing 76 px rail and 300 px context list. Use real validated host data and honest empty/unavailable states. This authorizes the previously blocked function-page implementation; no further broad layout pick is needed for this pattern. Existing narrow one-pane navigation remains the baseline, subject to actual usability qualification. The choice does not approve new dependencies or establish complete feature or visual parity.
+
+**Still not approved or verified:** exact rail order, pixel-level spacing, new narrow interaction designs, and unrelated parity exceptions (fonts, glyphs, surfaces, motion). Full visual parity is not accepted. The mocks use synthetic content and have not been compared with shipping-app screenshots. The separate D6 dependency approval gate remains in force.
 
 ## D6 — Runtime dependencies and storage (after proof)
 
