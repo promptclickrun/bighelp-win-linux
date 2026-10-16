@@ -2,6 +2,13 @@
 // Pure: no I/O, no timers. Hermes has nine statuses; the five lanes fold them
 // into what matters (bighelp KanbanLane.swift). Only Hermes starts work, so no
 // move ever targets Working.
+//
+// "Later" parks a task in Hermes' `scheduled` status. `todo` is not a parking
+// place: every dispatcher tick (60 s by default) promotes a todo task whose
+// parents are done, and a task with no parents, to Ready, where an assigned
+// agent starts it (hermes_cli/kanban_db.py recompute_ready). `triage` is not one
+// either: with Auto plan on (the host default) Hermes splits it with AI.
+// Nothing wakes `scheduled` except an explicit move to Ready.
 import type { KanbanCard, KanbanCardStatus, KanbanEvent, KanbanStatus } from '../contracts/kanban.ts';
 
 export const KANBAN_LANES = Object.freeze(['later', 'ready', 'working', 'needsYou', 'done'] as const);
@@ -28,11 +35,11 @@ export function laneOf(status: KanbanCardStatus): KanbanLane {
 }
 
 // The short status line on a card, in plain words.
-export function cardNote(card: Pick<KanbanCard, 'status' | 'blockKind'>): string {
+export function cardNote(card: Pick<KanbanCard, 'status' | 'blockKind' | 'parents'>): string {
   switch (card.status) {
     case 'triage': return 'Planning';
-    case 'todo': return 'Not started';
-    case 'scheduled': return 'Scheduled';
+    case 'todo': return card.parents > 0 ? 'Waiting on another task' : 'Moving to Ready soon';
+    case 'scheduled': return 'Not started';
     case 'ready': return 'Up next';
     case 'running': return 'Working now';
     case 'blocked': return card.blockKind === 'needs_input' ? 'Has a question'
@@ -48,11 +55,12 @@ export const KANBAN_MOVES = Object.freeze(['later', 'ready', 'done'] as const);
 export type KanbanMove = typeof KANBAN_MOVES[number];
 
 // Moves offered from each server status (workspace-writes spec 5.6). Left out on
-// purpose: anything into Working; review -> Later (Hermes re-gates it into Ready
-// and it may start); Later -> Done (Hermes refuses); anything out of Working
-// (it would stop a running agent).
+// purpose: anything into Working; review -> Later (Hermes refuses to park a
+// review and re-gates it into Ready instead); Later -> Done (Hermes refuses);
+// anything out of Working (it would stop a running agent). A Later task that is
+// still in triage or todo can be held, so Hermes does not plan or start it.
 const TARGETS: Readonly<Record<KanbanCardStatus, readonly KanbanMove[]>> = Object.freeze({
-  triage: ['ready'], todo: ['ready'], scheduled: ['ready'],
+  triage: ['later', 'ready'], todo: ['later', 'ready'], scheduled: ['ready'],
   ready: ['later', 'done'], running: [], blocked: ['later', 'ready', 'done'],
   review: ['ready', 'done'], done: ['later', 'ready'], archived: [], other: [],
 });
@@ -64,21 +72,27 @@ export function moveSpends(move: KanbanMove): boolean { return move === 'ready';
 // Hermes refuses Done without evidence; the person writes it, never the app.
 export function moveNeedsNote(move: KanbanMove): boolean { return move === 'done'; }
 
-export type KanbanMoveBody = Readonly<{ status: 'todo' | 'ready' }> | Readonly<{ status: 'done'; summary: string }>;
-// The exact PATCH body for a permitted move. Throws for anything else.
-export function moveBody(status: KanbanCardStatus, move: KanbanMove, note?: string): KanbanMoveBody {
+export type KanbanMoveBody = Readonly<{ status: 'todo' | 'scheduled' | 'ready' }> | Readonly<{ status: 'done'; summary: string }>;
+// The exact PATCH bodies, in order, for a permitted move. Hermes parks only from
+// todo, ready, running or blocked, so triage and done pass through todo first.
+// Throws for anything not offered.
+export function moveSteps(status: KanbanCardStatus, move: KanbanMove, note?: string): readonly KanbanMoveBody[] {
   if (!canMove(status, move)) throw new TypeError('Move not offered');
-  if (move === 'later') return Object.freeze({ status: 'todo' });
-  if (move === 'ready') return Object.freeze({ status: 'ready' });
+  if (move === 'later') {
+    const park = Object.freeze({ status: 'scheduled' as const });
+    return Object.freeze(status === 'triage' || status === 'done' ? [Object.freeze({ status: 'todo' as const }), park] : [park]);
+  }
+  if (move === 'ready') return Object.freeze([Object.freeze({ status: 'ready' as const })]);
   const summary = note?.trim() ?? '';
   if (!summary) throw new TypeError('A result note is required');
-  return Object.freeze({ status: 'done', summary });
+  return Object.freeze([Object.freeze({ status: 'done' as const, summary })]);
 }
 // The status a card shows while its move is in flight.
-export function moveStatus(move: KanbanMove): KanbanStatus { return move === 'later' ? 'todo' : move; }
+export function moveStatus(move: KanbanMove): KanbanStatus { return move === 'later' ? 'scheduled' : move; }
 
-export function moveLabel(move: KanbanMove): string {
-  return move === 'later' ? 'Move to Later' : move === 'ready' ? 'Move to Ready (starts the agent)' : 'Move to Done…';
+export function moveLabel(move: KanbanMove, from?: KanbanCardStatus): string {
+  if (move === 'later') return from === 'triage' || from === 'todo' ? 'Hold in Later' : 'Move to Later';
+  return move === 'ready' ? 'Move to Ready (starts the agent)' : 'Move to Done…';
 }
 
 export const SPENDING_NOTE = 'This starts the agent and uses AI credits.';
@@ -116,9 +130,10 @@ export function primaryMove(status: KanbanCardStatus): Readonly<{ move: KanbanMo
   }
 }
 
-// Giving a Ready task to an agent lets Hermes start it right away.
-export function assignSpends(card: Pick<KanbanCard, 'status'>, assignee: string | null): boolean {
-  return card.status === 'ready' && assignee !== null;
+// Giving a Ready task (or one Hermes is about to make Ready) to an agent lets
+// Hermes start it without another step.
+export function assignSpends(card: Pick<KanbanCard, 'status' | 'parents'>, assignee: string | null): boolean {
+  return assignee !== null && (card.status === 'ready' || (card.status === 'todo' && card.parents === 0));
 }
 export function assignAllowed(card: Pick<KanbanCard, 'status'>): boolean {
   return card.status !== 'running' && card.status !== 'other' && card.status !== 'archived';
@@ -170,7 +185,9 @@ export function eventLabel(event: KanbanEvent, agentName: (id: string) => string
     case 'crashed': return 'Stopped with a problem';
     case 'review_requested': return 'Sent for review';
     case 'review_reopened': case 'changes_requested': return 'Changes asked for';
-    case 'scheduled': return 'Scheduled';
+    // This app parks Later tasks in `scheduled`; Hermes' dispatcher promotes todo tasks.
+    case 'scheduled': return 'Held in Later';
+    case 'promoted': return `Moved to ${event.status ? LANE_TEXT[laneOf(event.status)].title : 'Ready'} by Hermes`;
     default: return null;
   }
 }

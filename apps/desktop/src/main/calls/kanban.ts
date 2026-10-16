@@ -5,7 +5,7 @@ import {
   KANBAN_LIMITS, decodeKanbanAutoPlan, decodeKanbanBoards, decodeKanbanSnapshot, decodeKanbanTaskDetail, decodeKanbanTaskReply,
 } from '../../../../../packages/contracts/kanban.ts';
 import type { KanbanCard, KanbanTaskDetail } from '../../../../../packages/contracts/kanban.ts';
-import { assignAllowed, canMove, deleteAllowed, moveBody } from '../../../../../packages/domain/kanban.ts';
+import { assignAllowed, canMove, deleteAllowed, moveSteps } from '../../../../../packages/domain/kanban.ts';
 import { HttpStatusError } from '../../../../../packages/platform/transport-policy.ts';
 import type { KANBAN_CALLS } from '../../shared/calls/kanban.ts';
 import type { CallFailure } from '../../shared/call.ts';
@@ -80,16 +80,18 @@ export const KANBAN_HANDLERS: Pick<CallHandlers, keyof typeof KANBAN_CALLS> = Ob
     mutation: true,
     async run(context, input) {
       const body = input.body?.trim();
-      // triage:true is the only create path that does not start in Ready. Hermes
-      // then moves it to Later (todo) so nothing runs until the person asks.
+      // triage:true is the only create path that does not start in Ready. It is
+      // then parked (triage -> todo -> scheduled) so Hermes neither plans it with
+      // AI nor promotes it to Ready; nothing runs until the person asks. The todo
+      // step lasts one request; the dispatcher promotes todo once a minute.
       let card = decode(decodeKanbanTaskReply, await send(context, { method: 'POST', path: `${BASE}/tasks`, query: { board: input.board },
         body: json({ title: input.title.trim(), ...(body ? { body } : {}), ...(input.assignee ? { assignee: input.assignee } : {}),
           priority: 0, parents: [], triage: true, goal_mode: false, idempotency_key: input.idempotencyKey }),
         maxBytes: KANBAN_LIMITS.detailBytes }, { 400: ['invalid', 'Hermes could not add that task. Check the title and try again.'], 404: boardGone }));
-      if (card.status === 'triage') {
-        try { card = await patchTask(context, input.board, card.id, { status: 'todo' }, {}); }
-        catch { throw new CallError('unknown', "The task was added, but Hermes didn't confirm it's waiting in Later. Refresh to check."); }
-      }
+      try {
+        if (card.status === 'triage') card = await patchTask(context, input.board, card.id, { status: 'todo' }, {});
+        if (card.status === 'todo') card = await patchTask(context, input.board, card.id, { status: 'scheduled' }, {});
+      } catch { throw new CallError('unknown', "The task was added, but Hermes didn't confirm it's waiting in Later. Refresh to check."); }
       return card;
     },
   },
@@ -101,10 +103,19 @@ export const KANBAN_HANDLERS: Pick<CallHandlers, keyof typeof KANBAN_CALLS> = Ob
       const current = await readTask(context, input.board, input.id);
       if (current.card.status !== input.from) throw new CallError('conflict', CHANGED);
       if (!canMove(current.card.status, input.move)) throw new CallError('invalid', "That move isn't available for this task.");
-      return patchTask(context, input.board, input.id, moveBody(current.card.status, input.move, input.note), {
+      const refusals: Refusals = {
         400: ['invalid', input.move === 'done' ? 'Hermes needs a short result note to mark this done.' : "Hermes didn't accept that move."],
         409: ['conflict', input.move === 'ready' ? 'This task is waiting on another task to finish first.' : "Hermes didn't allow that move right now. Refresh and try again."],
-      });
+      };
+      const [first, ...rest] = moveSteps(current.card.status, input.move, input.note);
+      let card = await patchTask(context, input.board, input.id, first!, refusals);
+      // Done -> Later reopens (todo) and then parks. A failure in between leaves
+      // a todo task that Hermes may soon make Ready, so say so plainly.
+      for (const step of rest) {
+        try { card = await patchTask(context, input.board, input.id, step, {}); }
+        catch { throw new CallError('unknown', "Hermes reopened this task but didn't confirm it's held in Later. Refresh to check; it may move to Ready on its own."); }
+      }
+      return card;
     },
   },
   'kanban.assign': {

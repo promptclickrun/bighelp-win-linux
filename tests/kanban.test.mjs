@@ -12,7 +12,7 @@ import {
   decodeKanbanAutoPlan, decodeKanbanBoards, decodeKanbanSnapshot, decodeKanbanTaskDetail, decodeKanbanTaskReply,
 } from '../packages/contracts/kanban.ts';
 import {
-  KANBAN_LANES, assignSpends, cardNote, deleteBody, eventLabel, finishMove, laneCounts, laneOf, moveBody, moveGate,
+  KANBAN_LANES, assignSpends, cardNote, deleteBody, eventLabel, finishMove, laneCounts, laneOf, moveGate, moveLabel, moveSteps,
   moveTargets, primaryMove, startMove,
 } from '../packages/domain/kanban.ts';
 
@@ -109,10 +109,17 @@ test('statuses fold into five lanes; unknown states are read-only and nothing ta
   assert.deepEqual(moveTargets('running'), []);
   assert.deepEqual(moveTargets('other'), []);
   assert.deepEqual(moveTargets('review'), ['ready', 'done'], 'review -> Later would re-gate into Ready and may start work');
-  assert.deepEqual(moveTargets('todo'), ['ready'], 'Hermes refuses Later -> Done');
-  assert.equal(cardNote({ status: 'blocked', blockKind: 'needs_input' }), 'Has a question');
-  assert.equal(cardNote({ status: 'blocked', blockKind: 'dependency' }), 'Waiting on another task');
-  assert.equal(cardNote({ status: 'triage', blockKind: null }), 'Planning');
+  assert.deepEqual(moveTargets('scheduled'), ['ready'], 'Hermes refuses Later -> Done');
+  assert.deepEqual(moveTargets('todo'), ['later', 'ready'], 'a todo task can be held before Hermes promotes it');
+  assert.equal(moveLabel('later', 'todo'), 'Hold in Later');
+  assert.equal(moveLabel('later', 'ready'), 'Move to Later');
+  assert.equal(cardNote({ status: 'blocked', blockKind: 'needs_input', parents: 0 }), 'Has a question');
+  assert.equal(cardNote({ status: 'blocked', blockKind: 'dependency', parents: 0 }), 'Waiting on another task');
+  assert.equal(cardNote({ status: 'triage', blockKind: null, parents: 0 }), 'Planning');
+  assert.equal(cardNote({ status: 'scheduled', blockKind: null, parents: 0 }), 'Not started');
+  // Hermes' dispatcher promotes a todo task with no open parents to Ready every tick.
+  assert.equal(cardNote({ status: 'todo', blockKind: null, parents: 0 }), 'Moving to Ready soon');
+  assert.equal(cardNote({ status: 'todo', blockKind: null, parents: 1 }), 'Waiting on another task');
   assert.deepEqual(primaryMove('todo'), { move: 'ready', label: 'Start now' });
   assert.deepEqual(primaryMove('blocked'), { move: 'ready', label: 'Try again' });
   assert.equal(primaryMove('running'), null);
@@ -132,25 +139,33 @@ test('moves to Ready need a spending confirmation and Done needs a result note',
   assert.doesNotMatch(done.body, /AI credits/u);
   assert.match(moveGate({ ...card, status: 'ready', children: 2 }, 'done').body, /AI credits/u, 'finishing a parent can start waiting tasks');
   assert.throws(() => moveGate({ ...card, status: 'running' }, 'later'));
-  assert.deepEqual(moveBody('todo', 'ready'), { status: 'ready' });
-  assert.deepEqual(moveBody('ready', 'later'), { status: 'todo' });
-  assert.deepEqual(moveBody('blocked', 'done', '  Shipped it. '), { status: 'done', summary: 'Shipped it.' });
-  assert.throws(() => moveBody('ready', 'done', '  '));
-  assert.throws(() => moveBody('todo', 'done', 'x'));
-  assert.equal(assignSpends({ status: 'ready' }, 'writer'), true);
-  assert.equal(assignSpends({ status: 'ready' }, null), false);
-  assert.equal(assignSpends({ status: 'todo' }, 'writer'), false);
+  assert.deepEqual(moveSteps('scheduled', 'ready'), [{ status: 'ready' }]);
+  // Later parks in `scheduled`; Hermes parks only from todo/ready/running/blocked.
+  assert.deepEqual(moveSteps('ready', 'later'), [{ status: 'scheduled' }]);
+  assert.deepEqual(moveSteps('todo', 'later'), [{ status: 'scheduled' }]);
+  assert.deepEqual(moveSteps('done', 'later'), [{ status: 'todo' }, { status: 'scheduled' }]);
+  assert.deepEqual(moveSteps('triage', 'later'), [{ status: 'todo' }, { status: 'scheduled' }]);
+  assert.deepEqual(moveSteps('blocked', 'done', '  Shipped it. '), [{ status: 'done', summary: 'Shipped it.' }]);
+  assert.throws(() => moveSteps('ready', 'done', '  '));
+  assert.throws(() => moveSteps('scheduled', 'done', 'x'));
+  assert.throws(() => moveSteps('review', 'later'));
+  assert.equal(assignSpends({ status: 'ready', parents: 0 }, 'writer'), true);
+  assert.equal(assignSpends({ status: 'ready', parents: 0 }, null), false);
+  assert.equal(assignSpends({ status: 'scheduled', parents: 0 }, 'writer'), false);
+  assert.equal(assignSpends({ status: 'todo', parents: 0 }, 'writer'), true, 'Hermes makes it Ready on its next tick');
+  assert.equal(assignSpends({ status: 'todo', parents: 1 }, 'writer'), false);
   assert.match(deleteBody({ title: 'Plan', children: 1 }), /can't undo.*AI credits/su);
 });
 
 test('an optimistic move shows the new lane and rolls back exactly on refusal', () => {
-  const cards = decodeKanbanSnapshot(snapshot([boardCard(), boardCard({ id: 't_00000002', title: 'Other', status: 'ready' })])).cards;
+  const cards = decodeKanbanSnapshot(snapshot([boardCard({ status: 'scheduled' }), boardCard({ id: 't_00000002', title: 'Other', status: 'ready' })])).cards;
   const started = startMove(cards, 't_1a2b3c4d', 'ready');
   assert.equal(started.cards[0].status, 'ready');
-  assert.equal(cards[0].status, 'todo', 'the source list is not mutated');
+  assert.equal(cards[0].status, 'scheduled', 'the source list is not mutated');
   assert.deepEqual(finishMove(started.cards, started.pending, null), cards);
   const confirmed = { ...cards[0], status: 'todo' }; // Hermes may land it somewhere else (open parents)
   assert.equal(finishMove(started.cards, started.pending, confirmed)[0].status, 'todo');
+  assert.equal(startMove(cards, 't_00000002', 'later').cards[1].status, 'scheduled');
   assert.equal(finishMove(started.cards, started.pending, { ...confirmed, id: 't_99999999' })[0], cards[0], 'a mismatched reply rolls back');
   assert.equal(startMove(cards, 't_1a2b3c4d', 'done'), null, 'not offered from Later');
   assert.equal(startMove(cards, 't_missing0', 'ready'), null);
@@ -181,6 +196,9 @@ test('real-shaped replies decode to bounded display data without host paths, PID
   assert.equal(JSON.stringify(full).includes('/home/example'), false, 'raw run errors never cross');
   const labels = full.events.map(event => eventLabel(event, id => id === 'writer' ? 'Writer' : id));
   assert.deepEqual(labels, ['Added', 'Moved to Later', null, 'Given to Writer']);
+  assert.equal(eventLabel({ id: 9, kind: 'promoted' }, id => id), 'Moved to Ready by Hermes');
+  assert.equal(eventLabel({ id: 9, kind: 'scheduled' }, id => id), 'Held in Later');
+  assert.equal(eventLabel({ id: 9, kind: 'linked' }, id => id), null);
   assert.equal(decodeKanbanTaskReply({ task: task({ status: 'triage' }) }).status, 'triage');
   assert.equal(decodeKanbanAutoPlan({ orchestrator_profile: '', auto_decompose: true, resolved_default_assignee: 'default' }), true);
   assert.equal(decodeKanbanAutoPlan({}), null);
@@ -213,18 +231,19 @@ test('load names the board on every read and reports a missing plugin in one sen
   assert.equal(quiet.seen[1].query.board, 'default', 'an unknown board falls back to the current one');
 });
 
-test('new tasks are created in planning and moved straight to Later, never Ready', async () => {
-  const fake = host(call => call.method === 'POST' ? { task: task({ status: 'triage', assignee: 'writer' }) } : { task: task({ status: 'todo', assignee: 'writer' }) });
+test('new tasks are created in planning and parked in Later, never left where Hermes starts them', async () => {
+  const fake = host(call => ({ task: task({ status: call.method === 'POST' ? 'triage' : call.body.status, assignee: 'writer' }) }));
   const result = await fake.call('kanban.create', { board: 'default', title: '  Plan the launch ', body: ' Notes ', assignee: 'writer', idempotencyKey: KEY });
   assert.equal(result.ok, true);
-  assert.equal(result.value.status, 'todo');
+  assert.equal(result.value.status, 'scheduled');
   assert.deepEqual(fake.seen, [
     { method: 'POST', path: '/api/plugins/kanban/tasks', query: { board: 'default' }, body: { title: 'Plan the launch', body: 'Notes',
       assignee: 'writer', priority: 0, parents: [], triage: true, goal_mode: false, idempotency_key: KEY } },
     { method: 'PATCH', path: '/api/plugins/kanban/tasks/t_1a2b3c4d', query: { board: 'default' }, body: { status: 'todo' } },
+    { method: 'PATCH', path: '/api/plugins/kanban/tasks/t_1a2b3c4d', query: { board: 'default' }, body: { status: 'scheduled' } },
   ]);
   // Same key again after an unknown outcome: Hermes hands back the existing task; nothing moves twice.
-  const again = host(() => ({ task: task({ status: 'todo' }) }));
+  const again = host(() => ({ task: task({ status: 'scheduled' }) }));
   await again.call('kanban.create', { board: 'default', title: 'Plan', idempotencyKey: KEY });
   assert.equal(again.seen.length, 1);
   assert.equal('body' in again.seen[0].body || 'assignee' in again.seen[0].body, false);
@@ -235,14 +254,23 @@ test('new tasks are created in planning and moved straight to Later, never Ready
 });
 
 test('moves re-check the status first and send exactly one status change', async () => {
-  let status = 'todo';
+  let status = 'scheduled';
   const fake = host(call => call.method === 'GET' ? detail({ status }) : { task: task({ status: call.body.status }) });
-  const started = await fake.call('kanban.move', { board: 'default', id: 't_1a2b3c4d', from: 'todo', move: 'ready' });
+  const started = await fake.call('kanban.move', { board: 'default', id: 't_1a2b3c4d', from: 'scheduled', move: 'ready' });
   assert.equal(started.value.status, 'ready');
   assert.deepEqual(writes(fake.seen), [{ method: 'PATCH', path: '/api/plugins/kanban/tasks/t_1a2b3c4d', query: { board: 'default' }, body: { status: 'ready' } }]);
   status = 'ready';
   await fake.call('kanban.move', { board: 'default', id: 't_1a2b3c4d', from: 'ready', move: 'done', note: ' Shipped. ' });
   assert.deepEqual(writes(fake.seen)[1].body, { status: 'done', summary: 'Shipped.' });
+  // Reopening a finished task passes through todo and parks it again.
+  status = 'done';
+  const reopened = await fake.call('kanban.move', { board: 'default', id: 't_1a2b3c4d', from: 'done', move: 'later' });
+  assert.equal(reopened.value.status, 'scheduled');
+  assert.deepEqual(writes(fake.seen).slice(2).map(call => call.body), [{ status: 'todo' }, { status: 'scheduled' }]);
+  const half = host(call => { if (call.method === 'GET') return detail({ status: 'done' }); if (call.body.status === 'scheduled') throw new HttpStatusError(502); return { task: task({ status: 'todo' }) }; });
+  const partly = await half.call('kanban.move', { board: 'default', id: 't_1a2b3c4d', from: 'done', move: 'later' });
+  assert.equal(partly.code, 'unknown');
+  assert.match(partly.message, /may move to Ready on its own/u);
   // The card started running after the person looked: refuse, send nothing.
   status = 'running';
   const before = writes(fake.seen).length;

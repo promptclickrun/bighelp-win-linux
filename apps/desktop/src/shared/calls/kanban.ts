@@ -1,12 +1,15 @@
 // Kanban board calls (Hermes' bundled Kanban plugin). Boards are host-wide, so
 // nothing here names an agent profile. Moves are a finite set; Working is never
 // a target, and moving to Ready (which starts an agent) is confirmed in the UI.
-import type { KanbanBoardMeta, KanbanCard, KanbanTaskDetail } from '../../../../../packages/contracts/kanban.ts';
+import type { KanbanBoardMeta, KanbanCard, KanbanStatus, KanbanTaskDetail } from '../../../../../packages/contracts/kanban.ts';
+import type { KanbanMove } from '../../../../../packages/domain/kanban.ts';
 import { KANBAN_LIMITS, KANBAN_STATUSES, isKanbanAssignee, isKanbanBoardSlug, isKanbanTaskId } from '../../../../../packages/contracts/kanban.ts';
 import { KANBAN_MOVES } from '../../../../../packages/domain/kanban.ts';
 import { defineCall } from '../call.ts';
 import { InvalidInput, compact, fields, oneOf, optional, text, uuid } from '../validate.ts';
 
+export type KanbanCreateInput = Readonly<{ board: string; title: string; body?: string; assignee?: string | null; idempotencyKey: string }>;
+export type KanbanMoveInput = Readonly<{ board: string; id: string; from: KanbanStatus; move: KanbanMove; note?: string }>;
 export type KanbanBoardLoad = Readonly<{
   boards: readonly KanbanBoardMeta[]; board: string; cards: readonly KanbanCard[];
   assignees: readonly string[]; autoPlan: boolean | null;
@@ -28,21 +31,21 @@ function words(value: unknown, max: number, multiline: boolean): string {
 const target = (input: Record<string, unknown>) => Object.freeze({ board: slug(input.board), id: taskId(input.id) });
 
 export const KANBAN_CALLS = Object.freeze({
-  'kanban.load': defineCall<KanbanBoardLoad>()(input => {
+  'kanban.load': defineCall<KanbanBoardLoad>()((input): Readonly<{ board?: string }> => {
     const value = fields(input, [], ['board']);
     return compact({ board: optional(value.board, slug) });
   }),
   'kanban.task': defineCall<KanbanTaskDetail>()(input => target(fields(input, ['board', 'id']))),
   // Always lands in Later. The key lets a person safely press Add again after an
   // unknown outcome: Hermes returns the task it already made with this key.
-  'kanban.create': defineCall<KanbanCard>()(input => {
+  'kanban.create': defineCall<KanbanCard>()((input): KanbanCreateInput => {
     const value = fields(input, ['board', 'title', 'idempotencyKey'], ['body', 'assignee']);
     return compact({ board: slug(value.board), title: words(value.title, KANBAN_LIMITS.title, false),
       body: optional(value.body, entry => text(entry, { max: KANBAN_LIMITS.body, min: 0, multiline: true })),
       assignee: optional(value.assignee, assignee), idempotencyKey: uuid(value.idempotencyKey) });
   }),
   // `from` is the status the person saw; main refuses if Hermes now says otherwise.
-  'kanban.move': defineCall<KanbanCard>()(input => {
+  'kanban.move': defineCall<KanbanCard>()((input): KanbanMoveInput => {
     const value = fields(input, ['board', 'id', 'from', 'move'], ['note']);
     const move = oneOf(value.move, KANBAN_MOVES);
     const note = optional(value.note, entry => words(entry, KANBAN_LIMITS.note, true));

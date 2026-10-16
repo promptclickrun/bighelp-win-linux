@@ -13,7 +13,7 @@ export type KanbanBlockKind = 'dependency' | 'needs_input' | 'capability' | 'tra
 
 export type KanbanCard = Readonly<{
   id: string; title: string; status: KanbanCardStatus; assignee: string | null; priority: number;
-  blockKind: KanbanBlockKind | null; summary?: string; commentCount: number; children: number;
+  blockKind: KanbanBlockKind | null; summary?: string; commentCount: number; parents: number; children: number;
   createdAt?: number; completedAt?: number;
 }>;
 export type KanbanBoardMeta = Readonly<{ slug: string; name: string; open: number; total: number }>;
@@ -102,7 +102,7 @@ export function decodeKanbanCard(value: unknown): KanbanCard {
     id: row.id, title: display(row.title, KANBAN_LIMITS.title) ?? 'Untitled task', status, assignee: assignee(row.assignee), priority,
     blockKind: BLOCK_KINDS.find(kind => kind === row.block_kind) ?? null,
     ...optionalField('summary', display(row.latest_summary, 4000, true)),
-    commentCount: count(row.comment_count), children: count(links.children),
+    commentCount: count(row.comment_count), parents: count(links.parents), children: count(links.children),
     ...optionalField('createdAt', epoch(row.created_at)), ...optionalField('completedAt', epoch(row.completed_at)),
   });
 }
@@ -148,8 +148,8 @@ export function decodeKanbanTaskDetail(value: unknown): KanbanTaskDetail {
   const payload = bounded(value, KANBAN_LIMITS.detailBytes);
   const task = object(payload.task);
   const links = payload.links && typeof payload.links === 'object' && !Array.isArray(payload.links) ? payload.links as Record<string, unknown> : {};
-  const children = Array.isArray(links.children) ? links.children.length : 0;
-  const card = Object.freeze({ ...decodeKanbanCard(task), children });
+  const linked = (key: string) => Array.isArray(links[key]) ? (links[key] as unknown[]).length : 0;
+  const card = Object.freeze({ ...decodeKanbanCard(task), parents: linked('parents'), children: linked('children') });
   const comments = rows(payload.comments ?? [], KANBAN_LIMITS.comments).map(entry => {
     const row = object(entry);
     return Object.freeze({ id: rowId(row.id), author: display(row.author, 80) ?? 'Someone',
