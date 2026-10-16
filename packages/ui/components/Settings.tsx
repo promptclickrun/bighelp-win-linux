@@ -1,28 +1,27 @@
 // One Settings. Everyday rows never move; Hermes items appear only with Nerd Mode on.
-import type { JSX, ReactNode } from 'react';
-import { Pressable, ScrollView, View } from 'react-native-web';
+// The open page itself is SettingsPage.tsx.
+import type { JSX } from 'react';
+import { Pressable, View } from 'react-native-web';
 import { EVERYDAY_SETTINGS, NERD_SETTINGS } from '../../domain/shell.ts';
-import type { Appearance, SettingsSection } from '../../domain/shell.ts';
+import type { SettingsSection } from '../../domain/shell.ts';
 import type { GlyphName } from '../glyphs.ts';
 import { useTheme } from '../theme.tsx';
-import type { HostView } from '../view-model.ts';
-import { Icon, Label, Notice, PageHead, Tag, hoverFill } from './primitives.tsx';
+import { Icon, Label, Tag, hoverFill } from './primitives.tsx';
 
 export const SECTION_INFO: Readonly<Record<SettingsSection, readonly [GlyphName, string, string]>> = Object.freeze({
-  you: ['user', 'You', 'Your name and picture'],
-  assistants: ['agents', 'Assistants', 'Default model, providers, personalities'],
-  appearance: ['palette', 'Appearance', 'Light, dark, or follow the system'],
-  chat: ['chat', 'Chat', 'When bighelp opens, replies, reactions'],
-  voice: ['mic', 'Voice', 'Dictation and spoken replies'],
+  you: ['user', 'You', 'Your name'],
+  assistants: ['agents', 'Assistants', 'The model new chats start with'],
+  appearance: ['palette', 'Appearance', 'Light, dark and text size'],
+  chat: ['chat', 'Chat', 'Replies, sending and reactions'],
   notifications: ['bell', 'Notifications', 'Alerts while bighelp runs'],
   hosts: ['host', 'Hosts', 'Your computers'],
-  permissions: ['shield', 'Permissions', 'What agents may use on this computer'],
-  help: ['question', 'Help & feedback', 'Version, guides, report a problem'],
-  system: ['refresh', 'System', 'Update Hermes, restart the gateway, plugin version'],
-  hermesTools: ['tool', 'Hermes tools', "Search this computer's tools"],
+  permissions: ['shield', 'Permissions', 'What bighelp and your agents can use'],
+  help: ['question', 'Help & feedback', 'Versions, guides and bug reports'],
+  system: ['refresh', 'System', 'Hermes version, gateway and plugin features'],
+  hermesTools: ['tool', 'Hermes tools', 'Toolsets and skills on your computer'],
 });
 const GROUPS: readonly (readonly SettingsSection[])[] = Object.freeze([
-  ['you', 'assistants'], ['appearance', 'chat', 'voice', 'notifications'], ['hosts', 'permissions', 'help'],
+  ['you', 'assistants'], ['appearance', 'chat', 'notifications'], ['hosts', 'permissions', 'help'],
 ]);
 
 function Row(props: Readonly<{ section: SettingsSection; first: boolean; onOpen: (section: SettingsSection) => void }>): JSX.Element {
@@ -117,52 +116,6 @@ export function SettingsSectionList(props: Readonly<{ nerdMode: boolean; active:
           {NERD_SETTINGS.map(item)}
         </View>
       ) : null}
-    </View>
-  );
-}
-
-function AppearancePage(props: Readonly<{ value: Appearance; onChange: (value: Appearance) => void }>): JSX.Element {
-  const { palette } = useTheme();
-  const options: readonly (readonly [Appearance, string, string])[] = [
-    ['automatic', 'Automatic', 'Follow this computer'], ['light', 'Light', 'Cream page'], ['dark', 'Dark', 'Graphite page'],
-  ];
-  return (
-    <View style={{ width: '100%', maxWidth: 620, alignSelf: 'center', padding: 20, gap: 10 }}>
-      <Label nativeID="appearance-label" weight="600">Look</Label>
-      <View role="radiogroup" aria-labelledby="appearance-label" style={{ backgroundColor: palette.card, borderWidth: 1,
-        borderColor: palette.line, borderRadius: 14, overflow: 'hidden' }}>
-        {options.map(([value, title, detail], index) => (
-          <Pressable key={value} role="radio" aria-checked={props.value === value} aria-label={title}
-            onPress={() => props.onChange(value)}
-            style={({ hovered }) => [{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10,
-              paddingHorizontal: 14, cursor: 'pointer', borderTopWidth: index === 0 ? 0 : 1, borderTopColor: palette.line },
-            hoverFill(palette, hovered)]}>
-            <View style={{ flex: 1 }}>
-              <Label weight="600">{title}</Label>
-              <Label size={12} tone="muted">{detail}</Label>
-            </View>
-            {props.value === value ? <Icon name="check" color={palette.action} /> : null}
-          </Pressable>
-        ))}
-      </View>
-      <Label size={12} tone="muted">Stays on this computer only. Bubble and page colors come later.</Label>
-    </View>
-  );
-}
-
-export function SettingsPage(props: Readonly<{ section: SettingsSection; appearance: Appearance; host: HostView | null;
-  hostContent?: ReactNode; onAppearance: (value: Appearance) => void; onBack: () => void }>): JSX.Element {
-  const title = SECTION_INFO[props.section][1];
-  let body: JSX.Element;
-  if (props.section === 'appearance') body = <AppearancePage value={props.appearance} onChange={props.onAppearance} />;
-  else if (props.section === 'hosts') {
-    body = props.hostContent ? <>{props.hostContent}</> : <Notice title={props.host ? props.host.label : 'No computer connected'}
-      body={props.host ? 'This is sample data, not a real computer.' : 'Adding a computer comes with sign-in, the next build step.'} />;
-  } else body = <Notice title="Not built yet" body="This Settings page comes in a later step of the desktop build." />;
-  return (
-    <View style={{ flex: 1, minWidth: 0 }}>
-      <PageHead title={title} onBack={props.onBack} backLabel="Back to Settings" />
-      <ScrollView style={{ flex: 1 }}>{body}</ScrollView>
     </View>
   );
 }

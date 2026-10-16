@@ -94,7 +94,8 @@ try {
   check('renderer has no Node require/process/module', await evaluate(
     "typeof require === 'undefined' && typeof process === 'undefined' && typeof module === 'undefined'"));
   const info = await evaluate('JSON.stringify(window.bighelpShell)');
-  check('preload exposes only {platform, fixturePreview}', /^\{"platform":"(windows|linux|other)","fixturePreview":(true|false)\}$/u.test(info ?? ''), info);
+  check('preload exposes only {platform, fixturePreview, appVersion, system}',
+    /^\{"platform":"(windows|linux|other)","fixturePreview":(true|false),"appVersion":"[\x20-\x21\x23-\x5b\x5d-\x7e]*","system":"[\x20-\x21\x23-\x5b\x5d-\x7e]*"\}$/u.test(info ?? ''), info);
   check('preload object is frozen', await evaluate('Object.isFrozen(window.bighelpShell)'));
   check('no electron/ipc globals', await evaluate("!('ipcRenderer' in window) && !('electron' in window)"));
   check('desktop bridge exposes only finite operations', await evaluate(

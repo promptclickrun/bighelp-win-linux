@@ -13,8 +13,8 @@ document.documentElement.dataset.platform = info.platform;
 if (info.fixturePreview) document.title = 'bighelp (sample data)';
 const root = createRoot(host);
 if (__BIGHELP_FIXTURES__ && info.fixturePreview) {
-  void import('../../../../packages/ui/fixtures.ts').then(({ SAMPLE_DATA }) => root.render(<App data={SAMPLE_DATA} platform={info.platform} />));
+  void import('../../../../packages/ui/fixtures.ts').then(({ SAMPLE_DATA }) => root.render(<App data={SAMPLE_DATA} platform={info.platform} shell={info} />));
 } else {
   const api = (globalThis as { bighelpDesktop?: DesktopApi }).bighelpDesktop;
-  root.render(api ? <ConnectedApp api={api} platform={info.platform} /> : <App data={EMPTY_DATA} platform={info.platform} />);
+  root.render(api ? <ConnectedApp api={api} platform={info.platform} shell={info} /> : <App data={EMPTY_DATA} platform={info.platform} shell={info} />);
 }

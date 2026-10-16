@@ -12,8 +12,9 @@ export const AGENT_TABS = Object.freeze(['chat', 'feed', 'ideas', 'goals', 'file
 export type AgentTab = typeof AGENT_TABS[number];
 
 // Everyday rows never move. Hermes host administration exists only in Nerd Mode.
+// Voice is not part of the beta, so it has no row rather than a placeholder.
 export const EVERYDAY_SETTINGS = Object.freeze([
-  'you', 'assistants', 'appearance', 'chat', 'voice', 'notifications', 'hosts', 'permissions', 'help',
+  'you', 'assistants', 'appearance', 'chat', 'notifications', 'hosts', 'permissions', 'help',
 ] as const);
 export const NERD_SETTINGS = Object.freeze(['system', 'hermesTools'] as const);
 export type SettingsSection = typeof EVERYDAY_SETTINGS[number] | typeof NERD_SETTINGS[number];

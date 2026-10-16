@@ -3,7 +3,10 @@ import { createShellInfo } from '../shared/shell-info.ts';
 import { CALL_CHANNEL, COMMAND_CHANNEL, DESKTOP_CHANNEL, SHELL_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
 import { isAppCommand } from '../shared/links.ts';
 import type { DesktopAction, DesktopApi, DesktopResult, DesktopSnapshot } from '../shared/desktop-api.ts';
-contextBridge.exposeInMainWorld('bighelpShell', createShellInfo(process.argv, process.platform));
+// Set by scripts/desktop/build.mjs from package.json at build time.
+declare const __BIGHELP_VERSION__: string;
+contextBridge.exposeInMainWorld('bighelpShell', createShellInfo(process.argv, process.platform,
+  { appVersion: __BIGHELP_VERSION__, systemVersion: process.getSystemVersion(), arch: process.arch }));
 
 const invoke = (action: DesktopAction): Promise<DesktopResult> => ipcRenderer.invoke(DESKTOP_CHANNEL, action);
 const api: DesktopApi = Object.freeze({
