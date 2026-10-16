@@ -237,12 +237,12 @@ export function decodeWorkspaceBoard(value: unknown, profile: string, tab: Works
 // The verified identity is trusted main-process input from /api/auth/me or the
 // dashboard-session sign-in. Plugin context can confirm it, never create it.
 export function decodeWorkspaceContext(value: unknown, identity: WorkspaceIdentity, etag: unknown,
-  cacheControl: unknown): Readonly<{ etag: string; runtimeId: string; board: boolean }> {
+  cacheControl: unknown): Readonly<{ etag: string; runtimeId: string; board: boolean; pluginVersion: string; features: readonly string[] }> {
   const tag = workspaceETag(etag), payload = bounded(value, 16384);
   if (typeof cacheControl !== 'string' || cacheControl.length > 1024
     || !cacheControl.split(',').some(part => part.trim().toLowerCase() === 'no-store')) return invalid();
   if (payload.schemaVersion !== 1) return invalid();
-  identifier(payload.pluginVersion, 128); const runtimeId = identifier(payload.runtimeId, 256);
+  const pluginVersion = identifier(payload.pluginVersion, 128); const runtimeId = identifier(payload.runtimeId, 256);
   if (identity.kind === 'dashboard') { if (payload.principal !== null) return invalid(); }
   else {
     const principal = object(payload.principal);
@@ -254,5 +254,6 @@ export function decodeWorkspaceContext(value: unknown, identity: WorkspaceIdenti
     workspaceProfile(payload.servingProfileId);
     if (!features.includes('serving-profile-v1')) return invalid();
   }
-  return Object.freeze({ etag: tag, runtimeId, board: features.includes('native-agent-board-v1') });
+  return Object.freeze({ etag: tag, runtimeId, board: features.includes('native-agent-board-v1'), pluginVersion,
+    features: Object.freeze([...features]) });
 }

@@ -7,19 +7,49 @@ export type HttpOperation =
   | Readonly<{ kind: 'workspaceScheduled'; profile: string }>
   | Readonly<{ kind: 'canonicalSessionDetail'; profile: string; storedSessionId: string }>
   | Readonly<{ kind: 'workspaceBoard'; agentId: string; etag: string; requestId: string }>
-  | Readonly<{ kind: 'templateList'; agentId: string; etag: string; requestId: string }>;
-export type HttpResult = Readonly<{ body: unknown; etag?: string; requestId?: string; cacheControl?: string }>;
-// Status only: never preserve a transport error, URL, response body or headers.
+  | Readonly<{ kind: 'templateList'; agentId: string; etag: string; requestId: string }>
+  | RouteOperation;
+export type RouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+// A fixed host route assembled by a main-process feature client from validated
+// segments. Never built from renderer text; never an auth/gateway/secret route.
+export type RouteOperation = Readonly<{
+  kind: 'route'; method: RouteMethod; path: string; query?: Readonly<Record<string, string>>;
+  body?: string; maxBytes: number; native?: Readonly<{ etag: string; requestId: string }>;
+}>;
+export type HttpResult = Readonly<{ body: unknown; status?: number; etag?: string; requestId?: string; cacheControl?: string }>;
+// Status plus, at most, one short plain-text host explanation. Never a transport
+// error, URL, headers or raw body.
 export class HttpStatusError extends Error {
   readonly status: number;
-  constructor(status: number) {
+  readonly detail: string;
+  constructor(status: number, detail = '') {
     super('Host request refused');
     if (!Number.isInteger(status) || status < 100 || status > 599) throw new TypeError('Invalid HTTP status');
-    this.name = 'HttpStatusError'; this.status = status;
+    this.name = 'HttpStatusError'; this.status = status; this.detail = safeDetail(detail);
   }
 }
+// Host validation messages help people fix input ("Invalid cron expression").
+// Keep a bounded single line; drop anything that looks like markup.
+export function safeDetail(value: unknown): string {
+  if (typeof value !== 'string' || !value.isWellFormed() || /[<>]/u.test(value)) return '';
+  const line = value.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]+/gu, ' ').replace(/\s+/gu, ' ').trim();
+  return line.length > 300 ? `${line.slice(0, 297)}...` : line;
+}
+function errorDetail(body: unknown): string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+  const fields = body as Record<string, unknown>;
+  for (const key of ['detail', 'error', 'message']) {
+    const value = fields[key];
+    if (typeof value === 'string') return safeDetail(value);
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const nested = (value as Record<string, unknown>).message;
+      if (typeof nested === 'string') return safeDetail(nested);
+    }
+  }
+  return '';
+}
 export type HttpPlan = Readonly<{
-  url: string; method: 'GET' | 'POST'; headers: Readonly<Record<string, string>>;
+  url: string; method: RouteMethod; headers: Readonly<Record<string, string>>;
   body?: string; redirect: 'error'; credentials: 'omit'; maxResponseBytes: number;
 }>;
 export type SocketPlan = Readonly<{
@@ -151,9 +181,64 @@ function proxyHeaders(value: unknown, endpoint: Endpoint, auth: Authentication):
   return Object.freeze(headers);
 }
 
+const ROUTE_METHODS: readonly RouteMethod[] = Object.freeze(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+// Credential flows, gateway lifecycle, raw configuration and environment secrets
+// have dedicated reviewed paths or are out of scope for feature clients.
+const DENIED_ROUTES = /^\/api\/(?:auth|gateway|env|ops|hermes\/update)(?:\/|$)|^\/api\/config\/raw(?:\/|$)|^\/api\/ws(?:\/|$)/u;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const NATIVE_ETAG = /^"sha256:[0-9a-f]{64}"$/u;
+function routePath(value: unknown): string {
+  const path = text(value, 2048);
+  if (!/^\/api(?:\/(?:[A-Za-z0-9_.~:@-]|%[0-9A-F]{2})+)+$/u.test(path) || DENIED_ROUTES.test(path)) throw new TypeError('Invalid route');
+  for (const segment of path.split('/').slice(1)) {
+    let decoded: string;
+    try { decoded = decodeURIComponent(segment); } catch { throw new TypeError('Invalid route'); }
+    if (decoded === '.' || decoded === '..' || /[/\\\x00-\x1f\x7f]/u.test(decoded)) throw new TypeError('Invalid route');
+  }
+  return path;
+}
+function parseRoute(input: Record<string, unknown>): RouteOperation {
+  exactKeys(input, ['kind', 'method', 'path', 'query', 'body', 'maxBytes', 'native']);
+  const method = input.method;
+  if (typeof method !== 'string' || !ROUTE_METHODS.includes(method as RouteMethod)) throw new TypeError('Invalid method');
+  const path = routePath(input.path);
+  const maxBytes = input.maxBytes;
+  if (typeof maxBytes !== 'number' || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 4 * 1024 * 1024 - 256) throw new TypeError('Invalid response bound');
+  let query: Readonly<Record<string, string>> | undefined;
+  if (input.query !== undefined) {
+    const entries = Object.entries(record(input.query));
+    if (entries.length > 16) throw new TypeError('Invalid query');
+    const copied: Record<string, string> = Object.create(null);
+    for (const [key, entry] of entries) {
+      if (!/^[a-z][a-z0-9_]{0,63}$/u.test(key) || typeof entry !== 'string' || entry.length > 1024
+        || !entry.isWellFormed() || /[\x00-\x1f\x7f]/u.test(entry)) throw new TypeError('Invalid query');
+      copied[key] = entry;
+    }
+    query = Object.freeze(copied);
+  }
+  let body: string | undefined;
+  if (input.body !== undefined) {
+    if (method === 'GET' || typeof input.body !== 'string' || input.body.length > 1024 * 1024 || !input.body.isWellFormed()) throw new TypeError('Invalid body');
+    const parsed: unknown = JSON.parse(input.body);
+    if (!parsed || typeof parsed !== 'object') throw new TypeError('Invalid body');
+    body = input.body;
+  }
+  let native: RouteOperation['native'];
+  if (input.native !== undefined) {
+    const correlation = record(input.native);
+    exactKeys(correlation, ['etag', 'requestId']);
+    const etag = text(correlation.etag, 73), requestId = text(correlation.requestId, 36);
+    if (!NATIVE_ETAG.test(etag) || !UUID.test(requestId) || !path.startsWith('/api/plugins/loopdy/')) throw new TypeError('Invalid native preconditions');
+    native = Object.freeze({ etag, requestId });
+  }
+  return Object.freeze({ kind: 'route', method: method as RouteMethod, path, maxBytes,
+    ...(query === undefined ? {} : { query }), ...(body === undefined ? {} : { body }), ...(native === undefined ? {} : { native }) });
+}
+
 export function parseHttpOperation(value: unknown): HttpOperation {
   const input = record(value);
   switch (input.kind) {
+    case 'route': return parseRoute(input);
     case 'status': case 'providers': case 'identity': case 'health': case 'nativeContext':
       exactKeys(input, ['kind']);
       return Object.freeze({ kind: input.kind });
@@ -194,7 +279,7 @@ function checkResponse(value: unknown, plan: HttpPlan): Record<string, unknown> 
   if (response.redirected !== false || response.url !== plan.url) throw new Error('Redirect or destination mismatch');
   if (typeof response.status !== 'number' || !Number.isInteger(response.status)
       || response.status < 100 || response.status > 599) throw new Error('Host request failed');
-  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status);
+  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status, errorDetail(response.body));
   return response;
 }
 
@@ -211,7 +296,7 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
   function current(signal: AbortSignal): void {
     if (signal.aborted || !adapters.isCurrent()) throw new Error('Transport cancelled or stale');
   }
-  function plan(path: string, method: 'GET' | 'POST', headers: Readonly<Record<string, string>>,
+  function plan(path: string, method: RouteMethod, headers: Readonly<Record<string, string>>,
     maxResponseBytes: number, body?: string): HttpPlan {
     return Object.freeze({ url: endpoint.origin + path, method, headers, maxResponseBytes,
       redirect: 'error', credentials: 'omit', ...(body === undefined ? {} : { body }) });
@@ -224,7 +309,7 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       return checkResponse(response, request);
     } catch (error) {
       // Never return the adapter's URL/header-bearing exception or cause.
-      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status);
+      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status, error.detail);
       throw new Error('Host request failed or retired');
     }
   }
@@ -232,6 +317,14 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
     const operation = parseHttpOperation(value);
     let prepared: HttpPlan;
     switch (operation.kind) {
+      case 'route': {
+        const search = operation.query ? new URLSearchParams(Object.entries(operation.query)).toString() : '';
+        const headers: Record<string, string> = { ...authenticated };
+        if (operation.body !== undefined) headers['Content-Type'] = 'application/json';
+        if (operation.native) { headers['If-Match'] = operation.native.etag; headers['X-Loopdy-Request-ID'] = operation.native.requestId; }
+        prepared = plan(operation.path + (search ? `?${search}` : ''), operation.method, Object.freeze(headers), operation.maxBytes, operation.body);
+        break;
+      }
       case 'status': prepared = plan('/api/status', 'GET', authenticated, 65536); break;
       case 'providers': prepared = plan('/api/auth/providers', 'GET', authenticated, 65536); break;
       case 'identity': prepared = plan('/api/auth/me', 'GET', authenticated, 65536); break;
@@ -258,6 +351,15 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
     }
     const response = await send(prepared, signal);
     current(signal);
+    if (operation.kind === 'route') {
+      if (operation.native) {
+        const headers = record(response.headers ?? {});
+        if (headers['x-loopdy-request-id'] !== operation.native.requestId) throw new Error('Native response correlation mismatch');
+        const etag = typeof headers.etag === 'string' && NATIVE_ETAG.test(headers.etag) ? headers.etag : undefined;
+        return Object.freeze({ body: response.body, status: response.status as number, requestId: operation.native.requestId, ...(etag ? { etag } : {}) });
+      }
+      return Object.freeze({ body: response.body, status: response.status as number });
+    }
     if (operation.kind === 'nativeContext' || operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
       const headers = record(response.headers);
       const etag = text(headers.etag, 73);

@@ -10,7 +10,7 @@ import { createProtectedRepository } from '../../../../packages/platform/protect
 import { connectGateway } from '../../../../packages/hermes-client/gateway.ts';
 import { connectSocket } from '../../../../packages/platform/socket-transport.ts';
 import { createDesktopService } from './desktop-service.ts';
-import { DESKTOP_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
+import { CALL_CHANNEL, DESKTOP_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
 
 // Must run before the app is ready.
 protocol.registerSchemesAsPrivileged([{
@@ -100,11 +100,18 @@ app.whenReady().then(async () => {
       for (const window of BrowserWindow.getAllWindows()) if (!window.webContents.isDestroyed()) window.webContents.send(SNAPSHOT_CHANNEL, snapshot);
     },
   });
-  ipcMain.handle(DESKTOP_CHANNEL, async (event, action: unknown) => {
+  const trusted = (event: Electron.IpcMainInvokeEvent) => {
     const frame = event.senderFrame;
-    if (!desktop || !frame || frame !== event.sender.mainFrame || frame.url !== `${APP_ORIGIN}/index.html`
-      || !BrowserWindow.fromWebContents(event.sender) || fixturePreview) return { ok: false, message: 'Desktop operation unavailable' };
+    return !!desktop && !!frame && frame === event.sender.mainFrame && frame.url === `${APP_ORIGIN}/index.html`
+      && !!BrowserWindow.fromWebContents(event.sender) && !fixturePreview;
+  };
+  ipcMain.handle(DESKTOP_CHANNEL, async (event, action: unknown) => {
+    if (!trusted(event) || !desktop) return { ok: false, message: 'Desktop operation unavailable' };
     return desktop.handle(action);
+  });
+  ipcMain.handle(CALL_CHANNEL, async (event, action: unknown) => {
+    if (!trusted(event) || !desktop) return { ok: false, code: 'unavailable', message: 'Desktop operation unavailable' };
+    return desktop.call(action);
   });
   createWindow();
   void desktop.initialize();

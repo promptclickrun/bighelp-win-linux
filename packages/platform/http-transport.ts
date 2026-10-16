@@ -44,7 +44,14 @@ export async function boundedHttp(plan: HttpPlan, signal: AbortSignal): Promise<
     if (controller.signal.aborted) throw new Error();
     const bytes = new Uint8Array(size); let offset = 0;
     for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-    const body = parseJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    // Success bodies must be strict JSON (or empty, e.g. 204). Error pages may be
+    // anything; their status still matters, their raw content never leaves here.
+    const ok = response.status >= 200 && response.status < 300;
+    let body: unknown = null;
+    try {
+      const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      if (text.trim()) body = parseJson(text);
+    } catch (error) { if (ok) throw error; body = null; }
     const headers: Record<string, string> = {};
     for (const key of ['etag', 'x-loopdy-request-id']) {
       const value = response.headers.get(key);

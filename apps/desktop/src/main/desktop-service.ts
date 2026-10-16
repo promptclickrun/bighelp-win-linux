@@ -21,6 +21,12 @@ import { EMPTY_DATA } from '../../../../packages/ui/view-model.ts';
 import type { ViewData, ChatView, TranscriptItem } from '../../../../packages/ui/view-model.ts';
 import { parseDesktopAction } from '../shared/desktop-api.ts';
 import type { DesktopAction, DesktopSnapshot, DesktopResult, DesktopWorkspace, HostInput } from '../shared/desktop-api.ts';
+import type { CallInput, CallName, CallOutput } from '../shared/calls/index.ts';
+import type { CallFailure } from '../shared/call.ts';
+import { HANDLERS } from './calls/index.ts';
+import type { CallHandler } from './calls/index.ts';
+import { CallError, callFailure } from './calls/context.ts';
+import type { CallContext } from './calls/context.ts';
 
 type Repository = Readonly<{ read(key: string): Promise<ProtectedValue | null>;
   write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue> }>;
@@ -74,7 +80,7 @@ export function createDesktopService(adapters: Readonly<{
   const canSend = () => status === 'connected' && !!owner && !!gateway?.exclusiveSubmit && !!adapters.repository
     && reconciled && !running && !sending && !navigating;
   function snapshot(): DesktopSnapshot {
-    return structuredClone({ generation, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend(), notice,
+    return structuredClone({ generation, connection: hostGeneration, revision: ++snapshotRevision, status, data, selectedChatId, running, canSend: canSend(), notice,
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace });
   }
   const publish = () => adapters.onChange(snapshot());
@@ -275,6 +281,15 @@ export function createDesktopService(adapters: Readonly<{
       await refresh();
     } catch { if (!shuttingDown && current === hostGeneration) { retire(); notice = 'Could not connect. Check the address, sign-in token, and secure storage.'; publish(); } else connection.close(); throw Error('Unable to connect'); }
   }
+  async function reloadProfiles() {
+    const connection = gateway, current = hostGeneration;
+    if (!connection || status !== 'connected') throw Error('Not connected');
+    const profiles = decodeProfiles(await connection.operation({ kind: 'profilesList' }));
+    if (shuttingDown || current !== hostGeneration || connection !== gateway) return;
+    const colors = new Map(data.agents.map(agent => [agent.id, agent.color]));
+    data = { ...data, agents: profiles.map(row => ({ ...row, color: colors.get(row.id) ?? '#D27B5B' })) };
+    await refresh();
+  }
   async function refresh() {
     const connection = gateway, current = hostGeneration;
     if (!connection || status !== 'connected') throw Error('Not connected');
@@ -349,6 +364,7 @@ export function createDesktopService(adapters: Readonly<{
   }
   async function act(action: DesktopAction) {
     if (shuttingDown) throw Error('Application is closing');
+    if (action.kind === 'call') throw Error('Feature calls use their own channel');
     if (action.kind === 'snapshot') return;
     if (action.kind === 'connect') { await connect(action.host); return; }
     if (action.kind === 'disconnect') { retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
@@ -458,7 +474,51 @@ export function createDesktopService(adapters: Readonly<{
       throw error;
     } finally { if (owner === captured) { sending = false; publish(); } }
   }
+  async function runCall<K extends CallName>(name: K, input: CallInput<K>, context: CallContext): Promise<CallOutput<K>> {
+    return (HANDLERS[name] as CallHandler<K>).run(context, input);
+  }
   return Object.freeze({ snapshot,
+    // Finite feature calls. Results are validated DTOs for the caller only.
+    async call(value: unknown): Promise<Readonly<{ ok: true; value: unknown }> | CallFailure> {
+      let action: DesktopAction;
+      try { action = parseDesktopAction(value); } catch { return { ok: false, code: 'invalid', message: 'Check the details and try again.' }; }
+      if (action.kind !== 'call') return { ok: false, code: 'invalid', message: 'Check the details and try again.' };
+      const connection = gateway, current = hostGeneration, verified = identity;
+      if (shuttingDown || action.connection !== current || status !== 'connected' || !connection || !verified) {
+        return { ok: false, code: 'stale', message: 'Connect to your computer first.' };
+      }
+      const isCurrent = () => !shuttingDown && current === hostGeneration && connection === gateway && status === 'connected';
+      const context: CallContext = Object.freeze({
+        rpc: (method: string, params: JsonObject, options?: Parameters<Gateway['call']>[2]) => {
+          if (!isCurrent()) return Promise.reject(Error('Host changed'));
+          return connection.call(method, params, options);
+        },
+        http: (route: Parameters<CallContext['http']>[0]) => {
+          if (!isCurrent()) return Promise.reject(Error('Host changed'));
+          return connection.requestHttp({ kind: 'route', ...route });
+        },
+        nativeContext: () => {
+          if (!isCurrent()) return Promise.reject(Error('Host changed'));
+          return connection.requestHttp({ kind: 'nativeContext' });
+        },
+        identity: verified,
+        requireProfile: (profile: string) => {
+          if (!data.agents.some(agent => agent.id === profile)) throw new CallError('stale', 'That agent is no longer on your computer.');
+          return profile;
+        },
+        openChat: () => owner && selectedChatId === owner.storedSessionId
+          ? Object.freeze({ profile: owner.profileId, storedSessionId: owner.storedSessionId, runtimeId: owner.runtimeId }) : null,
+        isCurrent,
+        refreshCatalog: async () => { if (isCurrent()) await reloadProfiles(); },
+        requestId: () => randomUUID(),
+      });
+      const mutation = HANDLERS[action.name].mutation;
+      try {
+        const result = await runCall(action.name, action.input as CallInput<typeof action.name>, context);
+        if (!isCurrent()) return { ok: false, code: mutation ? 'unknown' : 'stale', message: mutation ? 'The connection changed. Check whether this finished before trying again.' : 'The connection changed. Try again.' };
+        return { ok: true, value: structuredClone(result) };
+      } catch (error) { return callFailure(error, mutation); }
+    },
     async initialize(): Promise<void> {
       if (!adapters.repository || shuttingDown) return;
       const current = hostGeneration;

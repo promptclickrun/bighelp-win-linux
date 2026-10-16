@@ -1,6 +1,8 @@
 import type { ViewData } from '../../../../packages/ui/view-model.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
 import type { WorkspaceBoard, WorkspaceDays, WorkspaceProjects, WorkspaceScheduled, WorkspaceUsage } from '../../../../packages/contracts/workspace.ts';
+import { CALLS, isCallName } from './calls/index.ts';
+import type { CallInput, CallName, CallResult } from './calls/index.ts';
 
 export type WorkspacePage = 'projects' | 'usage' | 'scheduled' | 'feed' | 'ideas' | 'goals';
 export type DesktopWorkspace = Readonly<{ profile: string }> & (
@@ -14,7 +16,8 @@ export type HostInput = Readonly<{
   label: string; endpoint: string; authentication: 'dashboard' | 'provider'; token: string; allowPrivateHttp: boolean;
 }>;
 export type DesktopSnapshot = Readonly<{
-  generation: number; revision: number; status: 'disconnected' | 'connecting' | 'connected';
+  // generation retires chat selections; connection retires the whole host lease.
+  generation: number; connection: number; revision: number; status: 'disconnected' | 'connecting' | 'connected';
   data: ViewData; selectedChatId: string | null; running: boolean; canSend: boolean;
   notice: string; storageAvailable: boolean;
   prompts: readonly Readonly<{ id: string; prompt: InteractivePrompt }>[];
@@ -35,7 +38,8 @@ export type DesktopAction =
   | Readonly<{ kind: 'interrupt'; generation: number; chatId: string }>
   | Readonly<{ kind: 'answer'; generation: number; promptId: string; answer: unknown }>
   | Readonly<{ kind: 'draft'; generation: number; chatId: string; text: string }>
-  | Readonly<{ kind: 'workspace'; generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays }>;
+  | Readonly<{ kind: 'workspace'; generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays }>
+  | { [K in CallName]: Readonly<{ kind: 'call'; connection: number; name: K; input: CallInput<K> }> }[CallName];
 
 export type DesktopApi = Readonly<{
   snapshot(): Promise<DesktopResult>;
@@ -51,10 +55,12 @@ export type DesktopApi = Readonly<{
   answer(generation: number, promptId: string, answer: unknown): Promise<DesktopResult>;
   draft(generation: number, chatId: string, text: string): Promise<DesktopResult>;
   workspace(generation: number, profile: string, page: WorkspacePage, days: WorkspaceDays): Promise<DesktopResult>;
+  call<K extends CallName>(connection: number, name: K, input: CallInput<K>): Promise<CallResult<K>>;
   subscribe(listener: (snapshot: DesktopSnapshot) => void): () => void;
 }>;
 
 export const DESKTOP_CHANNEL = 'bighelp:desktop';
+export const CALL_CHANNEL = 'bighelp:call';
 export const SNAPSHOT_CHANNEL = 'bighelp:snapshot';
 
 function object(value: unknown): Record<string, unknown> {
@@ -90,6 +96,16 @@ export function parseDesktopAction(value: unknown): DesktopAction {
     }
     return { kind, host: { label: text(host.label, 100), endpoint: text(host.endpoint, 2048),
       authentication: host.authentication, token: text(host.token, 8192), allowPrivateHttp: host.allowPrivateHttp } };
+  }
+  if (kind === 'call') {
+    keys(input, ['kind', 'connection', 'name', 'input']);
+    const name = input.name;
+    if (typeof input.connection !== 'number' || !Number.isSafeInteger(input.connection) || input.connection < 0 || !isCallName(name)) {
+      throw new TypeError('Invalid call');
+    }
+    // The feature's own strict parser; failures never reach a handler.
+    const parsed: unknown = CALLS[name].parse(input.input);
+    return { kind, connection: input.connection, name, input: parsed } as DesktopAction;
   }
   if (typeof input.generation !== 'number' || !Number.isSafeInteger(input.generation) || input.generation < 0) {
     throw new TypeError('Invalid generation');

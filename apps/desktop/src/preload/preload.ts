@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { createShellInfo } from '../shared/shell-info.ts';
-import { DESKTOP_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
+import { CALL_CHANNEL, DESKTOP_CHANNEL, SNAPSHOT_CHANNEL } from '../shared/desktop-api.ts';
 import type { DesktopAction, DesktopApi, DesktopResult, DesktopSnapshot } from '../shared/desktop-api.ts';
 contextBridge.exposeInMainWorld('bighelpShell', createShellInfo(process.argv, process.platform));
 
@@ -19,6 +19,7 @@ const api: DesktopApi = Object.freeze({
   answer: (generation, promptId, answer) => invoke({ kind: 'answer', generation, promptId, answer }),
   draft: (generation, chatId, text) => invoke({ kind: 'draft', generation, chatId, text }),
   workspace: (generation, profile, page, days) => invoke({ kind: 'workspace', generation, profile, page, days }),
+  call: (connection, name, input) => ipcRenderer.invoke(CALL_CHANNEL, { kind: 'call', connection, name, input }),
   subscribe: listener => {
     if (typeof listener !== 'function') throw new TypeError('Invalid listener');
     const receive = (_event: Electron.IpcRendererEvent, snapshot: DesktopSnapshot) => listener(snapshot);
