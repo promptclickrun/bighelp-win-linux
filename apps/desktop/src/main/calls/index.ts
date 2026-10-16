@@ -2,6 +2,7 @@
 // The mapped type makes a missing or mistyped handler a compile error.
 import type { CallInput, CallName, CallOutput } from '../../shared/calls/index.ts';
 import type { CallContext } from './context.ts';
+import { AGENT_HANDLERS } from './agents.ts';
 import { HOST_HANDLERS } from './host.ts';
 import { CHAT_HANDLERS } from './chat.ts';
 
@@ -16,4 +17,5 @@ export type CallHandlers = { readonly [K in CallName]: CallHandler<K> };
 export const HANDLERS: CallHandlers = Object.freeze({
   ...HOST_HANDLERS,
   ...CHAT_HANDLERS,
+  ...AGENT_HANDLERS,
 });
