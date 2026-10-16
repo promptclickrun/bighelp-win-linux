@@ -49,3 +49,24 @@ test('generation fence retires late events and server requests',async()=>{
  socket:async(_p,_s,receive)=>{frame=receive;receive(event('gateway.ready'));return {close(){},send(text){const m=JSON.parse(text);queueMicrotask(()=>receive(JSON.stringify({jsonrpc:'2.0',id:m.id,result:m.method==='gateway.capabilities'?{per_session_exclusive_submit:true}:{}})));}};}});
  current=false;frame(JSON.stringify({jsonrpc:'2.0',id:'late',method:'approval',params:{}}));assert.equal(calls,0);await assert.rejects(gateway.operation({kind:'profilesList'}));
 });
+test('fresh connection restores unanswered approval and clarify through live lifecycle once',async()=>{
+ const restored=[{id:'approval-replay',method:'approval',params:{session_id:'live',request_id:'decision',choices:['deny']}},{id:'clarify-replay',method:'clarify',params:{session_id:'live',question:'Which?'}}];
+ const handlers=[];const f=await fixture(true,async(request,signal)=>{handlers.push({request,signal});return await new Promise(()=>{});});
+ try{
+ f.gateway.restoreRequests(restored,'live');assert.deepEqual(handlers.map(x=>x.request.method),['approval','clarify']);
+ f.gateway.restoreRequests(restored,'live');assert.equal(handlers.length,2);
+ f.frame(JSON.stringify({jsonrpc:'2.0',...restored[0]}));assert.equal(handlers.length,2);
+ f.frame(event('request.cancel',{id:'approval-replay',method:'clarify',reason:'withdraw'}));assert.equal(handlers[0].signal.aborted,false);
+ f.frame(event('request.cancel',{id:'approval-replay',method:'approval',reason:'withdraw'}));assert.equal(handlers[0].signal.aborted,true);
+ f.gateway.restoreRequests(restored,'live');assert.equal(handlers.length,2);
+ }finally{f.gateway.close();}assert.equal(handlers[1].signal.aborted,true);
+});
+test('recovery rejects whole malformed snapshot before dispatch and stale gateway cannot restore',async()=>{
+ let calls=0;const f=await fixture(true,async()=>{calls++;return {result:{}};});
+ const valid={id:'valid',method:'approval',params:{session_id:'live'}};
+ try{
+ for(const wrong of [{id:'result',result:{}},{id:'notification',method:'event',params:{session_id:'live',type:'tool.started'}},{...valid,id:'wrong',params:{session_id:'other'}},{...valid,jsonrpc:'2.0'}])assert.throws(()=>f.gateway.restoreRequests([valid,wrong],'live'),/Invalid or oversized Hermes RPC frame/);
+ assert.throws(()=>f.gateway.restoreRequests([valid,valid],'live'));assert.equal(calls,0);
+ }finally{f.gateway.close();}
+ assert.throws(()=>f.gateway.restoreRequests([valid],'live'),/Gateway unavailable/);assert.equal(calls,0);
+});

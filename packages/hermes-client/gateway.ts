@@ -4,13 +4,14 @@ import { boundedHttp } from '../platform/http-transport.ts';
 import { decodeRpcFrame, encodeServerReply } from '../contracts/rpc.ts';
 import type { RpcEvent, RpcServerRequest, ServerReply, RpcResult, RpcFailure } from '../contracts/rpc.ts';
 import { encodeProbe, encodeTextRequest, parseGatewayCapabilities } from '../contracts/rpc-methods.ts';
-import { encodeSessionOperation } from '../contracts/session.ts';
+import { decodeOpenRequests, encodeSessionOperation } from '../contracts/session.ts';
 import type { DesktopRpcOperation } from '../contracts/session.ts';
 import type { TextRequest } from '../domain/text-send.ts';
 export type GatewaySocket = { send(text: string): void; close(): void };
 export type Gateway = Readonly<{
  operation(operation: DesktopRpcOperation): Promise<unknown>;
  submitText(request: TextRequest): Promise<unknown>;
+ restoreRequests(requests: unknown, runtimeId: string): void;
  close(): void; readonly exclusiveSubmit: boolean;
  requestHttp(operation: HttpOperation): Promise<HttpResult>;
 }>;
@@ -70,6 +71,23 @@ export async function connectGateway(options: Readonly<{
    connected = true; clearTimeout(startup); resolveReady();
   } catch { close(); }
  }
+ function acceptServer(item: RpcServerRequest): void {
+  if (!current()) return;
+  const previous = seen.get(item.id);
+  if (previous !== undefined) { if (previous !== item.method) close(); return; }
+  if (server.size >= 64 || seen.size >= 4096) { close(); return; }
+  seen.set(item.id, item.method);
+  const entry: { request: RpcServerRequest; controller: AbortController; response?: string } = { request: item, controller: new AbortController() };
+  server.set(item.id, entry);
+  void (async () => {
+   try {
+    if (!current() || server.get(item.id) !== entry) return;
+    const result = await options.onRequest(item, entry.controller.signal);
+    if (!current() || server.get(item.id) !== entry) return;
+    entry.response = encodeServerReply(item.id, result); flush();
+   } catch { if (current() && server.get(item.id) === entry) close(); }
+  })();
+ }
  function frame(input: unknown): void {
   if (!current()) return;
   try {
@@ -80,20 +98,7 @@ export async function connectGateway(options: Readonly<{
      pending.delete(item.id); clearTimeout(entry.timer); entry.resolve(item); continue;
     }
     if (item.kind === 'request') {
-     const previous = seen.get(item.id);
-     if (previous !== undefined) { if (previous !== item.method) close(); continue; }
-     if (server.size >= 64 || seen.size >= 4096) { close(); return; }
-     seen.set(item.id, item.method);
-     const entry: { request: RpcServerRequest; controller: AbortController; response?: string } = { request: item, controller: new AbortController() };
-     server.set(item.id, entry);
-     void (async () => {
-      try {
-       if (!current() || server.get(item.id) !== entry) return;
-       const result = await options.onRequest(item, entry.controller.signal);
-       if (!current() || server.get(item.id) !== entry) return;
-       entry.response = encodeServerReply(item.id, result); flush();
-      } catch { if (current() && server.get(item.id) === entry) close(); }
-     })(); continue;
+     acceptServer(item); continue;
     }
     if (item.params.type === 'gateway.ready') { if (ready) { close(); return; } ready = true; void negotiate(); }
     else if (item.params.type === 'request.cancel') {
@@ -119,6 +124,18 @@ export async function connectGateway(options: Readonly<{
  catch { close(); throw new Error('Gateway unavailable'); }
  function result(reply: Reply): unknown { if (reply.kind === 'error') throw new Error('Host operation failed'); return reply.result; }
  return Object.freeze({
+  restoreRequests(requests: unknown, runtimeId: string): void {
+   if (!current() || !connected) throw new Error('Gateway unavailable');
+   const restored = decodeOpenRequests(requests, runtimeId);
+   if (!current()) throw new Error('Gateway unavailable');
+   // Preflight capacity and ID/method conflicts before any handler is invoked.
+   const unseen = restored.filter(item => !seen.has(item.id));
+   if (server.size + unseen.length > 64 || seen.size + unseen.length > 4096
+     || restored.some(item => seen.has(item.id) && seen.get(item.id) !== item.method)) {
+    close(); throw new Error('Invalid request recovery');
+   }
+   for (const item of restored) acceptServer({kind:'request',...item});
+  },
   close, get exclusiveSubmit() { return exclusive; },
   async operation(operation: DesktopRpcOperation): Promise<unknown> {
    if (!current() || !connected) throw new Error('Gateway unavailable');

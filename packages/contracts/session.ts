@@ -1,4 +1,5 @@
-import { boundedString, encodeBoundedJson, jsonObject, RpcProtocolError, rpcId, RPC_LIMITS } from './rpc.ts';
+import { boundedString, decodeRpcFrame, encodeBoundedJson, jsonObject, RpcProtocolError, rpcId, RPC_LIMITS } from './rpc.ts';
+import type { JsonObject } from './rpc.ts';
 const fail = (): never => { throw new RpcProtocolError(); };
 export function contractText(value: unknown, max = 512, empty = false): string {
  const text = boundedString(value,max); if ((!empty && !text) || text.includes('\0')) return fail(); return text;
@@ -31,11 +32,27 @@ export function decodeProfiles(value:unknown):readonly Readonly<{id:string;name:
 export function decodeSessionList(value:unknown,profile:string):readonly Readonly<{id:string;profile:string;title:string;preview:string}>[] {
  coordinate(profile);const obj=bounded(value);return unique(rows(obj.sessions,200).map(value=>{const row=contractObject(value);coordinate(row.id);if(row.profile!==undefined&&row.profile!==profile)return fail();return {id:coordinate(row.resolved_id??row.id),profile,title:display(row.title,'Untitled chat'),preview:display(row.preview)};}));
 }
-export function decodeSessionReceipt(value:unknown,profile:string):Readonly<{runtimeId:string;storedSessionId:string;running:boolean}> {
+export type OpenServerRequest = Readonly<{id:string;method:string;params:JsonObject}>;
+// Hermes snapshots omit jsonrpc; validate the entire snapshot before dispatch.
+export function decodeOpenRequests(value:unknown,runtimeId:string):readonly OpenServerRequest[] {
+ coordinate(runtimeId);
+ const wire=encodeBoundedJson(value,RPC_LIMITS.inboundBytes);
+ const copied:unknown=JSON.parse(wire);
+ const requests=rows(copied,64).map(value=>{
+  const row=contractObject(value);
+  if(Object.keys(row).sort().join(',')!=='id,method,params')return fail();
+  const frame=decodeRpcFrame(encodeBoundedJson({jsonrpc:'2.0',...row},RPC_LIMITS.inboundBytes))[0];
+  if(!frame||frame.kind!=='request'||frame.params.session_id!==runtimeId)return fail();
+  return Object.freeze({id:frame.id,method:frame.method,params:frame.params});
+ });
+ if(new Set(requests.map(request=>request.id)).size!==requests.length)return fail();
+ return Object.freeze(requests);
+}
+export function decodeSessionReceipt(value:unknown,profile:string):Readonly<{runtimeId:string;storedSessionId:string;running:boolean;openRequests:readonly OpenServerRequest[]}> {
  coordinate(profile);const row=bounded(value);const info=contractObject(row.info);if(info.profile_name!==undefined&&info.profile_name!==profile)return fail();
  const aliases=['stored_session_id','session_key','resumed'].filter(key=>Object.hasOwn(row,key)).map(key=>coordinate(row[key]));
  if(!aliases.length||new Set(aliases).size!==1||(row.running!==undefined&&typeof row.running!=='boolean'))return fail();
- return Object.freeze({runtimeId:coordinate(row.session_id),storedSessionId:aliases[0]!,running:row.running===true});
+ return Object.freeze({runtimeId:coordinate(row.session_id),storedSessionId:aliases[0]!,running:row.running===true,openRequests:decodeOpenRequests(row.open_requests===undefined?[]:row.open_requests,coordinate(row.session_id))});
 }
 export function decodeSessionHistory(value:unknown):readonly Readonly<{id:string;role:string;text:string}>[] {
  const obj=bounded(value);if(Object.keys(obj).sort().join(',')!=='count,messages')return fail();const messages=rows(obj.messages,10000);
