@@ -15,6 +15,7 @@ import { ThemeProvider } from './theme.tsx';
 import { LAYOUT, PALETTES, fontStack } from './tokens.ts';
 import type { DesktopApi, DesktopSnapshot, DesktopResult } from '../../apps/desktop/src/shared/desktop-api.ts';
 import { HostConnection } from './components/HostConnection.tsx';
+import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
 import { EMPTY_DATA } from './view-model.ts';
 import type { ViewData } from './view-model.ts';
@@ -22,8 +23,8 @@ import { agentById, chatById, composerStatus } from './view-model.ts';
 
 // Full sentences, so nothing reads as "Usage aren't built yet".
 const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
-  projects: "Projects aren't built yet", kanban: "Kanban isn't built yet", workflows: "Workflow pages aren't built yet",
-  scheduled: "Scheduled tasks aren't built yet", usage: "Usage isn't built yet", vault: "The vault isn't built yet",
+  kanban: "Kanban isn't built yet", workflows: "Workflow pages aren't built yet",
+  vault: "The vault isn't built yet",
 });
 
 export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean> }>): JSX.Element {
@@ -190,12 +191,15 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
     detail = <Notice title={state.place === 'agents' ? 'Pick an agent' : 'Pick a chat'} body="It opens here." />;
   }
 
+  const functionPage = state.place === 'projects' || state.place === 'scheduled' || state.place === 'usage' ? state.place : null;
   return (
     <ThemeProvider value={{ theme, palette, font }}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: palette.page, minHeight: 0 }}>
         <Rail place={state.place} host={data.host} onPlace={place => { leaveChat(); dispatch({ type: 'place', place }); }}
           onHost={() => { leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts'); }} />
-        {panes.list && !(narrow && state.place === 'settings') ? (
+        {functionPage ? <WorkspaceFunctionPage key={functionPage} page={functionPage} data={data} api={api} snapshot={snapshot}
+          narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
+        {!functionPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
             nerdMode={state.nerdMode} settingsSection={state.settingsSection} narrow={narrow}
             onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
@@ -210,7 +214,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
               }
             })} onSettingsSection={openSection} />
         ) : null}
-        {panes.detail || (narrow && state.place === 'settings') ? detail : null}
+        {!functionPage && (panes.detail || (narrow && state.place === 'settings')) ? detail : null}
         {props.error ? <View role="status" style={{ position: 'absolute', bottom: 4, left: 80, right: 8, backgroundColor: palette.card, padding: 8 }}><Label>{props.error}</Label></View> : null}
       </View>
     </ThemeProvider>

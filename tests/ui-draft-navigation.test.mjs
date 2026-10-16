@@ -249,3 +249,21 @@ test('failed draft persistence prevents explicit host replacement and remains re
     assert.equal(h.calls.at(-1).kind, 'connect');
   } finally { h.unmount(); }
 });
+
+
+for (const page of ['projects','scheduled','usage']) test(`global ${page} navigation retains protected draft and never opens a canonical chat`, async () => {
+  const h = harness();
+  try {
+    h.find('Conversation').onDraft('Keep for return');
+    h.find('Rail').onPlace(page); await h.settle();
+    const functionPage = h.find('WorkspaceFunctionPage');
+    assert.equal(functionPage.page, page);
+    assert.deepEqual(functionPage.panes, {list:true,detail:true});
+    functionPage.onOpenDetail(); await h.settle();
+    assert.equal(h.find('Rail').place, page);
+    assert.equal(h.saved.get('original:A'), 'Keep for return');
+    assert.ok(!h.calls.some(call => ['canonicalChat','openChat','send'].includes(call.kind)));
+    h.find('Rail').onPlace('chats'); await h.settle();
+    assert.equal(h.find('Conversation').draft, 'Keep for return');
+  } finally { h.unmount(); }
+});

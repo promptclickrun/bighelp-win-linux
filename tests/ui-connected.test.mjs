@@ -7,10 +7,11 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HostConnection } from './packages/ui/components/HostConnection.tsx';
 import { Composer } from './packages/ui/components/Conversation.tsx';
+import { WorkspaceFunctionPage } from './packages/ui/components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './packages/ui/components/InteractiveRequests.tsx';
 import { ThemeProvider } from './packages/ui/theme.tsx';
 import { PALETTES } from './packages/ui/tokens.ts';
-export function render(component, props) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}>{React.createElement(component === 'host' ? HostConnection : component === 'composer' ? Composer : InteractiveRequests, props)}</ThemeProvider>); }
+export function render(component, props) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}>{React.createElement(component === 'host' ? HostConnection : component === 'composer' ? Composer : component === 'workspace' ? WorkspaceFunctionPage : InteractiveRequests, props)}</ThemeProvider>); }
 `, resolveDir: process.cwd(), loader: 'tsx' }, jsx: 'automatic', bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false });
 const compiled = { exports: {} };
 new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
@@ -41,4 +42,15 @@ test('offline composer preserves the saved draft while rendering the input read-
   assert.match(offline, /readOnly=""/); assert.match(offline, /Protected saved draft/);
   assert.match(offline, /aria-disabled="true"[^>]*aria-label="Send/);
   assert.doesNotMatch(render('composer', { ...props, editable: true }), /readOnly=""/);
+});
+
+
+test('workspace agent names are escaped in real React markup and offline pages claim no saved workspace copies', () => {
+  const html = render('workspace', {page:'projects', snapshot, narrow:false, panes:{list:true,detail:true}, onOpenDetail(){},
+    data:{sample:false,host:{label:'Synthetic',state:'offline'},chats:[],workflows:[],agents:[{id:'one',name:'<script>bad()</script>',summary:'',color:'blue'}]}});
+  assert.match(html, /&lt;script&gt;bad\(\)&lt;\/script&gt;/);
+  assert.doesNotMatch(html, /<script>|saved on this device|agent tabs/i);
+  assert.match(html, /aria-label="Agent"/);
+  assert.match(html, /aria-label="Refresh projects"/);
+  assert.match(html, /This page is unavailable/);
 });
