@@ -66,7 +66,8 @@ test('README explains the unsigned beta, sign-in storage, the tray, data and uni
   for (const readme of [linux, windows]) assert.ok(readme.split(/\r?\n/u).every(line => line.length <= 80), 'short lines');
 });
 
-test('Linux package: bighelp executable, menu entry, README and complete checksums', async () => temporary(async directory => {
+test('Linux package: bighelp executable, menu entry, README and complete checksums',
+  { skip: posix ? false : 'Linux executable permissions need a POSIX file system' }, async () => temporary(async directory => {
   const parts = await fixture(directory, 'linux');
   const output = join(directory, 'artifacts', packageName('0.9.0-beta.1', 'linux', 'x64'));
   await assemblePackage({ ...parts, output, platform: 'linux', version: '0.9.0-beta.1', electronVersion: '44.7.2' });

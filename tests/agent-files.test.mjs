@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { join } from 'node:path';
 import { CALLS } from '../apps/desktop/src/shared/calls/index.ts';
 import { parseDesktopAction } from '../apps/desktop/src/shared/desktop-api.ts';
 import { createSaveCopy, safeFileName } from '../apps/desktop/src/main/save-copy.ts';
@@ -191,7 +192,8 @@ test('the save capability writes only where the person chose, via a partial file
   const save = createSaveCopy({ downloads: () => '/Users/ana/Downloads', files,
     showSaveDialog: async options => { shown = options; return { canceled: false, filePath: '/Users/ana/Desktop/notes.md' }; } });
   assert.equal(await save('../../notes.md', async () => new TextEncoder().encode('hi')), 'notes.md');
-  assert.deepEqual(shown, { title: 'Save a copy', buttonLabel: 'Save', defaultPath: '/Users/ana/Downloads/_.._notes.md' });
+  // The default path uses this OS's separators (the folder comes from the OS).
+  assert.deepEqual(shown, { title: 'Save a copy', buttonLabel: 'Save', defaultPath: join('/Users/ana/Downloads', '_.._notes.md') });
   assert.equal(log[0][0], 'write'); assert.match(log[0][1], /^\/Users\/ana\/Desktop\/\.notes\.md\.[0-9a-f-]{36}\.part$/u);
   assert.equal(log[0][2], 'hi'); assert.equal(log[0][3], 'wx');
   assert.deepEqual(log[1], ['rename', log[0][1], '/Users/ana/Desktop/notes.md']);
