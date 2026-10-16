@@ -22,6 +22,7 @@ const UNEXPECTED = 'Hermes sent a reply bighelp does not understand.';
 const NOT_DELETED = "Hermes didn't confirm the deletion. Refresh the list before trying again.";
 const CREATE_UNKNOWN = 'Hermes may have created this agent. Check the agents list before trying again.';
 const CREATED_PARTLY = 'The agent was created, but some details may not have saved. Open it to check them.';
+const CREATED_WITHOUT_MODEL = "The agent was created with your computer's default model. Hermes didn't accept the model you picked; you can choose another in Edit agent.";
 const SAVED_PARTLY = 'Some changes were saved, but not all. The form now shows what your computer has, so you can make the rest again.';
 
 const digest = (text: string) => createHash('sha256').update(text, 'utf8').digest('hex');
@@ -92,6 +93,8 @@ async function applyModel(context: CallContext, profile: string, choice: AgentMo
   if (!options.providers.some(provider => provider.id === choice.provider && provider.models.includes(choice.model))) {
     throw new CallError('invalid', "That model isn't offered on your computer anymore. Pick another.");
   }
+  // Already this agent's model: nothing to change, nothing to confirm.
+  if (options.current?.provider === choice.provider && options.current.model === choice.model) return Object.freeze({ status: 'saved' });
   const params: JsonObject = { name: profile, provider: choice.provider, model: choice.model, ...(confirm ? { confirm_expensive_model: true } : {}) };
   let result: ReturnType<typeof decodeConfigureResult>;
   try { result = decodeConfigureResult(await context.rpc('profiles.configure', params)); }
@@ -104,7 +107,7 @@ async function applyModel(context: CallContext, profile: string, choice: AgentMo
   return Object.freeze({ status: 'saved' });
 }
 
-type Review = Readonly<{ reason: string | null; skills: number; hasSavedKeys: boolean; token: string }>;
+type Review = Readonly<{ reason: string | null; skills: number; token: string }>;
 async function reviewDelete(context: CallContext, profile: string): Promise<Review> {
   return decoded(async () => {
     const listing = decodeDeleteRoster((await context.http({ method: 'GET', path: '/api/profiles', maxBytes: 262144 })).body, profile);
@@ -115,7 +118,7 @@ async function reviewDelete(context: CallContext, profile: string): Promise<Revi
       : active.current === profile ? "Hermes is running as this agent on this connection, so it can't be deleted from here."
       : active.active === profile ? "This agent is set as Hermes' default on your computer. Choose another default in Hermes first."
       : null;
-    return Object.freeze({ reason, skills: target.skills, hasSavedKeys: target.hasSavedKeys,
+    return Object.freeze({ reason, skills: target.skills,
       token: digest(JSON.stringify([target.fingerprint, active.active, active.current])) });
   });
 }
@@ -181,7 +184,7 @@ export const AGENT_HANDLERS: Pick<CallHandlers, keyof typeof AGENT_CALLS> = Obje
           ? "The agent was created, but Hermes may have copied saved keys into it. Check it on your computer before using it." : CREATE_UNKNOWN);
       }
       // The agent exists now. Every later step reports a partial result, never failure.
-      let complete = true, modelConfirm: string | null = null;
+      let complete = true, modelSet = true, modelConfirm: string | null = null;
       try {
         const row = (await roster(context)).find(entry => entry.id === input.id);
         const summary = input.summary ?? source?.summary;
@@ -196,9 +199,9 @@ export const AGENT_HANDLERS: Pick<CallHandlers, keyof typeof AGENT_CALLS> = Obje
         try {
           const result = await applyModel(context, input.id, input.model, false);
           if (result.status === 'confirm') modelConfirm = result.message;
-        } catch { complete = false; }
+        } catch { modelSet = false; }
       }
-      return Object.freeze({ profile: input.id, partial: complete ? null : CREATED_PARTLY, modelConfirm });
+      return Object.freeze({ profile: input.id, partial: !complete ? CREATED_PARTLY : modelSet ? null : CREATED_WITHOUT_MODEL, modelConfirm });
     },
   },
   'agents.update': {

@@ -7,6 +7,8 @@ import { AGENT_HANDLERS } from '../apps/desktop/src/main/calls/agents.ts';
 import { CallError, callFailure } from '../apps/desktop/src/main/calls/context.ts';
 import { createDesktopService } from '../apps/desktop/src/main/desktop-service.ts';
 import { GatewayOperationError } from '../packages/hermes-client/gateway.ts';
+import { build } from 'esbuild';
+import { createRequire } from 'node:module';
 
 // Shaped like profiles.list from Hermes b0f9ade (legacy dispatcher) plus a
 // multiplexed sibling row without revisions. Paths are synthetic.
@@ -176,6 +178,10 @@ test('expensive models need an explicit second request with confirm_expensive_mo
   assert.deepEqual(sent, [{ name: 'coder', provider: 'example-provider', model: 'model-b' },
     { name: 'coder', provider: 'example-provider', model: 'model-b', confirm_expensive_model: true }]);
   assert.equal(f.refreshed, 1);
+  // Picking the model the agent already uses changes nothing on the host.
+  const before = f.rpc.length;
+  assert.deepEqual(await run('agents.setModel', f, { profile: 'coder', provider: 'example-provider', model: 'model-a', confirm: false }), { status: 'saved' });
+  assert.deepEqual(f.rpc.slice(before).map(call => call.method), ['model.options']);
   await refusal(run('agents.setModel', f, { profile: 'coder', provider: 'locked', model: 'x', confirm: true }), 'invalid');
   await refusal(run('agents.setModel', f, { profile: 'coder', provider: 'example-provider', model: 'gone', confirm: true }), 'invalid');
   assert.throws(() => decodeModelOptions({ providers: [], model: 'm', provider: 'p', extra: 'x'.repeat(5 * 1024 * 1024) }));
@@ -227,7 +233,7 @@ test('delete reviews the host first, refuses protected agents and confirms remov
   });
   const f = host();
   const review = await run('agents.deleteReview', f, { profile: 'coder' });
-  assert.equal(review.canDelete, true); assert.equal(review.skills, 12); assert.equal(review.hasSavedKeys, true);
+  assert.equal(review.canDelete, true); assert.equal(review.skills, 12);
   assert.equal(JSON.stringify(review).includes('/home'), false);
   assert.deepEqual(await run('agents.delete', f, { profile: 'coder', token: review.token }), { deleted: true });
   assert.deepEqual(f.http.filter(route => route.method === 'DELETE').map(route => [route.path, route.body]), [['/api/profiles/coder', undefined]]);
@@ -287,4 +293,37 @@ test('deleting the open chat\'s agent refreshes the list and leaves that chat', 
   assert.deepEqual(after.data.agents.map(agent => agent.id), ['other']);
   assert.equal(after.selectedChatId, null); assert.equal(after.canSend, false);
   assert.equal(after.data.chats.some(chat => chat.agentId === 'agent'), false);
+});
+
+test('agent controls appear only with a connected computer; Nerd Mode adds the ID and model', async () => {
+  const result = await build({ stdin: { contents: `
+import { renderToStaticMarkup } from 'react-dom/server';
+import { AddAgentButton, AgentManager, AgentMenu } from './packages/ui/components/AgentManager.tsx';
+import { ContextList } from './packages/ui/components/ContextList.tsx';
+import { ThemeProvider } from './packages/ui/theme.tsx';
+import { HostProvider } from './packages/ui/host.tsx';
+import { PALETTES } from './packages/ui/tokens.ts';
+export function render(host, nerdMode) {
+  const data = { sample: false, host: { label: 'Synthetic', state: 'connected' }, chats: [], workflows: [],
+    agents: [{ id: 'coder', name: 'Coder <b>', summary: 'Reviews code', color: '#2BA59A', isDefault: false, model: 'model-a' }] };
+  return renderToStaticMarkup(<ThemeProvider value={{ theme: 'light', palette: PALETTES.light, font: 'sans-serif' }}><HostProvider value={host}>
+    <AgentManager agents={data.agents} nerdMode={nerdMode} replyingAgentId={null} onDeleted={() => {}}>
+      <ContextList place="agents" data={data} selectedChatId={null} selectedAgentId={null} nerdMode={nerdMode} settingsSection={null}
+        onOpenChat={() => {}} onOpenAgent={() => {}} onSettingsSection={() => {}} narrow={false}
+        addAgent={<AddAgentButton />} agentMenu={agent => <AgentMenu agent={agent} />} />
+    </AgentManager>
+  </HostProvider></ThemeProvider>);
+}`, resolveDir: process.cwd(), loader: 'tsx' }, jsx: 'automatic', bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false });
+  const compiled = { exports: {} };
+  new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
+  const host = { api: {}, snapshot: { status: 'connected', connection: 3 }, act: async () => true };
+  const offline = compiled.exports.render(null, false);
+  assert.match(offline, /aria-label="Add agent. Needs a connected computer"/u);
+  assert.doesNotMatch(offline, /aria-label="Add agent"|More for/u);
+  const connected = compiled.exports.render(host, false);
+  assert.match(connected, /aria-label="Add agent"/u);
+  assert.match(connected, /aria-label="More for Coder &lt;b&gt;"/u);
+  assert.match(connected, /Reviews code/u);
+  assert.doesNotMatch(connected, /model-a|>coder</u);
+  assert.match(compiled.exports.render(host, true), /coder · model-a/u);
 });

@@ -186,7 +186,7 @@ export function decodeSoul(value: unknown): Readonly<{ content: string; exists: 
 }
 
 // GET /api/profiles (REST) row for the delete review. Strict for the target only.
-export type DeleteFacts = Readonly<{ isDefault: boolean; skills: number; hasSavedKeys: boolean; gatewayRunning: boolean; fingerprint: string }>;
+export type DeleteFacts = Readonly<{ isDefault: boolean; skills: number; fingerprint: string }>;
 export function decodeDeleteRoster(value: unknown, id: string): Readonly<{ names: readonly string[]; target: DeleteFacts | null }> {
   encodeBoundedJson(value, 262144);
   if (!jsonObject(value) || !Array.isArray(value.profiles) || value.profiles.length > AGENT_LIMITS.rows) return fail();
@@ -201,8 +201,7 @@ export function decodeDeleteRoster(value: unknown, id: string): Readonly<{ names
     // The host path is left out: even a hash of a guessable path should not leave main.
     const fingerprint = encodeBoundedJson([name, entry.description ?? null, ...flags.map(key => entry[key]),
       entry.skill_count, entry.model ?? null, entry.provider ?? null], 65536);
-    target = Object.freeze({ isDefault: entry.is_default === true, skills: entry.skill_count, hasSavedKeys: entry.has_env === true,
-      gatewayRunning: entry.gateway_running === true, fingerprint });
+    target = Object.freeze({ isDefault: entry.is_default === true, skills: entry.skill_count, fingerprint });
     return name;
   });
   if (new Set(names).size !== names.length) return fail();

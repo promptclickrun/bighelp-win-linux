@@ -194,7 +194,7 @@ export function Conversation(props: Readonly<{
   onDropFiles?: ((files: readonly Readonly<{ name: string; bytes: Uint8Array }>[]) => void) | undefined;
   onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void;
   onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined; onCheckHistory?: (() => void) | undefined;
-  options?: ChatOptions | undefined; turn?: TurnInfo | undefined; liveTurn?: string | null; actions?: MarkdownActions;
+  agentMenu?: ReactNode; options?: ChatOptions | undefined; turn?: TurnInfo | undefined; liveTurn?: string | null; actions?: MarkdownActions;
 }>): JSX.Element {
   const { palette } = useTheme();
   const [dragging, setDragging] = useState(false);
@@ -224,6 +224,7 @@ export function Conversation(props: Readonly<{
         </View>
         {props.headerActions}
         <IconButton icon="compose" label={`New chat with ${props.agent.name}`} onPress={props.onNewChat ?? (() => {})} disabled={!props.onNewChat} />
+        {props.agentMenu}
       </View>
       <div onDragOver={event => { if (droppable && event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setDragging(true); } }}
         onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}

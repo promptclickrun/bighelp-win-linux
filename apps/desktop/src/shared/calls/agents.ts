@@ -16,9 +16,17 @@ export type AgentModelChoice = Readonly<{ provider: string; model: string }>;
 // partial: a plain sentence when the agent exists but some details did not save.
 // modelConfirm: the host's warning when the chosen model needs approval first.
 export type AgentSaved = Readonly<{ profile: string; partial: string | null; modelConfirm: string | null }>;
+export type AgentCreateInput = Readonly<{
+  id: string; title: string; role?: string; summary?: string; instructions?: string; color?: string; model?: AgentModelChoice;
+  copyFrom?: string; copyConsent?: true;
+}>;
+export type AgentUpdateInput = Readonly<{
+  profile: string; revision?: number | null; title?: string; summary?: string; color?: string;
+  role?: string; roleVersion?: string; instructions?: string; instructionsVersion?: string; model?: AgentModelChoice;
+}>;
 export type AgentModelSaved = Readonly<{ status: 'saved' }> | Readonly<{ status: 'confirm'; message: string }>;
 export type AgentDeleteReview = Readonly<{
-  profile: string; canDelete: boolean; reason: string | null; skills: number; hasSavedKeys: boolean; token: string;
+  profile: string; canDelete: boolean; reason: string | null; skills: number; token: string;
 }>;
 
 const invalid = (): never => { throw new InvalidInput(); };
@@ -51,8 +59,8 @@ function revision(value: unknown): number | null { return value === null ? null 
 export const AGENT_CALLS = Object.freeze({
   'agents.details': defineCall<AgentDetails>()(input => Object.freeze({ profile: profileInput(fields(input, ['profile']).profile) })),
   // Without a profile, the models of the computer's main agent (for a new agent).
-  'agents.models': defineCall<ModelOptions>()(input => compact({ profile: optional(fields(input, [], ['profile']).profile, profileInput) })),
-  'agents.create': defineCall<AgentSaved>()(input => {
+  'agents.models': defineCall<ModelOptions>()((input): Readonly<{ profile?: string }> => compact({ profile: optional(fields(input, [], ['profile']).profile, profileInput) })),
+  'agents.create': defineCall<AgentSaved>()((input): AgentCreateInput => {
     const value = fields(input, ['id', 'title'], ['role', 'summary', 'instructions', 'color', 'model', 'copyFrom', 'copyConsent']);
     const copyFrom = optional(value.copyFrom, profileInput);
     // Copying another agent also copies its saved keys (.env): only with consent.
@@ -61,7 +69,7 @@ export const AGENT_CALLS = Object.freeze({
       instructions: optional(value.instructions, instructions), color: optional(value.color, color), model: optional(value.model, modelChoice),
       copyFrom, copyConsent: copyFrom === undefined ? undefined : true as const });
   }),
-  'agents.update': defineCall<AgentSaved>()(input => {
+  'agents.update': defineCall<AgentSaved>()((input): AgentUpdateInput => {
     const value = fields(input, ['profile'], ['revision', 'title', 'summary', 'color', 'role', 'roleVersion', 'instructions', 'instructionsVersion', 'model']);
     const parsed = compact({ profile: profileInput(value.profile), revision: optional(value.revision, revision),
       title: optional(value.title, title), summary: optional(value.summary, summary), color: optional(value.color, color),
