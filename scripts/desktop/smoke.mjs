@@ -38,7 +38,7 @@ const child = spawn(electronPath, [
   `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1',
   ...(flag('--no-os-sandbox') ? ['--no-sandbox'] : []), ...(flag('--headless') ? ['--ozone-platform=headless', '--disable-gpu'] : []),
   ...(executableIndex >= 0 ? [] : [main]), ...(flag('--fixture-preview') ? ['--fixture-preview'] : []),
-], { env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, LOCALAPPDATA: profile,
+], { env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, LOCALAPPDATA: profile, BIGHELP_DEV_APP_DATA: profile,
   ELECTRON_RUN_AS_NODE: undefined, ELECTRON_DISABLE_SECURITY_WARNINGS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let stderr = '';
 child.stderr.on('data', chunk => { stderr += chunk; });

@@ -3,7 +3,7 @@
 // next to this file; this only applies them through Electron.
 import { app, Menu, Notification, Tray, nativeImage, screen } from 'electron';
 import type { BrowserWindow, BrowserWindowConstructorOptions } from 'electron';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 import type { DesktopAlert, DesktopSnapshot } from '../shared/desktop-api.ts';
 import { DEFAULT_PREFERENCES } from '../shared/preferences.ts';
 import type { Preferences } from '../shared/preferences.ts';
@@ -16,6 +16,12 @@ import { WINDOW_STATE_FILE, loadWindowState, placeWindow, saveWindowState } from
 export function applyAppIdentity(): void {
   const identity = appIdentity(app.isPackaged);
   app.setName(identity.name);
+  // Development runs only: smoke checks on macOS isolate their profile here
+  // (Linux/Windows runs already redirect XDG_CONFIG_HOME/APPDATA).
+  const isolated = process.env.BIGHELP_DEV_APP_DATA;
+  if (!app.isPackaged && isolated && isAbsolute(isolated)) {
+    app.setPath('appData', isolated); app.setPath('userData', join(isolated, identity.name));
+  }
   if (process.platform === 'linux' && identity.desktopName) app.setDesktopName(identity.desktopName);
   // Windows shows toasts only for an app with an Application User Model ID.
   if (process.platform === 'win32') app.setAppUserModelId(identity.appUserModelId);
