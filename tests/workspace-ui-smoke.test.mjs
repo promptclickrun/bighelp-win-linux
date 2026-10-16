@@ -1,4 +1,4 @@
-// Focused exception-path checks. Rendering is stubbed; the actual test-only
+// Focused exception-path and fake-host checks. Rendering is stubbed; the actual test-only
 // fixture setup/cleanup and smoke runner execute, without Electron or any host.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -6,6 +6,8 @@ import { build } from 'esbuild';
 import { createContext, runInContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { runWorkspaceFixture } from '../scripts/qualification/workspace-ui-smoke.mjs';
+import { CALLS } from '../apps/desktop/src/shared/calls/index.ts';
+import { HANDLERS } from '../apps/desktop/src/main/calls/index.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const fixture = await build({ absWorkingDir: root,
@@ -37,7 +39,7 @@ function harness({ hidden = null, inert = null, failCreate = false, failRender =
   const original = new Element(); original.id = 'root'; original.attached = true; elements.set('root', original);
   if (hidden !== null) original.setAttribute('hidden', hidden);
   if (inert !== null) original.setAttribute('inert', inert);
-  const observations = { creates: 0, renders: 0, unmounts: 0, hiddenBeforeCreate: false, cleanup: null };
+  const observations = { creates: 0, renders: 0, unmounts: 0, hiddenBeforeCreate: false, cleanup: null, element: null };
   const context = createContext({ document: {
     createElement: () => new Element(), getElementById: id => elements.get(id) ?? null,
     body: { append: element => { elements.set(element.id, element); element.attached = true; } },
@@ -48,7 +50,7 @@ function harness({ hidden = null, inert = null, failCreate = false, failRender =
     observations.cleanup = context.workspaceQualificationCleanup;
     if (failCreate) throw new Error('create-root failed after DOM insertion');
     return {
-      render: () => { observations.renders++; if (failRender) throw new Error('render failed'); },
+      render: element => { observations.renders++; observations.element = element; if (failRender) throw new Error('render failed'); },
       unmount: () => { observations.unmounts++; if (failUnmount) throw new Error('unmount failed'); },
     };
   } } });
@@ -86,6 +88,45 @@ test('cleanup remains idempotent and restores DOM when React unmount throws', ()
   assert.throws(() => h.context.workspaceQualification.cleanup(), /unmount failed/u);
   h.restored(); h.observations.cleanup(); h.restored();
   assert.equal(h.observations.unmounts, 1);
+});
+
+test('fixture holds page reads, answers other shell reads as unsupported and refuses every write', async () => {
+  const h = harness(); runInContext(fixtureCode, h.context);
+  const api = h.observations.element.props.api, control = h.context.workspaceQualification;
+  const input = { profile: 'alpha', id: 'one', path: 'reports/notes.md', folder: '', chatId: 'synthetic-chat' };
+  const settled = new Map();
+  for (const name of Object.keys(CALLS)) void api.call(1, name, input).then(result => settled.set(name, result));
+  await new Promise(done => setImmediate(done));
+  const held = control.reads().map(read => read.label);
+  assert.deepEqual([...held].sort(), ['files.list', 'files.preview', 'files.recent', 'media.list', 'media.preview',
+    'projects.list', 'schedules.list', 'schedules.runs', 'schedules.targets']);
+  assert.ok(control.reads().every(read => read.profile === 'alpha' && read.connection === 1));
+  for (const name of held) assert.equal(settled.has(name), false, `${name} waits for the smoke`);
+  const writes = new Set(control.writes());
+  for (const [name, handler] of Object.entries(HANDLERS)) {
+    if (handler.mutation) assert.ok(writes.has(name), `${name} changes the host and is refused`);
+  }
+  for (const name of writes) assert.deepEqual({ ...settled.get(name) }, { ok: false, code: 'denied', message: 'Changes are refused in synthetic qualification.' });
+  for (const name of control.incidental()) {
+    assert.equal(HANDLERS[name].mutation, false, `${name} is a read`);
+    assert.equal(settled.get(name).code, 'unsupported');
+  }
+  assert.equal(held.length + writes.size + control.incidental().length, Object.keys(CALLS).length);
+  assert.equal(control.calls().write, writes.size);
+
+  // Replies have the decoded shapes main hands the renderer.
+  control.resolve(held.indexOf('projects.list'), 'Marker');
+  control.resolve(held.indexOf('schedules.list'), 'Marker', 'unsupported');
+  control.resolve(held.indexOf('files.recent'), 'Marker', 'foreign');
+  control.resolve(held.indexOf('media.list'), 'Marker', 'failed');
+  await new Promise(done => setImmediate(done));
+  const projects = settled.get('projects.list');
+  assert.equal(projects.ok, true); assert.equal(projects.value.profile, 'alpha');
+  assert.deepEqual([...projects.value.projects.map(project => project.name)], ['Marker project', control.longTitle]);
+  assert.equal(settled.get('schedules.list').code, 'unsupported');
+  assert.equal(settled.get('files.recent').value.servingProfileId, 'beta');
+  assert.deepEqual({ ...settled.get('media.list') }, { ok: false, code: 'unavailable', message: 'Could not reach Hermes. Check the connection and try again.' });
+  control.cleanup(); h.restored();
 });
 
 for (const failure of ['exceptionDetails', 'protocolError', 'transportError']) {
