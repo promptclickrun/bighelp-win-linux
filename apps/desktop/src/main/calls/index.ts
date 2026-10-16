@@ -5,6 +5,7 @@ import type { CallContext } from './context.ts';
 import { HOST_HANDLERS } from './host.ts';
 import { CHAT_HANDLERS } from './chat.ts';
 import { SETTINGS_HANDLERS } from './settings.ts';
+import { KANBAN_HANDLERS } from './kanban.ts';
 
 export type CallHandler<K extends CallName> = Readonly<{
   // Writes report an unknown outcome when the reply is lost; reads do not.
@@ -18,4 +19,5 @@ export const HANDLERS: CallHandlers = Object.freeze({
   ...HOST_HANDLERS,
   ...CHAT_HANDLERS,
   ...SETTINGS_HANDLERS,
+  ...KANBAN_HANDLERS,
 });

@@ -4,12 +4,14 @@ import type { CallDefinition, CallFailure } from '../call.ts';
 import { HOST_CALLS } from './host.ts';
 import { CHAT_CALLS } from './chat.ts';
 import { SETTINGS_CALLS } from './settings.ts';
+import { KANBAN_CALLS } from './kanban.ts';
 
 // One line per feature module; keep the list in this order.
 export const CALLS = Object.freeze({
   ...HOST_CALLS,
   ...CHAT_CALLS,
   ...SETTINGS_CALLS,
+  ...KANBAN_CALLS,
 });
 
 export type CallName = keyof typeof CALLS;
