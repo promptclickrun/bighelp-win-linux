@@ -31,24 +31,33 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const sending = useRef(false);
   const pendingNavigation = useRef<Readonly<{generation: number; requestId: string}> | null>(null);
   const suppressNavigation = useRef(false);
+  const navigationSequence = useRef(0);
+  const mounted = useRef(true);
   const leaveChat = () => {
     suppressNavigation.current = true;
+    ++navigationSequence.current;
+    void flushDrafts();
     const pending = pendingNavigation.current; pendingNavigation.current = null;
     if (pending && props.api && props.act) void props.act(props.api.cancelNavigation(pending.generation, pending.requestId));
   };
   const [sendPending, setSendPending] = useState(false);
   const dirty = useRef(new Map<string, string>());
   const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
+  const flushing = useRef<Readonly<{ generation: number; promise: Promise<boolean> }> | null>(null);
   const generation = props.snapshot?.generation;
   const currentGeneration = useRef(generation);
   if (currentGeneration.current !== generation) {
     currentGeneration.current = generation; dirty.current.clear();
     for (const timer of timers.current.values()) clearTimeout(timer); timers.current.clear();
   }
-  useEffect(() => () => {
-    for (const timer of timers.current.values()) clearTimeout(timer);
-    const pending = pendingNavigation.current;
-    if (pending && props.api) void props.api.cancelNavigation(pending.generation, pending.requestId).catch(() => {});
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false; ++navigationSequence.current;
+      for (const timer of timers.current.values()) clearTimeout(timer);
+      const pending = pendingNavigation.current;
+      if (pending && props.api) void props.api.cancelNavigation(pending.generation, pending.requestId).catch(() => {});
+    };
   }, [props.api]);
   useEffect(() => {
     const id = props.snapshot?.selectedChatId;
@@ -74,7 +83,40 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const act = props.act;
   const persistDraft = (chatId: string, text: string) => {
     if (!api || !snapshot || !act || snapshot.status !== 'connected' || snapshot.selectedChatId !== chatId) return;
-    return act(api.draft(snapshot.generation, chatId, text));
+    let acknowledgedGeneration = false;
+    return act(api.draft(snapshot.generation, chatId, text).then(result => {
+      acknowledgedGeneration = result.ok && result.snapshot.generation === snapshot.generation;
+      return result;
+    })).then(saved => saved && acknowledgedGeneration);
+  };
+  // Only the original generation may save this buffer. Main captures the full
+  // host/principal/profile/session scope before its protected write is queued.
+  const flushDrafts = (): Promise<boolean> => {
+    if (!snapshot || !api || !act || dirty.current.size === 0) return Promise.resolve(true);
+    const expected = snapshot.generation;
+    if (flushing.current?.generation === expected) return flushing.current.promise;
+    const current = () => mounted.current && currentGeneration.current === expected;
+    const promise = (async () => {
+      try {
+        while (current() && dirty.current.size) {
+          const [chatId, text] = dirty.current.entries().next().value!;
+          clearTimeout(timers.current.get(chatId)); timers.current.delete(chatId);
+          if (!await persistDraft(chatId, text) || !current()) return false;
+          // Typing during a held write stays dirty and is saved before leaving.
+          if (dirty.current.get(chatId) === text) dirty.current.delete(chatId);
+        }
+        return current();
+      } catch { return false; }
+    })();
+    const pending = { generation: expected, promise }; flushing.current = pending;
+    void promise.finally(() => { if (flushing.current === pending) flushing.current = null; });
+    return promise;
+  };
+  const navigate = (perform: () => void) => {
+    const request = ++navigationSequence.current, expected = generation;
+    void flushDrafts().then(saved => {
+      if (saved && mounted.current && navigationSequence.current === request && currentGeneration.current === expected) perform();
+    });
   };
   let detail: JSX.Element;
   const agentId = state.place === 'chats' ? (chatById(data, state.selectedChatId)?.agentId ?? null) : state.selectedAgentId;
@@ -91,13 +133,13 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           if (snapshot && chat) {
             dirty.current.set(draftKey, text);
             clearTimeout(timers.current.get(draftKey));
-            timers.current.set(draftKey, setTimeout(() => { void persistDraft(draftKey, text); }, 300));
+            timers.current.set(draftKey, setTimeout(() => { void flushDrafts(); }, 300));
           }
         }}
         editable={!snapshot || (snapshot.status === 'connected' && snapshot.selectedChatId === chat?.id)}
         canSend={!sendPending && !!snapshot?.canSend && snapshot.selectedChatId === chat?.id}
         running={!!snapshot?.running && snapshot.selectedChatId === chat?.id}
-        onNewChat={api && snapshot?.status === 'connected' && act ? () => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, agent.id)); } : undefined}
+        onNewChat={api && snapshot?.status === 'connected' && act ? () => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, agent.id)); }) : undefined}
         onSend={api && snapshot && chat && act ? () => {
           if (sending.current) return;
           const text = dirty.current.get(chat.id) ?? snapshot.drafts[chat.id] ?? '';
@@ -122,7 +164,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
     );
   } else if (state.place === 'settings' && state.settingsSection !== null) {
     detail = <SettingsPage section={state.settingsSection} appearance={state.appearance} host={data.host}
-      hostContent={api && snapshot && act ? <HostConnection snapshot={snapshot} error={props.error ?? ''} onConnect={host => { void act(api.connect(host)); }} onDisconnect={() => { void act(api.disconnect()); }} onRefresh={() => { void act(api.refresh()); }} /> : undefined}
+      hostContent={api && snapshot && act ? <HostConnection snapshot={snapshot} error={props.error ?? ''} onConnect={host => navigate(() => { void act(api.connect(host)); })} onDisconnect={() => navigate(() => { void act(api.disconnect()); })} onRefresh={() => { void act(api.refresh()); }} /> : undefined}
       onAppearance={value => dispatch({ type: 'appearance', value })} onBack={() => openSection(null)} />;
   } else if (state.place === 'settings') {
     detail = (
@@ -156,8 +198,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         {panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
             nerdMode={state.nerdMode} settingsSection={state.settingsSection} narrow={narrow}
-            onOpenChat={(chatId, owner) => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); }}
-            onOpenAgent={id => {
+            onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
+            onOpenAgent={id => navigate(() => {
               suppressNavigation.current = false;
               dispatch({ type: 'openAgent', agentId: id });
               if (api && snapshot?.status === 'connected' && act) {
@@ -166,7 +208,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
                   if (pendingNavigation.current === pending) pendingNavigation.current = null;
                 });
               }
-            }} onSettingsSection={openSection} />
+            })} onSettingsSection={openSection} />
         ) : null}
         {panes.detail || (narrow && state.place === 'settings') ? detail : null}
         {props.error ? <View role="status" style={{ position: 'absolute', bottom: 4, left: 80, right: 8, backgroundColor: palette.card, padding: 8 }}><Label>{props.error}</Label></View> : null}
