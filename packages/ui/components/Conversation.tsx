@@ -153,20 +153,20 @@ function AgentTabs(props: Readonly<{ agentName: string; active: AgentTab; onTab:
 
 export function Conversation(props: Readonly<{
   agent: AgentView; chat: ChatView | null; host: HostView | null; tab: AgentTab; draft: string; hint: string;
-  sample: boolean; canSend?: boolean; editable?: boolean; running?: boolean; requests?: ReactNode; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void; onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined;
+  sample: boolean; canSend?: boolean; editable?: boolean; running?: boolean; board?: ReactNode; requests?: ReactNode; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void; onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined;
 }>): JSX.Element {
   const { palette } = useTheme();
   const subline = props.sample ? `Sample data · ${props.host?.label ?? ''}` : props.host?.label ?? 'Not connected';
   let body: JSX.Element;
   if (props.tab !== 'chat') {
-    body = <Notice title="Not built yet" body={`${props.agent.name}'s ${TAB_INFO[props.tab][1]} comes in a later step.`} />;
+    body = props.tab === 'files' ? <Notice title="Files unavailable" body="Files are unavailable in this build. A separate file access contract is needed." /> : <>{props.board}</>;
   } else if (props.chat) {
     body = <Transcript chat={props.chat} />;
   } else {
     body = <Notice title={`New chat with ${props.agent.name}`} body="Nothing has been sent. Use New chat to start a conversation." />;
   }
   return (
-    <View role="main" style={{ flex: 1, minWidth: 0, backgroundColor: palette.page }}>
+    <View role="main" style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: palette.page }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 16,
         borderBottomWidth: 1, borderBottomColor: palette.line, minHeight: 56 }}>
         {props.onBack ? <IconButton icon="left" label="Back to the list" onPress={props.onBack} /> : null}
@@ -178,8 +178,11 @@ export function Conversation(props: Readonly<{
         <IconButton icon="compose" label={`New chat with ${props.agent.name}`} onPress={props.onNewChat ?? (() => {})} disabled={!props.onNewChat} />
       </View>
       {body}
-      {props.requests}
-      {props.tab === 'chat' ? <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} editable={props.editable ?? true} canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop} /> : null}
+      {/* Keep the native editor node and its undo/IME state across agent tabs. */}
+      <div hidden={props.tab !== 'chat'} inert={props.tab !== 'chat'} aria-hidden={props.tab !== 'chat'} style={{ display: props.tab === 'chat' ? 'contents' : 'none' }}>
+        {props.requests}
+        <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} editable={props.editable ?? true} canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop} />
+      </div>
       <AgentTabs agentName={props.agent.name} active={props.tab} onTab={props.onTab} />
     </View>
   );

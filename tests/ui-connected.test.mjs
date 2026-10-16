@@ -6,12 +6,12 @@ const result = await build({ stdin: { contents: `
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { HostConnection } from './packages/ui/components/HostConnection.tsx';
-import { Composer } from './packages/ui/components/Conversation.tsx';
+import { Composer, Conversation } from './packages/ui/components/Conversation.tsx';
 import { WorkspaceFunctionPage } from './packages/ui/components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './packages/ui/components/InteractiveRequests.tsx';
 import { ThemeProvider } from './packages/ui/theme.tsx';
 import { PALETTES } from './packages/ui/tokens.ts';
-export function render(component, props) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}>{React.createElement(component === 'host' ? HostConnection : component === 'composer' ? Composer : component === 'workspace' ? WorkspaceFunctionPage : InteractiveRequests, props)}</ThemeProvider>); }
+export function render(component, props) { return renderToStaticMarkup(<ThemeProvider value={{theme:'light',palette:PALETTES.light,font:'sans-serif'}}>{React.createElement(component === 'host' ? HostConnection : component === 'composer' ? Composer : component === 'conversation' ? Conversation : component === 'workspace' ? WorkspaceFunctionPage : InteractiveRequests, props)}</ThemeProvider>); }
 `, resolveDir: process.cwd(), loader: 'tsx' }, jsx: 'automatic', bundle: true, platform: 'node', format: 'cjs', packages: 'external', write: false });
 const compiled = { exports: {} };
 new Function('require', 'module', 'exports', result.outputFiles[0].text)(createRequire(import.meta.url), compiled, compiled.exports);
@@ -53,4 +53,12 @@ test('workspace agent names are escaped in real React markup and offline pages c
   assert.match(html, /aria-label="Agent"/);
   assert.match(html, /aria-label="Refresh projects"/);
   assert.match(html, /This page is unavailable/);
+});
+
+for(const tab of ['feed','ideas','goals','files'])test(`real Conversation markup keeps the ${tab} composer hidden and inert with one bottom tab strip`,()=>{
+ const html=render('conversation',{agent:{id:'one',name:'Synthetic',color:'blue'},chat:null,host:null,tab,draft:'Protected native draft',hint:'Ready',sample:false,onDraft(){},onTab(){},board:'Inert board body'});
+ assert.match(html, /<div hidden="" inert="" aria-hidden="true" style="display:none">/);
+ assert.match(html, /Protected native draft/);assert.equal((html.match(/role="tablist"/g)??[]).length,1);
+ assert.ok(html.indexOf('Protected native draft')<html.indexOf('role="tablist"'));
+ if(tab==='files')assert.match(html,/Files unavailable/);else assert.match(html,/Inert board body/);
 });

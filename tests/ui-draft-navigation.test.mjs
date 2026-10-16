@@ -114,6 +114,7 @@ function harness() {
   const settle = async () => { for (let i=0; i<20; i++) { await Promise.resolve(); render(); } };
   render();
   return {find, settle, calls, saved, replaceAuthority,
+    replaceAgents(agents) { snapshot={...snapshot,data:{...snapshot.data,agents}};changed=true;render(); },
     hold() { let release; holdDraft = new Promise(resolve => { release = resolve; }); return () => { holdDraft = undefined; release(); }; },
     holdCanonical() { let release; holdCanonical = new Promise(resolve => { release = resolve; }); return () => { holdCanonical = undefined; release(); }; },
     holdSend() { let release; holdSend = new Promise(resolve => { release = resolve; }); return () => { holdSend = undefined; release(); }; },
@@ -266,4 +267,29 @@ for (const page of ['projects','scheduled','usage']) test(`global ${page} naviga
     h.find('Rail').onPlace('chats'); await h.settle();
     assert.equal(h.find('Conversation').draft, 'Keep for return');
   } finally { h.unmount(); }
+});
+
+for(const tab of ['feed','ideas','goals'])test(`agent ${tab} navigation preserves dirty draft and returns without chat creation`,async()=>{
+ const h=harness();try{
+ h.find('Conversation').onDraft('Draft across board');h.find('Conversation').onTab(tab);await h.settle();assert.equal(h.find('Conversation').tab,tab);
+ assert.equal(h.find('Conversation').board.type,'AgentBoard');assert.equal(h.find('Conversation').board.props.profile,'agent');assert.equal(h.find('Conversation').board.props.page,tab);
+ assert.ok(!h.calls.some(call=>['canonicalChat','newChat','send'].includes(call.kind)));
+ h.find('Conversation').onTab('chat');await h.settle();assert.equal(h.find('Conversation').draft,'Draft across board');
+ h.find('Conversation').onNewChat();await h.settle();assert.equal(h.saved.get('original:A'),'Draft across board');
+ }finally{h.unmount();}
+});
+test('board tab cancels held canonical navigation without reverting to Chat on its snapshot',async()=>{
+ const h=harness();try{const release=h.holdCanonical();h.find('ContextList').onOpenAgent('agent');
+ // Navigation begins after draft flush, before the held canonical result.
+ await h.settle();h.find('Conversation').onTab('feed');await h.settle();
+ assert.ok(h.calls.some(call=>call.kind==='cancelNavigation'));
+ release();await h.settle();assert.equal(h.find('Conversation').tab,'feed');
+ }finally{h.unmount();}
+});
+
+
+test('board integration retains the exact selected agent and never falls back to another catalog entry',async()=>{
+ const h=harness();try{h.replaceAgents([{id:'agent',name:'Same name',color:'blue'},{id:'other',name:'Same name',color:'red'}]);h.find('Conversation').onTab('ideas');await h.settle();assert.equal(h.find('Conversation').board.props.profile,'agent');
+ h.replaceAgents([{id:'other',name:'Same name',color:'red'}]);assert.throws(()=>h.find('Conversation'),/Missing Conversation/);assert.ok(!h.calls.some(call=>['canonicalChat','newChat','send'].includes(call.kind)));
+ }finally{h.unmount();}
 });

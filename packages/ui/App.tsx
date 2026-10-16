@@ -7,6 +7,7 @@ import { ScrollView, View, useColorScheme, useWindowDimensions } from 'react-nat
 import { createShellState, reduceShell, showsAgentTabs, visiblePanes } from '../domain/shell.ts';
 import type { Place, SettingsSection } from '../domain/shell.ts';
 import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
+import { AgentBoard } from './components/AgentBoard.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { Label, Notice, PageHead, Tag } from './components/primitives.tsx';
 import { Rail } from './components/Rail.tsx';
@@ -127,6 +128,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
     const draftKey = chat?.id ?? `new:${agent.id}`;
     detail = (
       <Conversation agent={agent} chat={chat} host={data.host} tab={state.agentTab} sample={data.sample}
+        board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?
+          <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}
         onDraft={text => {
           if (snapshot && (snapshot.status !== 'connected' || snapshot.selectedChatId !== chat?.id)) return;
@@ -161,7 +164,11 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         } : undefined}
         onStop={api && snapshot && chat && act ? () => { void act(api.interrupt(snapshot.generation, chat.id)); } : undefined}
         requests={api && snapshot && act ? <InteractiveRequests key={snapshot.generation} prompts={snapshot.prompts} disabled={snapshot.status !== 'connected'} onAnswer={(id, answer) => { void act(api.answer(snapshot.generation, id, answer)); }} /> : null}
-        onTab={tab => dispatch({ type: 'agentTab', tab })} />
+        onTab={tab => {
+          if (tab !== 'chat') leaveChat();
+          else suppressNavigation.current = false;
+          dispatch({ type: 'agentTab', tab });
+        }} />
     );
   } else if (state.place === 'settings' && state.settingsSection !== null) {
     detail = <SettingsPage section={state.settingsSection} appearance={state.appearance} host={data.host}
