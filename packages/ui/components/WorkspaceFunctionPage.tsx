@@ -128,8 +128,10 @@ export function WorkspaceFunctionPage(props: Readonly<{
     {props.panes.detail ? <View style={{ flex: 1, minWidth: 0 }}>
       <PageHead title={selected?.title ?? title} onBack={props.onBack} />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 24, gap: 20 }}>
-        {message ? <View role="status"><Label selectable tone="muted">{message}</Label></View> : selected ? selected.detail :
-          <Label tone="muted">{`Pick a ${rowKind} to see its details.`}</Label>}
+        {message ? <View role="status"><Label selectable tone="muted">{message}</Label></View> : selected ? <>
+          <Label selectable heading={3} size={20} weight="700">{selected.title}</Label>
+          {selected.detail}
+        </> : <Label tone="muted">{`Pick a ${rowKind} to see its details.`}</Label>}
       </ScrollView>
     </View> : null}
   </>;

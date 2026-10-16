@@ -133,3 +133,18 @@ test('ambiguous duplicate model names clear selection after refresh instead of i
  control(h,'Refresh usage').onPress();h.render();resolve(io.calls[1],'usage',{days:30,totals:{},daily:[],models:[{name:'Duplicate',sessions:2}]});await h.settle();
  assert.match(textContent(h.value),/Pick a usage row/);h.unmount();
 });
+
+for (const page of ['projects','scheduled','usage']) test(`narrow ${page} detail exposes the complete selected long title as selectable wrapping text`,async()=>{
+ const title='<script>doNotExecute()</script> '+ 'Long supplied name '.repeat(6);
+ const io=ipc();let back=0;
+ const props=pageProps(io.api,{page,narrow:true,panes:{list:true,detail:false},onBack(){back++;}});
+ const h=await harness(pageEntry,'WorkspaceFunctionPage',props);h.render();
+ const payload=page==='projects'?projects(title):page==='scheduled'?{tasks:[{id:'t',name:title,schedule:'Every day',state:'paused',enabled:false}]}:{days:30,totals:{},daily:[],models:[{name:title,sessions:0}]};
+ resolve(io.calls[0],page,payload);await h.settle();control(h,title).onPress();h.render();
+ h.render({...props,panes:{list:false,detail:true}});
+ assert.equal(nodes(h.value,n=>n.props?.['aria-label']==='Agent').length,0,'the context list must be absent');
+ const fullTitle=nodes(h.value,n=>n.type==='Text' && n.props?.children===title && n.props?.selectable===true && n.props?.numberOfLines===0);
+ assert.equal(fullTitle.length,1,'detail must expose the full supplied title as selectable, unrestricted text');
+ assert.equal(nodes(h.value,n=>n.type==='script'||n.props?.dangerouslySetInnerHTML).length,0);
+ control(h,'Back').onPress();assert.equal(back,1);assert.equal(io.calls.length,1);h.unmount();
+});
