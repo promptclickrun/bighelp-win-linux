@@ -2,7 +2,7 @@
 
 Private planning and implementation repository for a React Native desktop companion to [Hermes](https://github.com/NousResearch/hermes-agent), targeting the functional and visual behavior of [Bighelp](https://github.com/promptclickrun/bighelp) on macOS.
 
-**Status: Phase 0, first runnable shell.** The approved hybrid layout runs as an Electron + React Native Web app with no host connection yet. Contracts for ownership, send state, RPC framing and transport policy are implemented and type-checked. Nothing has been packaged or released. See [desktop shell evidence](docs/evidence/desktop-shell.md), [toolchain](docs/qualification/TOOLCHAIN.md) and [remaining gates](docs/P0_EVIDENCE.md).
+**Status: connected development preview; full parity is not complete.** The Electron + React Native Web app connects to Hermes with a dashboard or provider access token, creates/resumes chats, persists encrypted drafts/send intents, streams text, and handles approval/clarification requests. Unsigned portable Windows/Linux packaging and platform CI are available. See [execution and evidence](docs/DEVELOPMENT_EXECUTION.md), [connected runtime](docs/evidence/connected-runtime.md), and the [feature matrix](docs/parity/FEATURE_MATRIX.md) for remaining work. Nothing has been signed or released.
 
 ## Start here
 
@@ -43,6 +43,7 @@ npm run electron:fetch   # reviewed step: download Electron, verified against it
 npm run check            # contract tests, three strict type checks, guarded bundle
 npm run desktop:start    # the app, no sample data
 npm run desktop:preview  # synthetic sample data (development only)
+npm run desktop:package  # unsigned portable package for the current target OS
 npm run desktop:smoke -- --fixture-preview   # drive real Electron over DevTools and check the boundaries
 ```
 

@@ -3,8 +3,21 @@
 export type Endpoint = Readonly<{ origin: string; socketOrigin: string }>;
 export type HttpOperation =
   | Readonly<{ kind: 'status' | 'providers' | 'identity' | 'health' | 'nativeContext' }>
+  | Readonly<{ kind: 'workspaceUsage'; profile: string; days: 7 | 30 | 90 }>
+  | Readonly<{ kind: 'workspaceScheduled'; profile: string }>
+  | Readonly<{ kind: 'canonicalSessionDetail'; profile: string; storedSessionId: string }>
+  | Readonly<{ kind: 'workspaceBoard'; agentId: string; etag: string; requestId: string }>
   | Readonly<{ kind: 'templateList'; agentId: string; etag: string; requestId: string }>;
-export type HttpResult = Readonly<{ body: unknown; etag?: string; requestId?: string }>;
+export type HttpResult = Readonly<{ body: unknown; etag?: string; requestId?: string; cacheControl?: string }>;
+// Status only: never preserve a transport error, URL, response body or headers.
+export class HttpStatusError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super('Host request refused');
+    if (!Number.isInteger(status) || status < 100 || status > 599) throw new TypeError('Invalid HTTP status');
+    this.name = 'HttpStatusError'; this.status = status;
+  }
+}
 export type HttpPlan = Readonly<{
   url: string; method: 'GET' | 'POST'; headers: Readonly<Record<string, string>>;
   body?: string; redirect: 'error'; credentials: 'omit'; maxResponseBytes: number;
@@ -44,6 +57,13 @@ function text(value: unknown, max: number): string {
 function headerValue(value: unknown): string {
   const result = text(value, 8192);
   if (!/^[\x20-\x7e]+$/u.test(result) || result.trim() !== result) throw new TypeError('Invalid header value');
+  return result;
+}
+function workspaceProfile(value: unknown): string {
+  const result = text(value, 128);
+  if (new TextEncoder().encode(result).byteLength > 128 || result.trim() !== result
+    || /[/\\\s\u0080-\u009f\u202a-\u202e\u2066-\u2069]/u.test(result)
+    || result === 'all' || result === '.' || result === '..') throw new TypeError('Invalid profile');
   return result;
 }
 
@@ -137,9 +157,25 @@ export function parseHttpOperation(value: unknown): HttpOperation {
     case 'status': case 'providers': case 'identity': case 'health': case 'nativeContext':
       exactKeys(input, ['kind']);
       return Object.freeze({ kind: input.kind });
-    case 'templateList': {
+    case 'workspaceUsage': {
+      exactKeys(input, ['kind', 'profile', 'days']);
+      const profile = workspaceProfile(input.profile), days = input.days;
+      if (days !== 7 && days !== 30 && days !== 90) throw new TypeError('Invalid usage range');
+      return Object.freeze({ kind: 'workspaceUsage', profile, days });
+    }
+    case 'workspaceScheduled':
+      exactKeys(input, ['kind', 'profile']);
+      return Object.freeze({ kind: 'workspaceScheduled', profile: workspaceProfile(input.profile) });
+    case 'canonicalSessionDetail': {
+      exactKeys(input, ['kind', 'profile', 'storedSessionId']);
+      const storedSessionId = text(input.storedSessionId, 512);
+      // DirectHermesWorkspaceClient.pathIdentifier:690. Never a URL/path escape hatch.
+      if (!/^[A-Za-z0-9_.:-]+$/u.test(storedSessionId) || storedSessionId === '.' || storedSessionId === '..') throw new TypeError('Invalid stored session');
+      return Object.freeze({kind:'canonicalSessionDetail',profile:workspaceProfile(input.profile),storedSessionId});
+    }
+    case 'workspaceBoard': case 'templateList': {
       exactKeys(input, ['kind', 'agentId', 'etag', 'requestId']);
-      const agentId = text(input.agentId, 256);
+      const agentId = input.kind === 'workspaceBoard' ? workspaceProfile(input.agentId) : text(input.agentId, 256);
       if (agentId.trim() !== agentId) throw new TypeError('Invalid agent identity');
       const etag = text(input.etag, 73);
       const requestId = text(input.requestId, 36);
@@ -147,7 +183,7 @@ export function parseHttpOperation(value: unknown): HttpOperation {
           || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(requestId)) {
         throw new TypeError('Invalid native preconditions');
       }
-      return Object.freeze({ kind: 'templateList', agentId, etag, requestId });
+      return Object.freeze({ kind: input.kind, agentId, etag, requestId });
     }
     default: throw new TypeError('Unsupported HTTP operation');
   }
@@ -157,7 +193,8 @@ function checkResponse(value: unknown, plan: HttpPlan): Record<string, unknown> 
   const response = record(value);
   if (response.redirected !== false || response.url !== plan.url) throw new Error('Redirect or destination mismatch');
   if (typeof response.status !== 'number' || !Number.isInteger(response.status)
-      || response.status < 200 || response.status >= 300) throw new Error('Host request failed');
+      || response.status < 100 || response.status > 599) throw new Error('Host request failed');
+  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status);
   return response;
 }
 
@@ -185,8 +222,9 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       const response = await adapters.http(request, signal);
       current(signal);
       return checkResponse(response, request);
-    } catch {
+    } catch (error) {
       // Never return the adapter's URL/header-bearing exception or cause.
+      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status);
       throw new Error('Host request failed or retired');
     }
   }
@@ -199,6 +237,18 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       case 'identity': prepared = plan('/api/auth/me', 'GET', authenticated, 65536); break;
       case 'health': prepared = plan('/api/health', 'GET', authenticated, 65536); break;
       case 'nativeContext': prepared = plan('/api/plugins/loopdy/native/context', 'GET', authenticated, 16384); break;
+      case 'workspaceUsage':
+        prepared = plan(`/api/analytics/usage?days=${operation.days}&profile=${encodeURIComponent(operation.profile)}`, 'GET', authenticated, 2 * 1024 * 1024); break;
+      case 'workspaceScheduled':
+        prepared = plan(`/api/cron/jobs?profile=${encodeURIComponent(operation.profile)}`, 'GET', authenticated, 2 * 1024 * 1024); break;
+      case 'canonicalSessionDetail':
+        prepared = plan(`/api/sessions/${operation.storedSessionId}?profile=${encodeURIComponent(operation.profile)}`, 'GET', authenticated, 2 * 1024 * 1024); break;
+      case 'workspaceBoard':
+        prepared = plan('/api/plugins/loopdy/native/board/list', 'POST', Object.freeze({
+          ...authenticated, 'Content-Type': 'application/json', 'If-Match': operation.etag,
+          'X-Loopdy-Request-ID': operation.requestId,
+        }), 2 * 1024 * 1024, JSON.stringify({ agentId: operation.agentId, limit: 200 }));
+        break;
       case 'templateList':
         prepared = plan('/api/plugins/loopdy/native/cards/templates/list', 'POST', Object.freeze({
           ...authenticated, 'Content-Type': 'application/json', 'If-Match': operation.etag,
@@ -208,17 +258,18 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
     }
     const response = await send(prepared, signal);
     current(signal);
-    if (operation.kind === 'nativeContext' || operation.kind === 'templateList') {
+    if (operation.kind === 'nativeContext' || operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
       const headers = record(response.headers);
       const etag = text(headers.etag, 73);
       if (!/^"sha256:[0-9a-f]{64}"$/u.test(etag)) throw new Error('Invalid native response ETag');
-      if (operation.kind === 'templateList') {
+      if (operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
         if (etag !== operation.etag || headers['x-loopdy-request-id'] !== operation.requestId) {
           throw new Error('Native response correlation mismatch');
         }
         return Object.freeze({ body: response.body, etag, requestId: operation.requestId });
       }
-      return Object.freeze({ body: response.body, etag });
+      const cacheControl = headers['cache-control'] === undefined ? undefined : headerValue(headers['cache-control']);
+      return Object.freeze({ body: response.body, etag, ...(cacheControl === undefined ? {} : { cacheControl }) });
     }
     return Object.freeze({ body: response.body });
   }

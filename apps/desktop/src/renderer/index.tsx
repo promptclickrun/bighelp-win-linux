@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
-import { App } from '../../../../packages/ui/App.tsx';
-import { SAMPLE_DATA } from '../../../../packages/ui/fixtures.ts';
+import { App, ConnectedApp } from '../../../../packages/ui/App.tsx';
+import type { DesktopApi } from '../shared/desktop-api.ts';
+declare const __BIGHELP_FIXTURES__: boolean;
 import { EMPTY_DATA } from '../../../../packages/ui/view-model.ts';
 import { parseShellInfo } from '../shared/shell-info.ts';
 
@@ -10,4 +11,10 @@ const host = document.getElementById('root');
 if (!host) throw new Error('Missing root element');
 document.documentElement.dataset.platform = info.platform;
 if (info.fixturePreview) document.title = 'bighelp (sample data)';
-createRoot(host).render(<App data={info.fixturePreview ? SAMPLE_DATA : EMPTY_DATA} platform={info.platform} />);
+const root = createRoot(host);
+if (__BIGHELP_FIXTURES__ && info.fixturePreview) {
+  void import('../../../../packages/ui/fixtures.ts').then(({ SAMPLE_DATA }) => root.render(<App data={SAMPLE_DATA} platform={info.platform} />));
+} else {
+  const api = (globalThis as { bighelpDesktop?: DesktopApi }).bighelpDesktop;
+  root.render(api ? <ConnectedApp api={api} platform={info.platform} /> : <App data={EMPTY_DATA} platform={info.platform} />);
+}

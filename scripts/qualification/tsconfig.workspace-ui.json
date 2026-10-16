@@ -1,0 +1,4 @@
+{
+  "extends": "../../config/tsconfig.renderer.json",
+  "include": ["workspace-ui-fixture.tsx", "../../packages/ui/react-native-web.d.ts"]
+}

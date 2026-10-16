@@ -153,3 +153,19 @@ test('shell: opening a different conversation starts on its Chat tab', () => {
   assert.equal(state.agentTab, 'chat');
   assert.equal(state.selectedAgentId, 'agent-3');
 });
+
+test('shell: function row detail and Back use the existing narrow panes without agent tabs or draft changes', () => {
+  let state = reduceShell(open(createShellState()), {type:'draft',chatId:'chat-1',text:'Keep this'});
+  assert.equal(reduceShell(state, {type:'functionDetail'}), state);
+  state = reduceShell(state, {type:'layout',layout:'narrow'});
+  for (const place of ['projects','scheduled','usage']) {
+    state = reduceShell(state, {type:'place',place});
+    assert.deepEqual(visiblePanes(state), {list:true,detail:false});
+    state = reduceShell(state, {type:'functionDetail'});
+    assert.deepEqual(visiblePanes(state), {list:false,detail:true});
+    assert.equal(showsAgentTabs(state), false);
+    state = reduceShell(state, {type:'back'});
+    assert.deepEqual(visiblePanes(state), {list:true,detail:false});
+    assert.equal(state.drafts['chat-1'], 'Keep this');
+  }
+});

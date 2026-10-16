@@ -26,6 +26,8 @@ The current Apple/BuzzKit/APNs setup is not a verified Windows/Linux solution. E
 
 ## D4 — Calendar, reminders, location, and person identity (blocking for those rows)
 
+**Preview scope decision (2026-10-16):** Colt chose “Leave device calendar/reminder access unavailable for now.” Do not advertise those capabilities or replace existing stores with synthetic local lists. Location and appearance retain their separate consent/qualification requirements.
+
 EventKit/iCloud identity is not portable. Choosing Microsoft Graph, CalDAV, a local store, or another provider changes both data source and consent. Do not pretend a new local reminders list is the same as the user's existing Apple reminders.
 
 **Recommend:** implement appearance and permission/channel framework first; choose named supported calendar/reminder providers explicitly; keep local person identity separate by default. Device-local location only when the platform adapter can meet consent/accuracy requirements.
@@ -44,9 +46,13 @@ No continuous loaders/pulse/weather effects under this workspace's motion policy
 
 **Direction confirmed (2026-10-15):** after reviewing the rendered hybrid D sheet, Colt said, "In general, yes I agree with the direction." Use D as the visual direction for the first implementation slice; another broad layout-selection round is not required. This is general direction approval, not pixel-level acceptance or proof of native behavior.
 
-**Still not approved or verified:** exact rail order, widths, spacing, narrow interaction details, Workflows/function page bodies (static placeholders), and unrelated parity exceptions (fonts, glyphs, surfaces, motion). Full visual parity is not accepted. The mocks use synthetic content and have not been compared with shipping-app screenshots. The separate D6 dependency approval gate remains in force.
+**Function-page direction picked (2026-10-16):** Colt chose **A — List and detail** from `docs/design/function-alternatives/a-list-detail.html`. Implement that body pattern inside hybrid D, preserving the existing 76 px rail and 300 px context list. Use real validated host data and honest empty/unavailable states. This authorizes the previously blocked function-page implementation; no further broad layout pick is needed for this pattern. Existing narrow one-pane navigation remains the baseline, subject to actual usability qualification. The choice does not approve new dependencies or establish complete feature or visual parity.
+
+**Still not approved or verified:** exact rail order, pixel-level spacing, new narrow interaction designs, and unrelated parity exceptions (fonts, glyphs, surfaces, motion). Full visual parity is not accepted. The mocks use synthetic content and have not been compared with shipping-app screenshots. The separate D6 dependency approval gate remains in force.
 
 ## D6 — Runtime dependencies and storage (after proof)
+
+**Additional approval (2026-10-16):** Colt approved exact `ws@8.22.0` and `@types/ws@8.18.2` for authenticated, bounded WebSocket transport. Optional native masking/UTF-8 addons are excluded; Node's native UTF-8 validation is used. See the socket transport evidence.
 
 **Approved (2026-10-15):** Colt picked the PR 4 proposal set with an isolated Node 24.22 toolchain and an exact lockfile. Installed per [TOOLCHAIN.md](qualification/TOOLCHAIN.md), with one deviation: `@types/react-native-web@0.19.3` failed strict checking against RNW 0.21, which was the proposal's own stop condition. It and the `react-native@0.88.0` it required were removed, and a small hand-maintained declaration replaces them. That removed 203 installed packages and all 9 high-severity advisories, and added no package. Storage, secrets, packaging, WebSocket and native-module choices are still open.
 

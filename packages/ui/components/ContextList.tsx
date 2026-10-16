@@ -154,25 +154,35 @@ export function ContextList(props: Readonly<{
     default:
       body = <Empty>{`${title} comes in a later step of the desktop build.`}</Empty>;
   }
+  return <ContextColumn title={title} narrow={props.narrow} actions={actions}>
+    {offline && (props.place === 'chats' || props.place === 'agents') ? (
+      <View role="status" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 4, marginBottom: 8,
+        paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: palette.warnBackground,
+        borderWidth: 1, borderColor: palette.warnLine }}>
+        <Icon name="offline" color={palette.warnInk} size={16} />
+        <Label size={12} tone="warnInk">Offline · showing copies saved on this device</Label>
+      </View>
+    ) : null}
+    {body}
+  </ContextColumn>;
+}
+
+// Shared shell column; function pages supply their own actual controls and rows.
+export function ContextColumn(props: Readonly<{
+  title: string; narrow: boolean; actions?: ReactNode; children: ReactNode;
+}>): JSX.Element {
+  const { palette } = useTheme();
   return (
-    // Wide: a fixed 300 px column. Not `flex: 0`, which is CSS flex-basis 0% and collapses the width.
-    <View role="region" aria-label={title} style={[{ borderRightWidth: props.narrow ? 0 : 1, borderRightColor: palette.line,
-      backgroundColor: palette.page, minHeight: 0 },
+    // Wide: fixed 300 px. Never flex: 0, which collapses its flex basis.
+    <View role="region" aria-label={props.title} style={[{ borderRightWidth: props.narrow ? 0 : 1,
+      borderRightColor: palette.line, backgroundColor: palette.page, minHeight: 0 },
       props.narrow ? { flexGrow: 1, flexShrink: 1, flexBasis: 0, minWidth: 0 } : { flexGrow: 0, flexShrink: 0, width: 300 }]}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 12, paddingBottom: 8, paddingHorizontal: 16, minHeight: 56 }}>
-        <View style={{ flex: 1 }}><Label heading={2} size={18} weight="700">{title}</Label></View>
-        {actions}
+        <View style={{ flex: 1 }}><Label heading={2} size={18} weight="700">{props.title}</Label></View>
+        {props.actions}
       </View>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 8, paddingBottom: 12 }}>
-        {offline ? (
-          <View role="status" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginHorizontal: 4, marginBottom: 8,
-            paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: palette.warnBackground,
-            borderWidth: 1, borderColor: palette.warnLine }}>
-            <Icon name="offline" color={palette.warnInk} size={16} />
-            <Label size={12} tone="warnInk">Offline · showing copies saved on this device</Label>
-          </View>
-        ) : null}
-        {body}
+        {props.children}
       </ScrollView>
     </View>
   );

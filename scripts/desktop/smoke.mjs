@@ -3,7 +3,7 @@
 // Chrome DevTools Protocol: renderer isolation, the frozen preload description,
 // blocked network/navigation/popups, and the rendered shell. Optional screenshots.
 //
-//   node scripts/desktop/smoke.mjs [--fixture-preview] [--screenshots <dir>] [--no-os-sandbox]
+//   node scripts/desktop/smoke.mjs [--fixture-preview] [--workspace-fixture] [--screenshots <dir>] [--no-os-sandbox]
 //
 // --no-os-sandbox passes Chromium's --no-sandbox. Use it only on a development
 // machine that cannot run Chromium's OS sandbox, and report it: it removes the
@@ -22,7 +22,8 @@ const args = process.argv.slice(2);
 const flag = name => args.includes(name);
 const shotsIndex = args.indexOf('--screenshots');
 const shots = shotsIndex >= 0 ? resolve(args[shotsIndex + 1] ?? '') : null;
-const electronPath = createRequire(import.meta.url)('electron');
+const executableIndex = args.indexOf('--executable');
+const electronPath = executableIndex >= 0 ? resolve(args[executableIndex + 1] ?? '') : createRequire(import.meta.url)('electron');
 const main = join(root, 'apps', 'desktop', 'dist', 'main.cjs');
 
 const freePort = () => new Promise((done, fail) => {
@@ -35,8 +36,10 @@ const port = await freePort();
 const profile = await mkdtemp(join(tmpdir(), 'bighelp-smoke-'));
 const child = spawn(electronPath, [
   `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1',
-  ...(flag('--no-os-sandbox') ? ['--no-sandbox'] : []), main, ...(flag('--fixture-preview') ? ['--fixture-preview'] : []),
-], { env: { ...process.env, XDG_CONFIG_HOME: profile, ELECTRON_DISABLE_SECURITY_WARNINGS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
+  ...(flag('--no-os-sandbox') ? ['--no-sandbox'] : []), ...(flag('--headless') ? ['--ozone-platform=headless', '--disable-gpu'] : []),
+  ...(executableIndex >= 0 ? [] : [main]), ...(flag('--fixture-preview') ? ['--fixture-preview'] : []),
+], { env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, LOCALAPPDATA: profile,
+  ELECTRON_RUN_AS_NODE: undefined, ELECTRON_DISABLE_SECURITY_WARNINGS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let stderr = '';
 child.stderr.on('data', chunk => { stderr += chunk; });
 child.stdout.on('data', () => {});
@@ -80,6 +83,7 @@ try {
     return reply.result?.result?.value;
   };
   await send('Network.enable');
+  await send('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
   browserVersion = await evaluate('navigator.userAgent.match(/(Chrome|Electron)\\/[\\d.]+/g)?.join(" ")');
   for (let attempt = 0; attempt < 40; attempt++) {
     if (await evaluate("document.querySelector('[aria-label=\"Places\"]') !== null")) break;
@@ -93,6 +97,12 @@ try {
   check('preload exposes only {platform, fixturePreview}', /^\{"platform":"(windows|linux|other)","fixturePreview":(true|false)\}$/u.test(info ?? ''), info);
   check('preload object is frozen', await evaluate('Object.isFrozen(window.bighelpShell)'));
   check('no electron/ipc globals', await evaluate("!('ipcRenderer' in window) && !('electron' in window)"));
+  check('desktop bridge exposes only finite operations', await evaluate(
+    "Object.isFrozen(window.bighelpDesktop) && Object.keys(window.bighelpDesktop).sort().join(',') === 'answer,cancelNavigation,canonicalChat,connect,disconnect,draft,interrupt,newChat,openChat,refresh,send,snapshot,subscribe,workspace'"));
+  if (!flag('--fixture-preview')) {
+    check('privileged service rejects stale or malformed actions', await evaluate(
+      "window.bighelpDesktop.send(-1, 'not-a-chat', 'test').then(result => result.ok === false)"));
+  }
   check('page served from app://bighelp', await evaluate("location.origin === 'app://bighelp'"));
   const csp = await evaluate("document.querySelector('meta[http-equiv=\"Content-Security-Policy\"]')?.content ?? ''");
   check('CSP forbids connections', /connect-src 'none'/u.test(csp));
@@ -147,7 +157,8 @@ try {
     .every(label => text.includes(label)), '');
   const fixture = flag('--fixture-preview');
   check(fixture ? 'sample data is labelled' : 'no invented data without a computer',
-    fixture ? text.includes('Sample data') : text.includes('No computer connected yet') && !text.includes('Juniper'));
+    fixture ? text.includes('Sample data') : text.includes('No computer connected yet') && !text.includes('Juniper'),
+    fixture ? '' : text.slice(0, 1200));
 
   const click = label => evaluate(`(() => { const el = document.querySelector('[aria-label=${JSON.stringify(label)}]'); if (!el) return false; el.click(); return true; })()`);
   const capture = async name => {
@@ -208,10 +219,27 @@ try {
     await capture('narrow-light-chat');
   } else {
     await capture('wide-light-empty');
+    for (const page of ['Projects', 'Scheduled', 'Usage']) {
+      await click(page); await sleep(100);
+      check(`no-host ${page} is unavailable with disabled refresh`, await evaluate(
+        `document.body.innerText.includes('This page is unavailable. Connect to Hermes') && document.querySelector('[aria-label="Refresh ${page.toLowerCase()}"]')?.getAttribute('aria-disabled') === 'true'`));
+      check(`no-host ${page} has no agent tab bar`, await evaluate("document.querySelector('[role=tablist]') === null"));
+    }
+    await capture('wide-light-no-host-usage');
   }
   const escaped = [...requests].filter(([id, url]) => !url.startsWith('app://bighelp/') && !url.startsWith('data:') && answered.has(id));
   check('no request outside app:// got a response', escaped.length === 0,
     `${requests.size} requests seen, ${escaped.length} answered outside app://`);
+  // Separate evidence stage: only after ordinary packaged isolation/no-host checks.
+  if (flag('--workspace-fixture')) {
+    if (flag('--fixture-preview')) throw new Error('Use --workspace-fixture with the ordinary no-host app, separately from --fixture-preview');
+    if (results.some(result => !result.ok)) throw new Error('Packaged checks failed before synthetic fixture injection');
+    const { runWorkspaceFixture } = await import('../qualification/workspace-ui-smoke.mjs');
+    const beforeFixture = new Set(requests.keys());
+    await runWorkspaceFixture({ root, evaluate, send, check, capture, sleep });
+    const fixtureRequests = [...requests].filter(([id, url]) => !beforeFixture.has(id) && !url.startsWith('app://bighelp/') && !url.startsWith('data:'));
+    check('synthetic UI issues no external network requests', fixtureRequests.length === 0, `${fixtureRequests.length} external requests`);
+  }
 } catch (error) {
   check('smoke run completed', false, error instanceof Error ? error.message : String(error));
 } finally {
@@ -226,6 +254,6 @@ const failed = results.filter(result => !result.ok);
 const runtime = browserVersion ?? null;
 process.stdout.write(`${JSON.stringify({
   runtime, osSandbox: flag('--no-os-sandbox') ? 'disabled (--no-sandbox)' : 'enabled',
-  fixturePreview: flag('--fixture-preview'), screenshots: shots, passed: results.length - failed.length, failed: failed.length, results,
+  fixturePreview: flag('--fixture-preview'), workspaceFixture: flag('--workspace-fixture'), screenshots: shots, passed: results.length - failed.length, failed: failed.length, results,
 }, null, 2)}\n`);
 process.exit(failed.length === 0 ? 0 : 1);

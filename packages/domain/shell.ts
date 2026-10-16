@@ -45,6 +45,7 @@ export type ShellAction =
   | Readonly<{ type: 'openChat'; chatId: unknown; agentId: unknown }>
   | Readonly<{ type: 'openAgent'; agentId: unknown }>
   | Readonly<{ type: 'agentTab'; tab: unknown }>
+  | Readonly<{ type: 'functionDetail' }>
   | Readonly<{ type: 'back' }>
   | Readonly<{ type: 'layout'; layout: unknown }>
   | Readonly<{ type: 'nerdMode'; on: unknown }>
@@ -116,6 +117,9 @@ export function reduceShell(state: ShellState, action: ShellAction): ShellState 
     case 'agentTab':
       if (!member(AGENT_TABS, action.tab) || !showsAgentTabs(state)) return state;
       return next(state, { agentTab: action.tab });
+    case 'functionDetail':
+      if (state.place !== 'projects' && state.place !== 'scheduled' && state.place !== 'usage') return state;
+      return next(state, { narrowPane: 'detail' });
     case 'back':
       if (state.layout !== 'narrow' || state.narrowPane !== 'detail') return state;
       return next(state, { narrowPane: 'list', ...(state.place === 'settings' ? { settingsSection: null } : {}) });

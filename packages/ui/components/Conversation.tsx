@@ -1,7 +1,7 @@
 // The open agent's page (mock D): header, transcript, pinned composer, then the
 // agent's own Chat/Feed/Ideas/Goals/Files bar. The composer is a sibling of the
 // scroller, never inside a recycled list, so streaming can't reset the draft.
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { useState } from 'react';
 import { Pressable, ScrollView, TextInput, View } from 'react-native-web';
 import { AGENT_TABS, SHELL_LIMITS } from '../../domain/shell.ts';
@@ -49,7 +49,7 @@ function Bubble(props: Readonly<{ item: Extract<TranscriptItem, { kind: 'message
 // action. In this slice no host exists, so none of the three can act yet.
 function UnknownSend(): JSX.Element {
   const { palette } = useTheme();
-  const disabledNote = 'Needs a connected computer';
+  const disabledNote = 'Not available in this build';
   return (
     <View role="status" style={{ flexDirection: 'row', gap: 10, marginTop: 8, padding: 10, paddingHorizontal: 12,
       borderWidth: 1, borderColor: palette.warnLine, backgroundColor: palette.warnBackground, borderRadius: 12, maxWidth: 440 }}>
@@ -68,7 +68,7 @@ function UnknownSend(): JSX.Element {
             </Pressable>
           ))}
         </View>
-        <Label size={12} tone="warnInk">Sending again could add the goals twice. Checking is safe.</Label>
+        <Label size={12} tone="warnInk">Sending again could duplicate this message. Refresh chats in Settings → Hosts to check history.</Label>
       </View>
     </View>
   );
@@ -102,27 +102,27 @@ function Transcript(props: Readonly<{ chat: ChatView }>): JSX.Element {
   );
 }
 
-export function Composer(props: Readonly<{ agentName: string; draft: string; onDraft: (text: string) => void; hint: string }>): JSX.Element {
+export function Composer(props: Readonly<{ agentName: string; draft: string; onDraft: (text: string) => void; hint: string; canSend?: boolean; editable?: boolean; running?: boolean; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined }>): JSX.Element {
   const { palette, font } = useTheme();
   const [height, setHeight] = useState(34);
-  const disabledNote = 'Needs a connected computer';
+  const disabledNote = 'Not available in this build';
   return (
     <View role="form" aria-label="Message box" style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingTop: 8,
       paddingHorizontal: 20, paddingBottom: 10 }}>
       <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 4, backgroundColor: palette.card, borderWidth: 1,
         borderColor: palette.line, borderRadius: 22, padding: 5, boxShadow: '0 4px 14px -6px rgba(60,40,30,.16)' }}>
         <IconButton icon="plus" label={`Add photos or files. ${disabledNote}`} onPress={() => {}} disabled />
-        <TextInput multiline value={props.draft} onChangeText={props.onDraft} aria-label={`Message ${props.agentName}`}
+        <TextInput multiline editable={props.editable ?? true} value={props.draft} onChangeText={props.onDraft} aria-label={`Message ${props.agentName}`}
           aria-describedby="composer-hint" placeholder={`Message ${props.agentName}`} placeholderTextColor={palette.muted}
           maxLength={SHELL_LIMITS.draftCharacters} spellCheck={false}
           onContentSizeChange={event => setHeight(Math.min(200, Math.max(34, Math.ceil(event.nativeEvent.contentSize.height))))}
           style={{ flex: 1, minWidth: 0, height, paddingVertical: 7, paddingHorizontal: 6, fontFamily: font, fontSize: 14,
             lineHeight: 20, color: palette.ink, outlineStyle: 'none', resize: 'none' }} />
         <IconButton icon="mic" label={`Voice. ${disabledNote}`} onPress={() => {}} disabled />
-        <Pressable role="button" aria-label={`Send. ${props.hint}`} disabled
+        <Pressable role="button" aria-label={props.running ? "Stop reply" : `Send. ${props.hint}`} disabled={props.running ? !props.onStop : !props.canSend || !props.draft.trim()} onPress={() => { if (props.running) props.onStop?.(); else props.onSend?.(); }}
           style={{ width: 34, height: 34, borderRadius: 17, alignItems: 'center', justifyContent: 'center',
-            backgroundColor: palette.incoming, opacity: 0.6, cursor: 'not-allowed' }}>
-          <Icon name="send" color={palette.muted} />
+            backgroundColor: palette.incoming, opacity: props.canSend || props.running ? 1 : 0.6, cursor: 'pointer' }}>
+          <Icon name={props.running ? 'close' : 'send'} color={palette.muted} />
         </Pressable>
       </View>
       <Label nativeID="composer-hint" size={12} tone="muted" style={{ marginTop: 6, marginHorizontal: 14 }}>{props.hint}</Label>
@@ -153,20 +153,20 @@ function AgentTabs(props: Readonly<{ agentName: string; active: AgentTab; onTab:
 
 export function Conversation(props: Readonly<{
   agent: AgentView; chat: ChatView | null; host: HostView | null; tab: AgentTab; draft: string; hint: string;
-  sample: boolean; onDraft: (text: string) => void; onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined;
+  sample: boolean; canSend?: boolean; editable?: boolean; running?: boolean; board?: ReactNode; requests?: ReactNode; onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void; onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined;
 }>): JSX.Element {
   const { palette } = useTheme();
   const subline = props.sample ? `Sample data · ${props.host?.label ?? ''}` : props.host?.label ?? 'Not connected';
   let body: JSX.Element;
   if (props.tab !== 'chat') {
-    body = <Notice title="Not built yet" body={`${props.agent.name}'s ${TAB_INFO[props.tab][1]} comes in a later step.`} />;
+    body = props.tab === 'files' ? <Notice title="Files unavailable" body="Files are unavailable in this build. A separate file access contract is needed." /> : <>{props.board}</>;
   } else if (props.chat) {
     body = <Transcript chat={props.chat} />;
   } else {
-    body = <Notice title={`New chat with ${props.agent.name}`} body="Nothing has been sent. Starting chats needs a connected computer." />;
+    body = <Notice title={`New chat with ${props.agent.name}`} body="Nothing has been sent. Use New chat to start a conversation." />;
   }
   return (
-    <View role="main" style={{ flex: 1, minWidth: 0, backgroundColor: palette.page }}>
+    <View role="main" style={{ flex: 1, minWidth: 0, minHeight: 0, backgroundColor: palette.page }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, paddingHorizontal: 16,
         borderBottomWidth: 1, borderBottomColor: palette.line, minHeight: 56 }}>
         {props.onBack ? <IconButton icon="left" label="Back to the list" onPress={props.onBack} /> : null}
@@ -175,10 +175,14 @@ export function Conversation(props: Readonly<{
           <Label heading={2} size={15} weight="700" oneLine>{props.agent.name}</Label>
           <Label size={12} tone="muted" oneLine>{subline}</Label>
         </View>
-        <IconButton icon="compose" label={`New chat with ${props.agent.name}. Needs a connected computer`} onPress={() => {}} disabled />
+        <IconButton icon="compose" label={`New chat with ${props.agent.name}`} onPress={props.onNewChat ?? (() => {})} disabled={!props.onNewChat} />
       </View>
       {body}
-      {props.tab === 'chat' ? <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} /> : null}
+      {/* Keep the native editor node and its undo/IME state across agent tabs. */}
+      <div hidden={props.tab !== 'chat'} inert={props.tab !== 'chat'} aria-hidden={props.tab !== 'chat'} style={{ display: props.tab === 'chat' ? 'contents' : 'none' }}>
+        {props.requests}
+        <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} editable={props.editable ?? true} canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop} />
+      </div>
       <AgentTabs agentName={props.agent.name} active={props.tab} onTab={props.onTab} />
     </View>
   );

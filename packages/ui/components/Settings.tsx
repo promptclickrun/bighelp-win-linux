@@ -1,5 +1,5 @@
 // One Settings. Everyday rows never move; Hermes items appear only with Nerd Mode on.
-import type { JSX } from 'react';
+import type { JSX, ReactNode } from 'react';
 import { Pressable, ScrollView, View } from 'react-native-web';
 import { EVERYDAY_SETTINGS, NERD_SETTINGS } from '../../domain/shell.ts';
 import type { Appearance, SettingsSection } from '../../domain/shell.ts';
@@ -151,12 +151,12 @@ function AppearancePage(props: Readonly<{ value: Appearance; onChange: (value: A
 }
 
 export function SettingsPage(props: Readonly<{ section: SettingsSection; appearance: Appearance; host: HostView | null;
-  onAppearance: (value: Appearance) => void; onBack: () => void }>): JSX.Element {
+  hostContent?: ReactNode; onAppearance: (value: Appearance) => void; onBack: () => void }>): JSX.Element {
   const title = SECTION_INFO[props.section][1];
   let body: JSX.Element;
   if (props.section === 'appearance') body = <AppearancePage value={props.appearance} onChange={props.onAppearance} />;
   else if (props.section === 'hosts') {
-    body = <Notice title={props.host ? props.host.label : 'No computer connected'}
+    body = props.hostContent ? <>{props.hostContent}</> : <Notice title={props.host ? props.host.label : 'No computer connected'}
       body={props.host ? 'This is sample data, not a real computer.' : 'Adding a computer comes with sign-in, the next build step.'} />;
   } else body = <Notice title="Not built yet" body="This Settings page comes in a later step of the desktop build." />;
   return (

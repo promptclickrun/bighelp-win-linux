@@ -1,0 +1,65 @@
+name: Desktop development packages
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  portable:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run esbuild:verify
+      - run: npm run electron:fetch
+      - run: node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.protected-storage.json
+      - run: node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.workspace-ui.json
+      - run: node --test scripts/qualification/protected-storage.test.mjs
+      - name: Require real Windows OS protection across restart
+        if: runner.os == 'Windows'
+        timeout-minutes: 2
+        run: node scripts/qualification/protected-storage.mjs --require-available
+      - name: Observe Linux OS protection across restart
+        if: runner.os == 'Linux'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          probe_runtime=$(mktemp -d "$RUNNER_TEMP/bighelp-protection-runtime.XXXXXX")
+          trap 'rm -rf "$probe_runtime"' EXIT
+          cp -a node_modules/electron/dist/. "$probe_runtime/"
+          sudo chown root:root "$probe_runtime/chrome-sandbox"
+          sudo chmod 4755 "$probe_runtime/chrome-sandbox"
+          node scripts/qualification/protected-storage.mjs --headless --executable "$probe_runtime/electron"
+      - run: npm test
+      - run: npm run typecheck
+      - run: node scripts/desktop/build.mjs --production
+      - run: node scripts/desktop/package.mjs
+      - name: Packaged Linux smoke and synthetic workspace interactions with OS sandbox
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          cp -a artifacts/bighelp-development-linux-x64 "$RUNNER_TEMP/bighelp-smoke"
+          sudo chown root:root "$RUNNER_TEMP/bighelp-smoke/chrome-sandbox"
+          sudo chmod 4755 "$RUNNER_TEMP/bighelp-smoke/chrome-sandbox"
+          xvfb-run -a node scripts/desktop/smoke.mjs --workspace-fixture --executable "$RUNNER_TEMP/bighelp-smoke/electron"
+      - name: Packaged Windows smoke and synthetic workspace interactions
+        if: runner.os == 'Windows'
+        run: node scripts/desktop/smoke.mjs --workspace-fixture --executable artifacts/bighelp-development-win32-x64/electron.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bighelp-development-${{ matrix.os }}
+          path: |
+            artifacts/*.tar.gz
+            artifacts/*.zip
+            artifacts/*.sha256
+          if-no-files-found: error
+          retention-days: 14

@@ -32,6 +32,7 @@ coverage/
 *.rpm
 
 # Local evidence and temporary work (small curated fixtures remain tracked)
+/.superpowers/
 /artifacts/
 /evidence/
 /tmp/
