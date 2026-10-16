@@ -31,6 +31,10 @@ export type CallContext = Readonly<{
   // Re-read host catalogs after a confirmed change.
   refreshCatalog(): Promise<void>;
   requestId(): string;
+  // Save a copy on this computer: the system Save dialog, then read() for the
+  // bytes main fetches itself. Resolves the saved file's name, or null if the
+  // person cancels. Absent where no window can show a dialog.
+  saveCopy?: (suggestedName: string, read: () => Promise<Uint8Array>) => Promise<string | null>;
 }>;
 
 // A refusal a person can understand. Handlers throw this for known conditions.

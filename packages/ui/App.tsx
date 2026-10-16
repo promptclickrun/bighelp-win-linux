@@ -10,6 +10,7 @@ import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
 import { AddAgentButton, AgentManager, AgentMenu } from './components/AgentManager.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
 import { ChatMenu } from './components/ChatMenu.tsx';
+import { AgentFiles } from './components/AgentFiles.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { PendingAttachments } from './components/PendingAttachments.tsx';
 import { ModelButton } from './components/ModelButton.tsx';
@@ -143,6 +144,28 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   const startChat = api && snapshot?.status === 'connected' && act ? (profile: string) => navigate(() => {
     pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, profile));
   }) : undefined;
+  // Feed, Ideas and Goals actions ("Discuss", "Let's do it", "Create a goal")
+  // open a new chat with the agent and fill in the message box. Nothing is sent:
+  // the person reads it, edits it and presses Send, so no AI credits are spent here.
+  const startChatWith = (agentId: string, text: string) => {
+    if (!api || !snapshot || !act) {
+      // Sample preview: fill in the message box that the Chat tab shows.
+      const shown = state.place === 'chats' ? chatById(data, state.selectedChatId) : null;
+      dispatch({ type: 'draft', chatId: shown?.agentId === agentId ? shown.id : `new:${agentId}`, text });
+      dispatch({ type: 'agentTab', tab: 'chat' }); return;
+    }
+    if (snapshot.status !== 'connected') return;
+    const from = snapshot.generation;
+    navigate(() => {
+      pendingNavigation.current = null; suppressNavigation.current = false;
+      const opened: { snapshot: DesktopSnapshot | null } = { snapshot: null };
+      void act(api.newChat(from, agentId).then(result => { if (result.ok) opened.snapshot = result.snapshot; return result; })).then(ok => {
+        const next = opened.snapshot, chatId = next?.selectedChatId;
+        if (!ok || !next || !chatId || next.status !== 'connected' || !mounted.current) return;
+        void act(api.draft(next.generation, chatId, text));
+      });
+    });
+  };
   let detail: JSX.Element;
   const agentId = state.place === 'chats' ? (chatById(data, state.selectedChatId)?.agentId ?? null) : state.selectedAgentId;
   const agent = agentById(data, agentId);
@@ -179,7 +202,9 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         attachments={snapshot?.attachments?.length && chat && snapshot.selectedChatId === chat.id ? <PendingAttachments files={snapshot.attachments}
           onRemove={api && act ? id => { void act(api.detach(snapshot.generation, chat.id, id)); } : undefined} /> : null}
         board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?
-          <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
+          <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow}
+            onStartChat={text => startChatWith(agent.id, text)} /> : null}
+        files={state.agentTab === 'files' ? <AgentFiles key={`${agent.id}:files`} profile={agent.id} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}
         onDraft={text => {
           if (snapshot && (snapshot.status !== 'connected' || snapshot.selectedChatId !== chat?.id)) return;

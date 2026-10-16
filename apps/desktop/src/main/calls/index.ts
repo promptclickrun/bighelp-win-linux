@@ -10,6 +10,8 @@ import { KANBAN_HANDLERS } from './kanban.ts';
 import { CHAT_LIST_HANDLERS } from './chats.ts';
 import { PROJECT_HANDLERS } from './projects.ts';
 import { SCHEDULE_HANDLERS } from './schedules.ts';
+import { BOARD_HANDLERS } from './board.ts';
+import { FILES_HANDLERS } from './files.ts';
 
 export type CallHandler<K extends CallName> = Readonly<{
   // Writes report an unknown outcome when the reply is lost; reads do not.
@@ -28,4 +30,6 @@ export const HANDLERS: CallHandlers = Object.freeze({
   ...CHAT_LIST_HANDLERS,
   ...SCHEDULE_HANDLERS,
   ...PROJECT_HANDLERS,
+  ...BOARD_HANDLERS,
+  ...FILES_HANDLERS,
 });
