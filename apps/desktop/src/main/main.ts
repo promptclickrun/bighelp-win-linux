@@ -1,6 +1,6 @@
 // Privileged desktop entry point. Host transport and protected persistence stay
 // here; the renderer receives only validated actions and safe snapshots.
-import { app, BrowserWindow, Menu, clipboard, dialog, protocol, session, shell, ipcMain, safeStorage } from 'electron';
+import { app, BrowserWindow, Menu, clipboard, dialog, powerMonitor, protocol, session, shell, ipcMain, safeStorage } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { open, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createSaveCopy } from './save-copy.ts';
@@ -11,11 +11,13 @@ import {
 import { createProtectedRepository } from '../../../../packages/platform/protected-repository.ts';
 import { connectGateway } from '../../../../packages/hermes-client/gateway.ts';
 import { connectSocket } from '../../../../packages/platform/socket-transport.ts';
+import { authHttp } from '../../../../packages/platform/auth-http.ts';
 import { createDesktopService } from './desktop-service.ts';
 import { applyAppIdentity, createDesktopShell } from './desktop-shell.ts';
 import { CALL_CHANNEL, COMMAND_CHANNEL, DESKTOP_CHANNEL, SHELL_CHANNEL, SNAPSHOT_CHANNEL, parseShellAction } from '../shared/desktop-api.ts';
 import { safeLink } from '../shared/links.ts';
 import type { AppCommand } from '../shared/links.ts';
+import type { StorageIssue } from '../shared/desktop-api.ts';
 
 // Must run before the app is ready.
 protocol.registerSchemesAsPrivileged([{
@@ -33,6 +35,7 @@ const bundleDirectory = __dirname;
 const rendererDirectory = join(bundleDirectory, 'renderer');
 let desktop: ReturnType<typeof createDesktopService> | undefined;
 let repository: Awaited<ReturnType<typeof createProtectedRepository>> | null = null;
+let storageIssue: StorageIssue | null = null;
 let quitting = false;
 const desktopShell = createDesktopShell({ bundleDirectory, openWindow: () => { createWindow(); } });
 
@@ -166,9 +169,16 @@ app.whenReady().then(async () => {
         protection: { isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
           getSelectedStorageBackend: () => process.platform === 'linux' ? safeStorage.getSelectedStorageBackend() : 'os',
           encryptString: text => safeStorage.encryptString(text), decryptString: bytes => safeStorage.decryptString(Buffer.from(bytes)) } });
-    } catch { /* No plaintext fallback. The UI reports unavailable secure storage. */ }
+    } catch {
+      // No plaintext fallback. Say why, so the Hosts page can give the right steps.
+      let encryption = false, backend = 'os';
+      try { encryption = safeStorage.isEncryptionAvailable(); } catch { /* Treated as unavailable. */ }
+      try { if (process.platform === 'linux') backend = safeStorage.getSelectedStorageBackend(); } catch { backend = 'unknown'; }
+      storageIssue = process.platform === 'linux' && backend === 'basic_text' ? 'keyringMissing'
+        : !encryption ? (process.platform === 'linux' ? 'keyringLocked' : 'protectionUnavailable') : 'storageFailed';
+    }
   }
-  desktop = createDesktopService({ repository, pickFiles,
+  desktop = createDesktopService({ repository, pickFiles, storageIssue, hostHttp: authHttp,
     connect: options => connectGateway({ ...options, socket: connectSocket }),
     // The renderer names a host file; main asks where to save and writes it.
     saveCopy: createSaveCopy({
@@ -212,6 +222,9 @@ app.whenReady().then(async () => {
   });
   createWindow();
   void desktop.initialize().catch(() => undefined).then(() => desktopShell.initialized());
+  // After sleep or unlock the network may be back before a retry timer fires.
+  powerMonitor.on('resume', () => desktop?.reconnectNow());
+  powerMonitor.on('unlock-screen', () => desktop?.reconnectNow());
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(() => app.exit(1));
 

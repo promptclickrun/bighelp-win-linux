@@ -38,6 +38,9 @@ test('inert child modules match Windows and POSIX paths with the same exports', 
   assert.equal(module.exports.ThemeProvider, 'ThemeProvider');
 });
 
+// HostConnection runs every connection change through App's draft-flushing navigate.
+const hostChange = (h, kind) => { const host = h.find('HostConnection'); host.beforeChange(() => { void host.api[kind]({}); }); };
+
 function harness() {
   const slots = []; let cursor = 0, changed = true, effects = [], tree;
   const hooks = {
@@ -172,14 +175,14 @@ test('leaving chat cancels delayed navigation and persists without reopening cha
   } finally { h.unmount(); }
 });
 
-for (const action of ['onConnect','onDisconnect']) test(`explicit host ${action} waits for the original protected draft`, async () => {
+for (const action of ['connect','disconnect']) test(`explicit host ${action} waits for the original protected draft`, async () => {
   const h = harness();
   try {
     const release = h.hold(); h.find('Conversation').onDraft('Original only'); h.find('Rail').onHost();
-    h.find('HostConnection')[action]({}); await h.settle();
+    hostChange(h, action); await h.settle();
     assert.ok(!h.calls.some(call => call.kind === 'connect' || call.kind === 'disconnect'));
     release(); await h.settle(); assert.equal(h.saved.get('original:A'), 'Original only'); assert.equal(h.saved.get('replacement:A'), undefined);
-    assert.equal(h.calls.at(-1).kind, action === 'onConnect' ? 'connect' : 'disconnect');
+    assert.equal(h.calls.at(-1).kind, action);
   } finally { h.unmount(); }
 });
 
@@ -200,7 +203,7 @@ test('draft acknowledgement fences authority replacement before React commits it
   const h = harness();
   try {
     const release = h.hold(); h.find('Conversation').onDraft('Old text'); h.find('Rail').onHost();
-    h.find('HostConnection').onDisconnect();
+    hostChange(h, 'disconnect');
     h.replaceAuthority(false); release();
     await new Promise(resolve => setImmediate(resolve));
     assert.ok(!h.calls.some(call => call.kind === 'disconnect'));
@@ -245,9 +248,9 @@ test('failed draft persistence prevents explicit host replacement and remains re
   const h = harness();
   try {
     h.fail(true); h.find('Conversation').onDraft('Retry safely'); h.find('Rail').onHost(); await h.settle();
-    h.find('HostConnection').onConnect({}); await h.settle();
+    hostChange(h, 'connect'); await h.settle();
     assert.ok(!h.calls.some(call => call.kind === 'connect'));
-    h.fail(false); h.find('HostConnection').onConnect({}); await h.settle();
+    h.fail(false); hostChange(h, 'connect'); await h.settle();
     assert.equal(h.saved.get('original:A'), 'Retry safely'); assert.equal(h.saved.get('replacement:A'), undefined);
     assert.equal(h.calls.at(-1).kind, 'connect');
   } finally { h.unmount(); }

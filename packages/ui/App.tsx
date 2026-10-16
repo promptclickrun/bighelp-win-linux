@@ -250,7 +250,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
   } else if (state.place === 'settings' && state.settingsSection !== null) {
     detail = <SettingsPage section={state.settingsSection} appearance={appearance} host={data.host} shell={props.shell}
       desktop={api && snapshot && act ? { api, snapshot, act } : undefined}
-      hostContent={api && snapshot && act ? <HostConnection snapshot={snapshot} error={props.error ?? ''} onConnect={host => navigate(() => { void act(api.connect(host)); })} onDisconnect={() => navigate(() => { void act(api.disconnect()); })} onRefresh={() => { void act(api.refresh()); }} /> : undefined}
+      hostContent={api && snapshot ? <HostConnection api={api} snapshot={snapshot} platform={props.platform} beforeChange={navigate} /> : undefined}
       onAppearance={value => { dispatch({ type: 'appearance', value }); if (api && act) void act(api.preferences({ appearance: value })); }} onBack={() => openSection(null)} />;
   } else if (state.place === 'settings') {
     detail = (
@@ -335,6 +335,13 @@ export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string
     catch { setError('The desktop connection is unavailable.'); }
     return false;
   };
+  // The network coming back may end an offline wait early. Main ignores this
+  // unless an automatic reconnect is already waiting (never after Disconnect).
+  useEffect(() => {
+    const online = () => { void props.api.reconnectNow().catch(() => {}); };
+    window.addEventListener('online', online);
+    return () => window.removeEventListener('online', online);
+  }, [props.api]);
   useEffect(() => {
     let mounted = true;
     const off = props.api.subscribe(next => { if (mounted) accept(next); });

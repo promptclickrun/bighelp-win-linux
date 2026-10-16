@@ -1,5 +1,17 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createChatDisplayRecovery, offlineDisplay, recoveryBinding } from './chat-display-recovery.ts';
+import type { RecoveryHost } from './chat-display-recovery.ts';
+import { HostProblemError, discover, validToken } from '../../../../packages/hermes-client/host-auth.ts';
+import type { HostCredential, HostDiscovery, HostProblem } from '../../../../packages/hermes-client/host-auth.ts';
+import { createCredentialSession } from '../../../../packages/hermes-client/host-credential.ts';
+import type { CredentialSession } from '../../../../packages/hermes-client/host-credential.ts';
+import type { AuthHttp } from '../../../../packages/platform/auth-http.ts';
+import type { CredentialSource } from '../../../../packages/platform/transport-policy.ts';
+import { createHostStore, hostLabel } from './host-store.ts';
+import type { HostRecord, StoredHost } from './host-store.ts';
+import { createHostSetup } from './host-setup.ts';
+import { createReconnector } from './reconnect.ts';
+import type { ReconnectResult, ReconnectState, ReconnectTimers } from './reconnect.ts';
 import type { DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
 import { createTextSend } from '../../../../packages/domain/text-send.ts';
 import type { TextIntent } from '../../../../packages/domain/text-send.ts';
@@ -29,7 +41,8 @@ import { EMPTY_DATA } from '../../../../packages/ui/view-model.ts';
 import { plainPreview } from '../../../../packages/ui/markdown.ts';
 import type { ViewData, ChatView, TranscriptItem } from '../../../../packages/ui/view-model.ts';
 import { parseDesktopAction } from '../shared/desktop-api.ts';
-import type { DesktopAction, DesktopAlert, DesktopSnapshot, DesktopResult, DesktopWorkspace, HostInput } from '../shared/desktop-api.ts';
+import type { DesktopAction, DesktopAlert, DesktopHosts, DesktopSnapshot, DesktopResult, DesktopWorkspace, HostInput, ProbeTargetInput,
+  SignInInput, StorageIssue } from '../shared/desktop-api.ts';
 import { DEFAULT_PREFERENCES, restorePreferences } from '../shared/preferences.ts';
 import type { Preferences } from '../shared/preferences.ts';
 import type { CallInput, CallName, CallOutput } from '../shared/calls/index.ts';
@@ -43,12 +56,23 @@ import { decodeChatDetail } from '../../../../packages/contracts/chat-list.ts';
 import { sortChats } from '../../../../packages/ui/chat-list.ts';
 
 type Repository = Readonly<{ read(key: string): Promise<ProtectedValue | null>;
-  write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue> }>;
-type ConnectOptions = Readonly<{ configuration: unknown; isCurrent: () => boolean;
+  write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue>;
+  remove?(key: string, revision: number | null): Promise<void> }>;
+type ConnectOptions = Readonly<{ configuration: unknown; isCurrent: () => boolean; credential?: CredentialSource;
   onEvent: (event: RpcEvent) => void; onRequest: (request: RpcServerRequest, signal: AbortSignal) => Promise<ServerReply>;
   onClosed: () => void }>;
 type PendingPrompt = { prompt: InteractivePrompt; resolve: (reply: ServerReply) => void; cancel: () => void };
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
+// The saved computer and the sign-in this process holds for it (null: sign in again).
+type SavedHost = Readonly<{ record: HostRecord; session: CredentialSession | null }>;
+type HostLogin = Readonly<{ record: HostRecord; session: CredentialSession;
+  // A probe made moments ago by sign-in; otherwise Hermes is asked again first.
+  discovery?: HostDiscovery; unsaved?: boolean }>;
+const isLoopbackOrigin = (origin: string) => /^https?:\/\/(?:127\.\d{1,3}\.\d{1,3}\.\d{1,3}|\[::1\])(?::\d+)?$/u.test(origin);
+// Sign-in problems stop automatic reconnects until the person signs in again.
+const SIGN_IN_PROBLEMS: ReadonlySet<HostProblem> = new Set(['expired', 'modeChanged', 'identityChanged', 'invalidToken',
+  'invalidCredentials', 'tokenWithheld', 'notThisComputer']);
+const HOST_ACTIONS: ReadonlySet<string> = new Set(['probeHost', 'signIn', 'cancelSetup', 'renameHost', 'forgetHost', 'reconnectNow', 'connectSaved']);
 const safeJson = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value)) as JsonValue;
 function journal(value: JsonValue | undefined): JsonObject[] {
   if (value === undefined) return [];
@@ -73,6 +97,12 @@ export function createDesktopService(adapters: Readonly<{
   pickFiles?: () => Promise<readonly Readonly<{ name: string; bytes: Uint8Array }>[] | null>;
   // Save a copy (main/save-copy.ts): system Save dialog, then bytes main fetched.
   saveCopy?: CallContext['saveCopy'];
+  // Credential-free discovery and sign-in requests (main only). Without it the
+  // service connects pasted tokens as given and cannot add a computer by address.
+  hostHttp?: AuthHttp;
+  storageIssue?: StorageIssue | null;
+  timers?: ReconnectTimers;
+  now?: () => number;
 }>) {
   let preferences: Preferences = DEFAULT_PREFERENCES;
   const displayRecovery = adapters.repository ? createChatDisplayRecovery(adapters.repository) : null;
@@ -114,6 +144,20 @@ export function createDesktopService(adapters: Readonly<{
   const prompts = new Map<string, PendingPrompt>();
   const revisions = new Map<string, number>();
   let writes = Promise.resolve();
+  const now = adapters.now ?? Date.now;
+  const store = adapters.repository ? createHostStore(adapters.repository) : null;
+  const setup = adapters.hostHttp ? createHostSetup({ http: adapters.hostHttp, now }) : null;
+  let savedHost: SavedHost | null = null, hostVersion: string | null = null, openedCanonically: string | null = null;
+  // Bumped when the person disconnects or forgets: a connect already in flight
+  // must not start automatic retries afterwards.
+  let stops = 0;
+  let reconnectState: ReconnectState = Object.freeze({ state: 'idle', delaySeconds: 0 });
+  const reconnector = createReconnector({ timers: adapters.timers, attempt: () => reconnectAttempt(), onChange: state => {
+    reconnectState = state;
+    if (state.state === 'waiting') notice = `Offline — trying again in ${state.delaySeconds} s.`;
+    if (state.state === 'signIn') notice = 'Sign in again to reconnect. Open Settings, then Hosts.';
+    publish();
+  } });
   const canSend = () => status === 'connected' && !!owner && !!gateway?.exclusiveSubmit && !!adapters.repository
     && reconciled && !running && !sending && !navigating;
   // While a reply runs, a send steers, queues or interrupts per Settings → Chat.
@@ -126,7 +170,8 @@ export function createDesktopService(adapters: Readonly<{
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
       preferences, attachments: staged && staged.chatId === selectedChatId
         ? staged.files.map(file => ({ id: file.id, name: file.name, size: file.bytes.byteLength, kind: file.kind })) : [],
-      turn: { key: live.turn, model: live.model, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt } });
+      turn: { key: live.turn, model: live.model, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt },
+      hosts: hostsView() });
   }
   const publish = () => { clearTimeout(publishTimer); publishTimer = undefined; adapters.onChange(snapshot()); };
   // Streaming text arrives many times a second; coalesce those updates.
@@ -287,7 +332,7 @@ export function createDesktopService(adapters: Readonly<{
         prompt.kind === 'approval' ? prompt.description ?? prompt.command ?? '' : prompt.questions[0]?.question ?? '');
     });
   }
-  async function restoreOffline(host: HostInput, current: number) {
+  async function restoreOffline(host: RecoveryHost, current: number) {
     const selection = generation;
     const isCurrent = () => !shuttingDown && current === hostGeneration && selection === generation && status !== 'connected';
     const saved = await displayRecovery?.restore(host, isCurrent);
@@ -299,58 +344,219 @@ export function createDesktopService(adapters: Readonly<{
     data = offlineDisplay(saved.data); selectedChatId = null;
     notice = 'Saved chats are read-only while offline. Connect to check for updates.'; publish();
   }
-  async function connect(host: HostInput) {
+  // The authority a sign-in speaks for. "This computer" gets a new token every time
+  // Hermes starts, so it is scoped to the exact origin, not to the token.
+  function principalFor(record: HostRecord, credential: HostCredential): string | null {
+    if (credential.kind === 'dashboard') return credential.automatic
+      ? `dashboard:${digest(JSON.stringify([record.origin, 'dashboard-session']))}` : `dashboard:${digest(credential.token)}`;
+    return credential.provider !== null && credential.userId !== null ? digest(JSON.stringify([credential.provider, credential.userId])) : null;
+  }
+  const recoveryHost = (login: HostLogin): RecoveryHost => ({ label: login.record.label, origin: login.record.origin,
+    principalId: principalFor(login.record, login.session.credential) });
+  function newSession(origin: string, credential: HostCredential): CredentialSession {
+    return createCredentialSession({ origin, initial: credential, http: adapters.hostHttp ?? null, now });
+  }
+  async function saveHost(login: HostLogin): Promise<void> {
+    if (!store) throw Error('Secure storage unavailable');
+    await store.save(login.record, login.session.credential);
+    // Renewals now persist (compare-and-swap) before they are used.
+    login.session.attach((previous, next) => store.rotate(login.record.origin, previous, next));
+    savedHost = { record: login.record, session: login.session };
+  }
+  async function connect(login: HostLogin, mode: 'user' | 'reconnect' = 'user') {
     if (!adapters.repository) throw Error('Secure storage unavailable');
-    const endpoint = parseEndpoint(host.endpoint, host.allowPrivateHttp ? host.endpoint.replace(/\/$/u, '') : undefined);
-    const binding = recoveryBinding(host);
+    const { record, session } = login;
+    const endpoint = parseEndpoint(record.origin, record.plainHttp ? record.origin : undefined);
+    const binding = recoveryBinding(recoveryHost(login));
     const previous = liveRecovery && liveBinding === binding
       ? { binding, scope: {hostId, principalId}, data: liveRecovery.data }
       : recovered?.binding === binding ? recovered : null;
+    // An automatic retry for the same authority keeps unsent drafts and the chat on screen.
+    const kept = mode === 'reconnect' && previous ? { drafts, selectedChatId } : null;
     retire(true); recovered = previous;
     if (previous) data = offlineDisplay(previous.data);
-    status = 'connecting'; notice = 'Connecting…'; publish();
+    if (kept) drafts = kept.drafts;
+    status = 'connecting'; notice = mode === 'reconnect' ? 'Reconnecting…' : 'Connecting…'; publish();
     const current = hostGeneration;
+    const leaseCurrent = () => !shuttingDown && current === hostGeneration;
+    const offline = async () => {
+      if (!leaseCurrent()) return;
+      retire(); const failed = hostGeneration; await restoreOffline(recoveryHost(login), failed);
+      if (!shuttingDown && failed === hostGeneration) {
+        if (kept && recovered?.binding === binding) { drafts = kept.drafts; selectedChatId = kept.selectedChatId; }
+        notice = recovered ? 'Saved chats are read-only while offline. Connect to check for updates.' : 'Could not connect. Check the address and sign-in token.'; publish();
+      }
+    };
+    // Ask Hermes first, with no credentials, then check the sign-in itself before
+    // any socket: the mode must not have changed and the account must match.
+    if (adapters.hostHttp) {
+      try {
+        const discovery = login.discovery ?? await discover(adapters.hostHttp, { origin: record.origin, plainHttp: record.plainHttp, loopback: isLoopbackOrigin(record.origin) });
+        if (!leaseCurrent()) throw Error('Host changed');
+        hostVersion = discovery.version;
+        if ((session.credential.kind === 'dashboard') === discovery.authRequired) throw new HostProblemError('modeChanged');
+        if (!login.discovery) await session.rescrape();
+        const verified = await session.verify();
+        if (verified && session.credential.kind === 'bearer') await session.adopt(verified);
+        if (!leaseCurrent()) throw Error('Host changed');
+      } catch (error) { await offline(); throw error; }
+    }
     let connection: Gateway;
     try { connection = await adapters.connect({ configuration: {
-      endpoint: endpoint.origin, ...(host.allowPrivateHttp ? { approvedPrivateHttpOrigin: endpoint.origin } : {}),
-      authentication: { kind: host.authentication, token: host.token }, proxy: {},
-    }, isCurrent: () => !shuttingDown && current === hostGeneration,
+      endpoint: endpoint.origin, ...(record.plainHttp ? { approvedPrivateHttpOrigin: endpoint.origin } : {}),
+      authentication: { kind: session.credential.kind === 'bearer' ? 'provider' : 'dashboard', token: session.token() }, proxy: {},
+    }, ...(adapters.hostHttp ? { credential: session.source(leaseCurrent) } : {}), isCurrent: leaseCurrent,
     onEvent: frame => event(frame, current), onRequest: (frame, signal) => request(frame, signal, current),
-    onClosed: () => { if (!shuttingDown && current === hostGeneration) { retire(); notice = 'Connection closed. Reconnect to check your chats. Nothing is resent automatically.'; publish(); } } }); }
-    catch { if (!shuttingDown && current === hostGeneration) { retire(); const failed = hostGeneration; await restoreOffline(host, failed);
-      if (!shuttingDown && failed === hostGeneration) { notice = recovered ? 'Saved chats are read-only while offline. Connect to check for updates.' : 'Could not connect. Check the address and sign-in token.'; publish(); } } throw Error('Unable to connect'); }
-    if (shuttingDown || current !== hostGeneration) { connection.close(); throw Error('Host changed'); }
+    onClosed: () => lost(current) }); }
+    catch { await offline(); throw Error('Unable to connect'); }
+    if (!leaseCurrent()) { connection.close(); throw Error('Host changed'); }
     gateway = connection;
     try {
-      let principal = `dashboard:${digest(host.token)}`;
+      let principal = principalFor(record, session.credential) ?? '';
       let verified: WorkspaceIdentity = { kind: 'dashboard' };
-      if (host.authentication === 'provider') {
+      if (session.credential.kind === 'bearer') {
         const identity = (await connection.requestHttp({ kind: 'identity' })).body;
         if (!jsonObject(identity) || typeof identity.provider !== 'string' || !identity.provider || typeof identity.user_id !== 'string' || !identity.user_id) throw Error('Identity unavailable');
+        // A pasted token learns its account here; a saved account must not change.
+        await session.adopt({ provider: identity.provider, userId: identity.user_id, expiresAt: null });
         principal = digest(JSON.stringify([identity.provider, identity.user_id]));
         verified = { kind: 'provider', providerId: identity.provider, userId: identity.user_id };
       } else {
         const health = (await connection.requestHttp({ kind: 'health' })).body;
         if (!jsonObject(health) || health.ok !== true || typeof health.auth_required !== 'boolean') throw Error('Host identity unavailable');
       }
-      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
+      if (!leaseCurrent()) throw Error('Host changed');
       // A newly verified principal retires the previous display immediately.
       if (recovered && (recovered.scope.hostId !== digest(endpoint.origin) || recovered.scope.principalId !== principal)) {
         recovered = null; data = EMPTY_DATA; drafts = Object.create(null); selectedChatId = null; publish();
       }
-      await save('desktop:host', host);
-      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
+      if (login.unsaved) await saveHost(login);
+      if (!leaseCurrent()) throw Error('Host changed');
       await save('desktop:autoConnect', true);
-      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
+      if (!leaseCurrent()) throw Error('Host changed');
       hostId = digest(endpoint.origin); principalId = principal; identity = verified;
-      recovered = null; liveBinding = binding;
-      liveRecovery = displayRecovery?.activate(host, {hostId, principalId}, () => current === hostGeneration) ?? null;
+      const verifiedHost: RecoveryHost = { label: record.label, origin: record.origin, principalId: principal };
+      recovered = null; liveBinding = recoveryBinding(verifiedHost);
+      liveRecovery = displayRecovery?.activate(verifiedHost, {hostId, principalId}, () => current === hostGeneration) ?? null;
       const profiles = decodeProfiles(await connection.operation({ kind: 'profilesList' }));
-      if (shuttingDown || current !== hostGeneration) throw Error('Host changed');
-      data = { sample: false, host: { label: host.label, state: 'connected' }, agents: profiles, chats: [], workflows: [] };
+      if (!leaseCurrent()) throw Error('Host changed');
+      data = { sample: false, host: { label: record.label, state: 'connected' }, agents: profiles, chats: [], workflows: [] };
       status = 'connected'; notice = profiles.length ? 'Choose an agent to start a chat.' : 'This computer has no available agents.';
       await refresh();
-    } catch { if (!shuttingDown && current === hostGeneration) { retire(); notice = 'Could not connect. Check the address, sign-in token, and secure storage.'; publish(); } else connection.close(); throw Error('Unable to connect'); }
+    } catch (error) { if (leaseCurrent()) { retire(); notice = 'Could not connect. Check the address, sign-in token, and secure storage.'; publish(); } else connection.close();
+      throw error instanceof HostProblemError ? error : Error('Unable to connect'); }
+  }
+  // An open connection ended without the person asking. Keep the saved chats on
+  // screen read-only and reconnect with backoff; nothing is resent.
+  function lost(current: number) {
+    if (shuttingDown || current !== hostGeneration) return;
+    retire();
+    if (!savedHost) { notice = 'Connection closed. Reconnect to check your chats. Nothing is resent automatically.'; publish(); return; }
+    reconnector.start();
+  }
+  function failureKind(error: unknown, session: CredentialSession | null): ReconnectResult {
+    if (shuttingDown) return 'stop';
+    if (error instanceof HostProblemError && SIGN_IN_PROBLEMS.has(error.problem)) return 'signIn';
+    if (session?.problem && SIGN_IN_PROBLEMS.has(session.problem)) return 'signIn';
+    return 'retry';
+  }
+  // The chat on screen when the connection dropped (or opened read-only since).
+  function reopenTarget(): Readonly<{ profile: string; chatId: string; canonical: boolean }> | null {
+    const chat = selectedChatId === null ? null : data.chats.find(row => row.id === selectedChatId);
+    return chat ? { profile: chat.agentId, chatId: chat.id, canonical: chat.id === openedCanonically } : null;
+  }
+  async function reconnectAttempt(): Promise<ReconnectResult> {
+    const login = savedHost;
+    if (shuttingDown || !login || !adapters.repository) return 'stop';
+    if (!login.session || login.session.problem) return 'signIn';
+    const target = reopenTarget();
+    try { await connect({ record: login.record, session: login.session }, 'reconnect'); }
+    catch (error) { return failureKind(error, login.session); }
+    // Reopen with session.resume only. Unresolved sends stay "not sure" in their journal.
+    if (target && status === 'connected' && selectedChatId === null && data.agents.some(agent => agent.id === target.profile)) {
+      try {
+        if (target.canonical) await act({ kind: 'canonicalChat', generation, profile: target.profile, requestId: randomUUID() });
+        else await open(target.profile, target.chatId);
+      } catch { /* The chat stays closed; the person can open it again. */ }
+    }
+    return 'connected';
+  }
+  function hostsView(): DesktopHosts {
+    const login = savedHost, credential = login?.session?.credential ?? null;
+    return { saved: login ? { label: login.record.label, thisComputer: isLoopbackOrigin(login.record.origin),
+      signIn: !credential ? null : login.record.method === 'automatic' ? 'automatic' : login.record.method === 'password' ? 'password'
+        : credential.kind === 'bearer' ? 'accessToken' : 'sessionToken',
+      account: credential?.kind === 'bearer' ? credential.userId : null, plainHttp: login.record.plainHttp, version: hostVersion } : null,
+    reconnect: reconnectState, setup: setup?.view() ?? null, storageIssue: adapters.storageIssue ?? null };
+  }
+  // After a connect the person asked for: keep trying if Hermes is just not there.
+  async function connectOrRetry(login: HostLogin): Promise<void> {
+    const stopped = stops;
+    try { await connect(login); } catch (error) {
+      const wanted = stopped === stops && savedHost?.session === login.session;
+      const kind = failureKind(error, login.session);
+      if (kind === 'retry' && wanted) { reconnector.start(); return; }
+      if (kind === 'signIn' && wanted) reconnector.requireSignIn();
+      throw error;
+    }
+  }
+  // The earlier pasted-token form. Saved only after Hermes verified it.
+  async function connectPasted(host: HostInput) {
+    const endpoint = parseEndpoint(host.endpoint, host.allowPrivateHttp ? host.endpoint.replace(/\/$/u, '') : undefined);
+    if (!validToken(host.token)) throw Error('Invalid token');
+    const credential: HostCredential = host.authentication === 'dashboard' ? { kind: 'dashboard', token: host.token, automatic: false }
+      : { kind: 'bearer', accessToken: host.token, refreshToken: null, expiresAt: null, provider: null, userId: null };
+    const record: HostRecord = { label: hostLabel(host.label), origin: endpoint.origin, plainHttp: endpoint.origin.startsWith('http:'), method: 'token' };
+    try { await connect({ record, session: newSession(endpoint.origin, credential), unsaved: true }); }
+    catch (error) { throw error instanceof HostProblemError && error.problem === 'expired' ? new HostProblemError('invalidToken') : error; }
+  }
+  async function probeHost(target: ProbeTargetInput) {
+    if (!setup) throw Error('Setup unavailable');
+    try {
+      if (target.kind !== 'saved') await setup.probe(target, !!savedHost);
+      else if (!savedHost) throw Error('No saved computer');
+      else await setup.probe({ kind: 'saved', candidate: { origin: savedHost.record.origin, plainHttp: savedHost.record.plainHttp,
+        loopback: isLoopbackOrigin(savedHost.record.origin) } }, true);
+    } finally { publish(); }
+  }
+  async function signIn(input: SignInInput) {
+    if (!setup || !store || !adapters.repository) throw Error('Setup unavailable');
+    const signedIn = await setup.signIn(input);
+    // The new sign-in replaces the saved one for this computer before connecting.
+    reconnector.stop();
+    const login: HostLogin = { record: signedIn.record, session: newSession(signedIn.record.origin, signedIn.credential), discovery: signedIn.discovery };
+    await saveHost(login);
+    await save('desktop:autoConnect', true);
+    publish();
+    await connectOrRetry(login);
+  }
+  async function renameHost(label: string) {
+    const login = savedHost;
+    if (!login || !store) throw Error('No saved computer');
+    const record = await store.rename(login.record.origin, label);
+    if (savedHost === login) savedHost = { ...login, record };
+    if (data.host) data = { ...data, host: { ...data.host, label: record.label } };
+    publish();
+  }
+  // Forget: retire the live connection, then remove this computer's sign-in, its
+  // record and its saved chat list from this device. Hermes keeps every chat.
+  async function forgetHost() {
+    if (!store || !adapters.repository) throw Error('Secure storage unavailable');
+    ++stops; reconnector.stop(); setup?.clear();
+    retire(true); recovered = null; savedHost = null; hostVersion = null; openedCanonically = null; notice = ''; publish();
+    await displayRecovery?.drain();
+    await store.forget();
+    await save('desktop:autoConnect', false);
+    await displayRecovery?.forget();
+    publish();
+  }
+  async function connectSaved() {
+    const login = savedHost;
+    if (!login || !adapters.repository) throw Error('No saved computer');
+    if (!login.session || login.session.problem) { reconnector.requireSignIn(); throw new HostProblemError('expired'); }
+    reconnector.stop();
+    await save('desktop:autoConnect', true);
+    await connectOrRetry({ record: login.record, session: login.session });
   }
   async function reloadProfiles() {
     const connection = gateway, current = hostGeneration;
@@ -471,8 +677,15 @@ export function createDesktopService(adapters: Readonly<{
     if (shuttingDown) throw Error('Application is closing');
     if (action.kind === 'call') throw Error('Feature calls use their own channel');
     if (action.kind === 'snapshot') return;
-    if (action.kind === 'connect') { await connect(action.host); return; }
-    if (action.kind === 'disconnect') { retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
+    if (action.kind === 'connect') { reconnector.stop(); await connectPasted(action.host); return; }
+    if (action.kind === 'disconnect') { ++stops; reconnector.stop(); retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
+    if (action.kind === 'probeHost') { await probeHost(action.target); return; }
+    if (action.kind === 'signIn') { await signIn(action); return; }
+    if (action.kind === 'cancelSetup') { setup?.clear(); publish(); return; }
+    if (action.kind === 'renameHost') { await renameHost(action.label); return; }
+    if (action.kind === 'forgetHost') { await forgetHost(); return; }
+    if (action.kind === 'reconnectNow') { reconnector.now(); return; }
+    if (action.kind === 'connectSaved') { await connectSaved(); return; }
     if (action.kind === 'refresh') { await refresh(); return; }
     if (action.kind === 'preferences') {
       const next = Object.freeze({ ...preferences, ...action.changes });
@@ -540,7 +753,9 @@ export function createDesktopService(adapters: Readonly<{
       if (!navigating || navigationIds?.initiatingGeneration !== action.generation) navigationIds = {initiatingGeneration: action.generation, ids: new Set()};
       if (navigationIds.ids.has(action.requestId) || navigationIds.ids.size >= 4096) throw Error('Navigation unavailable');
       navigationIds.ids.add(action.requestId);
-      await open(action.profile, undefined, true, action.requestId, action.generation); return;
+      await open(action.profile, undefined, true, action.requestId, action.generation);
+      if (owner) openedCanonically = owner.storedSessionId;
+      return;
     }
     if (action.kind === 'newChat') { await open(action.profile); return; }
     if (action.kind === 'openChat') {
@@ -830,31 +1045,43 @@ export function createDesktopService(adapters: Readonly<{
       try { adapters.onPreferences?.(preferences); } catch { /* Integration failures never block startup. */ }
       try {
         const enabled = await adapters.repository.read('desktop:autoConnect');
-        if (shuttingDown || current !== hostGeneration) return;
-        const saved = await adapters.repository.read('desktop:host');
-        if (!saved || shuttingDown || current !== hostGeneration) return;
-        const action = parseDesktopAction({ kind: 'connect', host: saved.value });
-        if (action.kind !== 'connect') return;
+        if (shuttingDown || current !== hostGeneration || !store) return;
+        const stored: StoredHost | null = await store.load();
+        if (!stored || shuttingDown || current !== hostGeneration) return;
+        const session = stored.credential ? newSession(stored.record.origin, stored.credential) : null;
+        session?.attach((previous, next) => store.rotate(stored.record.origin, previous, next));
+        savedHost = { record: stored.record, session };
         const selection = generation;
-        await restoreOffline(action.host, current);
+        if (session) await restoreOffline(recoveryHost({ record: stored.record, session }), current);
+        else publish();
         if (shuttingDown || current !== hostGeneration || selection !== generation || enabled?.value !== true) return;
-        await act(action);
+        if (!session) { reconnector.requireSignIn(); return; }
+        const stopped = stops;
+        try { await connect({ record: stored.record, session }); } catch (error) {
+          if (shuttingDown || stopped !== stops || savedHost?.session !== session || status === 'connected') return;
+          const kind = failureKind(error, session);
+          if (kind === 'retry') reconnector.start(); else if (kind === 'signIn') reconnector.requireSignIn();
+        }
       } catch { if (!shuttingDown && current === hostGeneration) { notice = 'Could not restore the connection. Connect again in Settings.'; publish(); } }
     },
     async handle(value: unknown): Promise<DesktopResult> {
       const revision = ++actionRevision;
-      let current = generation;
-      try { const pending = act(parseDesktopAction(value)); current = generation; await pending; return { ok: true, snapshot: snapshot() }; }
-      catch (error) { const message = error instanceof UserFacingError ? error.message : status === 'connecting' ? 'Could not connect. Check the address, sign-in token, and secure storage.'
+      let current = generation, kind = '';
+      try { const action = parseDesktopAction(value); kind = action.kind; const pending = act(action); current = generation; await pending; return { ok: true, snapshot: snapshot() }; }
+      catch (error) { const message = error instanceof UserFacingError || error instanceof HostProblemError ? error.message
+        : status === 'connecting' ? 'Could not connect. Check the address, sign-in token, and secure storage.'
         : 'The action could not finish. Check the connection and current selection before trying again.';
-        if (revision === actionRevision && current === generation) { notice = message; publish(); }
+        // Setup answers belong to the Hosts page, not to the chat notice.
+        if (!HOST_ACTIONS.has(kind) && revision === actionRevision && current === generation) { notice = message; publish(); }
         return { ok: false, message }; }
     },
+    // Waking from sleep or the network coming back: try a waiting reconnect now.
+    reconnectNow(): void { if (!shuttingDown) reconnector.now(); },
     shutdown(): Promise<void> {
       shutdownPromise ??= (async () => {
         // Stop every live consumer first, but retain the cache generation until
         // its already captured authoritative projections have had a short drain.
-        shuttingDown = true; ++generation; ++workspaceRevision;
+        shuttingDown = true; reconnector.stop(); ++generation; ++workspaceRevision;
         navigation = null; navigationIds = null; workspace = null; owner = null;
         acceptedSends = []; running = false; sending = false; navigating = false; reconciled = false;
         clearPrompts(); const connection = gateway; gateway = undefined; status = 'disconnected'; connection?.close();
@@ -866,6 +1093,6 @@ export function createDesktopService(adapters: Readonly<{
       })();
       return shutdownPromise;
     },
-    dispose() { shuttingDown = true; retire(true); },
+    dispose() { shuttingDown = true; reconnector.stop(); retire(true); },
   });
 }
