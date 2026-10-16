@@ -11,10 +11,12 @@ import { AgentBoard } from './components/AgentBoard.tsx';
 import { Conversation } from './components/Conversation.tsx';
 import { Label, Notice, PageHead, Tag } from './components/primitives.tsx';
 import { Rail } from './components/Rail.tsx';
-import { SettingsOverview, SettingsPage } from './components/Settings.tsx';
+import { SettingsOverview } from './components/Settings.tsx';
+import { SettingsPage } from './components/SettingsPage.tsx';
 import { ThemeProvider } from './theme.tsx';
 import { LAYOUT, PALETTES, fontStack } from './tokens.ts';
 import type { DesktopApi, DesktopSnapshot, DesktopResult } from '../../apps/desktop/src/shared/desktop-api.ts';
+import type { ShellInfo } from '../../apps/desktop/src/shared/shell-info.ts';
 import { HostConnection } from './components/HostConnection.tsx';
 import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
@@ -28,7 +30,7 @@ const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
   vault: "The vault isn't built yet",
 });
 
-export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean> }>): JSX.Element {
+export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean>; shell?: ShellInfo | undefined }>): JSX.Element {
   const [state, dispatch] = useReducer(reduceShell, undefined, createShellState);
   const sending = useRef(false);
   const pendingNavigation = useRef<Readonly<{generation: number; requestId: string}> | null>(null);
@@ -174,7 +176,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         }} />
     );
   } else if (state.place === 'settings' && state.settingsSection !== null) {
-    detail = <SettingsPage section={state.settingsSection} appearance={appearance} host={data.host}
+    detail = <SettingsPage section={state.settingsSection} appearance={appearance} host={data.host} shell={props.shell}
+      desktop={api && snapshot && act ? { api, snapshot, act } : undefined}
       hostContent={api && snapshot && act ? <HostConnection snapshot={snapshot} error={props.error ?? ''} onConnect={host => navigate(() => { void act(api.connect(host)); })} onDisconnect={() => navigate(() => { void act(api.disconnect()); })} onRefresh={() => { void act(api.refresh()); }} /> : undefined}
       onAppearance={value => { dispatch({ type: 'appearance', value }); if (api && act) void act(api.preferences({ appearance: value })); }} onBack={() => openSection(null)} />;
   } else if (state.place === 'settings') {
@@ -232,7 +235,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
 }
 
 // Only safe display snapshots cross this boundary. Credentials never return here.
-export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string }>): JSX.Element {
+export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string; shell?: ShellInfo | undefined }>): JSX.Element {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>();
   const [error, setError] = useState('');
   const latest = useRef(-1);
@@ -249,5 +252,5 @@ export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string
     return () => { mounted = false; off(); };
   }, [props.api]);
   if (!snapshot) return <div role="status">{error || 'Opening bighelp…'}</div>;
-  return <App data={snapshot.data ?? EMPTY_DATA} platform={props.platform} api={props.api} snapshot={snapshot} error={error} act={act} />;
+  return <App data={snapshot.data ?? EMPTY_DATA} platform={props.platform} api={props.api} snapshot={snapshot} error={error} act={act} shell={props.shell} />;
 }
