@@ -13,6 +13,7 @@ import { SCHEDULE_HANDLERS } from './schedules.ts';
 import { BOARD_HANDLERS } from './board.ts';
 import { FILES_HANDLERS } from './files.ts';
 import { VAULT_HANDLERS } from './vault.ts';
+import { WORKFLOW_HANDLERS } from './workflows.ts';
 
 export type CallHandler<K extends CallName> = Readonly<{
   // Writes report an unknown outcome when the reply is lost; reads do not.
@@ -34,4 +35,5 @@ export const HANDLERS: CallHandlers = Object.freeze({
   ...BOARD_HANDLERS,
   ...FILES_HANDLERS,
   ...VAULT_HANDLERS,
+  ...WORKFLOW_HANDLERS,
 });
