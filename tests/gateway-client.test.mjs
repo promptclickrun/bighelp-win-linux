@@ -84,3 +84,84 @@ test('canonical mutation errors preserve finite codes and lost acknowledgements 
   respond=false;const pending=gateway.operation(op);closed();await assert.rejects(pending,/outcome-unknown/);
  }
 });
+
+const textRequest=id=>({jsonrpc:'2.0',id,method:'prompt.submit',params:{profile:'default',session_id:'live',text:'Synthetic request'}});
+async function outgoingFixture() {
+ let frame,closed,lifetime,autoReply=true,closeCount=0,notificationCount=0;const sent=[];
+ const gateway=await connectGateway({configuration,isCurrent:()=>true,onRequest:async()=>({result:{}}),onEvent(){},onClosed(){notificationCount++;},
+  socket:async(_plan,signal,receive,onClosed)=>{
+   frame=receive;closed=onClosed;lifetime=signal;receive(event('gateway.ready'));
+   return {close(){closeCount++;onClosed();},send(text){
+    const message=JSON.parse(text);sent.push(message);
+    if(autoReply)queueMicrotask(()=>receive(JSON.stringify({jsonrpc:'2.0',id:message.id,result:message.method==='gateway.capabilities'?{per_session_exclusive_submit:true}:message.method==='prompt.submit'?{status:'streaming'}:{}})));
+   }};
+  }});
+ return {gateway,sent,frame,closed,lifetime,pause(){autoReply=false;},get closeCount(){return closeCount;},get notificationCount(){return notificationCount;}};
+}
+test('outgoing history exhaustion retires exactly at the negotiated budget without dispatch or replay',async()=>{
+ const f=await outgoingFixture();const rejected=textRequest('durable-undispatched');
+ try{
+  assert.equal(f.sent.length,2); // Both negotiation IDs consume the same lifetime budget.
+  for(let i=0;i<4094;i++)await f.gateway.operation({kind:'profilesList'});
+  assert.equal(f.sent.length,4096);assert.equal(f.notificationCount,0);assert.equal(f.lifetime.aborted,false);
+  await assert.rejects(f.gateway.submitText(rejected),/^Error: Gateway unavailable$/);
+  assert.equal(f.sent.length,4096);assert.equal(f.sent.some(message=>message.id===rejected.id),false);
+  assert.equal(f.closeCount,1);assert.equal(f.notificationCount,1);assert.equal(f.lifetime.aborted,true);
+  f.closed();f.gateway.close();f.frame(event('gateway.ready'));
+  await assert.rejects(f.gateway.operation({kind:'profilesList'}));
+  assert.equal(f.sent.length,4096);assert.equal(f.closeCount,1);assert.equal(f.notificationCount,1);
+  const fresh=await outgoingFixture();
+  try{
+   assert.deepEqual(fresh.sent.map(message=>message.method),['client.capabilities','gateway.capabilities']);
+   const request=textRequest('durable-fresh');const receipt=await fresh.gateway.submitText(request);
+   assert.deepEqual(fresh.sent.at(-1),request);assert.equal(receipt.id,request.id);assert.equal(receipt.result.status,'streaming');
+   for(let i=0;i<4093;i++)await fresh.gateway.operation({kind:'profilesList'});
+   assert.equal(fresh.sent.length,4096);assert.equal(fresh.notificationCount,0);
+   await assert.rejects(fresh.gateway.operation({kind:'profilesList'}),/^Error: Gateway unavailable$/);
+   assert.equal(fresh.sent.length,4096);assert.equal(fresh.notificationCount,1);
+  }finally{fresh.gateway.close();}
+ }finally{f.gateway.close();}
+});
+test('outgoing history exhaustion settles pending reads and mutations through closure once',async()=>{
+ const f=await outgoingFixture();
+ try{
+  for(let i=0;i<4092;i++)await f.gateway.operation({kind:'profilesList'});
+  f.pause();
+  const read=assert.rejects(f.gateway.operation({kind:'profilesList'}),/^Error: transport-unavailable$/);
+  const mutation=assert.rejects(f.gateway.submitText(textRequest('durable-pending')),/^Error: outcome-unknown$/);
+  assert.equal(f.sent.length,4096);
+  await assert.rejects(f.gateway.operation({kind:'profilesList'}),/^Error: Gateway unavailable$/);
+  assert.equal(f.notificationCount,1);assert.equal(f.closeCount,1);
+  await Promise.all([read,mutation]);
+  f.frame(JSON.stringify({jsonrpc:'2.0',id:'durable-pending',result:{status:'streaming'}}));f.closed();
+  assert.equal(f.sent.length,4096);assert.equal(f.notificationCount,1);
+ }finally{f.gateway.close();}
+});
+test('outgoing duplicate IDs remain rejected after settlement without retiring a usable socket',async()=>{
+ const f=await outgoingFixture();const request=textRequest('durable-once');
+ try{
+  await f.gateway.submitText(request);const count=f.sent.length;
+  await assert.rejects(f.gateway.submitText(request),/^Error: Gateway unavailable$/);
+  assert.equal(f.sent.length,count);assert.equal(f.notificationCount,0);assert.equal(f.lifetime.aborted,false);
+  await f.gateway.operation({kind:'profilesList'});assert.equal(f.sent.length,count+1);
+ }finally{f.gateway.close();}
+});
+test('pending capacity rejection preserves a usable socket and does not consume request IDs',async()=>{
+ const f=await outgoingFixture();
+ try{
+  f.pause();
+  const pending=Array.from({length:64},(_,i)=>{
+   const request=textRequest(`durable-capacity-${i}`);
+   return {request,receipt:f.gateway.submitText(request)};
+  });
+  const request=textRequest('durable-capacity-rejected');
+  await assert.rejects(f.gateway.submitText(request),/^Error: Gateway unavailable$/);
+  assert.equal(f.sent.length,66);assert.equal(f.notificationCount,0);assert.equal(f.lifetime.aborted,false);
+  const duplicate=assert.rejects(f.gateway.submitText(pending[0].request),/^Error: Gateway unavailable$/);
+  for(const entry of pending)f.frame(JSON.stringify({jsonrpc:'2.0',id:entry.request.id,result:{status:'streaming'}}));
+  await Promise.all([duplicate,...pending.map(entry=>entry.receipt)]);
+  const accepted=f.gateway.submitText(request);assert.deepEqual(f.sent.at(-1),request);
+  f.frame(JSON.stringify({jsonrpc:'2.0',id:request.id,result:{status:'streaming'}}));await accepted;
+  assert.equal(f.notificationCount,0);assert.equal(f.sent.length,67);
+ }finally{f.gateway.close();}
+});

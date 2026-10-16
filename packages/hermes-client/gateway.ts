@@ -51,7 +51,10 @@ export async function connectGateway(options: Readonly<{
  function current(): boolean { if (closed) return false; if (!options.isCurrent()) { close(); return false; } return true; }
  function send(text: string): void { if (!current() || !handle) throw new Error('Gateway unavailable'); try { handle.send(text); } catch { close(); throw new Error('outcome-unknown'); } }
  function request(id: string, wire: string, mutation: boolean): Promise<Reply> {
-  if (!current() || !handle || used.has(id) || pending.size >= 64 || used.size >= 4096) return Promise.reject(new Error('Gateway unavailable'));
+  if (!current() || !handle) return Promise.reject(new Error('Gateway unavailable'));
+  // Keep every dispatched ID until retirement; never evict uncertain mutations.
+  if (used.size >= 4096) { close(); return Promise.reject(new Error('Gateway unavailable')); }
+  if (used.has(id) || pending.size >= 64) return Promise.reject(new Error('Gateway unavailable'));
   used.add(id);
   return new Promise((resolve, reject) => {
    const timer = setTimeout(() => { if (!current()) return; const entry = pending.get(id); if (!entry) return; pending.delete(id); reject(new Error(mutation ? 'outcome-unknown' : 'request-timeout')); close(); }, 20000);
