@@ -276,3 +276,12 @@ syntax checks and `git diff --check` passed. Output is retained locally at
 same documented directory were refreshed. No product, dependency, privileged
 boundary, host or controller-owned overview file changed. No broad suite or
 package rebuild was repeated for this focused test-only correction.
+
+## Hosted qualification
+
+Native push and pull-request CI at `a3d4e95` passed on Ubuntu 24.04 and Windows
+Server 2022. Ubuntu passed 373 tests with no skips; Windows passed 367 with six
+existing POSIX/symlink skips. Each passed all strict compiler projects and 133
+sandboxed packaged/synthetic checks. [Integrated qualification](development-build-qualification.md)
+records exact run/artifact links, actual OS-protection results and the remaining
+physical-machine limits. No live plugin host or successful AI turn is implied.

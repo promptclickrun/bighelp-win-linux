@@ -42,6 +42,37 @@ These checks do not qualify physical keyboard/IME, screen-reader behavior or a
 real plugin host. The historical host and hosted-runner results below retain
 their tested commits; they are not results from this newer UI revision.
 
+## Function pages — native Windows and Ubuntu qualification
+
+[Push run 38918129724](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38918129724)
+and [PR run 38918137131](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38918137131)
+passed at exact `a3d4e95b96d9f5c662ea459322b3f82c6229ae32`. Both jobs passed
+all three application compiler projects, the DOM-only fixture compiler, native
+production packaging, ten protection-harness tests and **133 sandbox-enabled
+packaged/interaction checks** (26 ordinary + 107 synthetic, 29 controlled reads).
+
+| Runner | Application/qualification tests | Actual OS protection | Download |
+|---|---|---|---|
+| Ubuntu 24.04 x64 | 373 passed; zero failed/skipped | Unavailable / basic_text; fail-closed, temporary data removed | [Linux development archive](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38918129724/artifacts/12052339957) |
+| Windows Server 2022 x64 | 367 passed; zero failed, six existing POSIX/symlink skips | DPAPI encrypted write/restart/read; all three checks true, temporary data removed | [Windows development archive](https://github.com/promptclickrun/bighelp-win-linux/actions/runs/38918129724/artifacts/12053237091) |
+
+Independent whole-branch review of `f0f9929..a3d4e95` approved spec compliance
+and code quality with no actionable findings. It covered the new UI and fixture
+lifecycle plus finite authority, durable sends, protected recovery, transport and
+package boundaries. Both scoped P2 findings (full selectable titles and fixture
+failure cleanup) were fixed and independently re-reviewed. No deferred findings
+or specification rulings remain. Models: GPT-6 controller, GPT-6.1-sol task
+implementation/reviews, GPT-6-astra whole-branch review; harness: Codex.
+
+The Windows skips cover symlink privileges, Linux executable permissions and
+POSIX directory-sync semantics. All new function-page and cleanup tests ran on
+both platforms. Hosted Chromium accessibility-tree assertions remain distinct
+from physical screen-reader/IME qualification. Linux Secret Service availability
+is still unqualified. Downloads require repository access, expire after 14 days,
+and contain unsigned portable archives plus SHA256 files, not signed installers.
+This record is added in a subsequent documentation-only commit; the PR records
+its final-head checks separately. The earlier results below are historical.
+
 ## Integrated implementation and review
 
 The connected preview now includes [canonical Bot Chat](canonical-chat.md), [bounded protected display caching](display-cache.md), [offline recovery](chat-recovery.md), [draft preservation during intentional navigation](draft-navigation.md), and [connection retirement at the request-ID budget](gateway-lifetime.md). Main-process authority, durable send barriers and unknown-outcome rules continue to apply. Cached content never restores send or mutation authority.
