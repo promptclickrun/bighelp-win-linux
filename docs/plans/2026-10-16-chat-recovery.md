@@ -35,3 +35,15 @@ Review each task for spec compliance and code quality using an exact diff file; 
 ## Task 5: Real OS protection restart probe
 
 Add a disposable qualification script that runs the installed Electron runtime with a fresh user-data directory and the existing protected repository adapter. Persist a deterministic synthetic value using actual `safeStorage`, exit, relaunch with the same isolated directory, read the value, and verify ciphertext does not contain plaintext. Clean up only the generated probe directory. Never load a saved host or user credentials. Do not pass `--no-sandbox` implicitly or add dependencies. Require real OS encryption on Windows CI; report unavailable Linux Secret Service distinctly rather than fabricating qualification. Add the probe to the existing Windows build job, with structured nonsecret output and bounded process deadlines. Keep all probe work in new qualification scripts plus the CI workflow and its evidence; no app/API/service/cache edits. This test qualifies the hosted runner's protection restart behavior, not Windows 11 hardware, user lock/revocation, or power-loss persistence.
+
+## Task 6: Exhausted transport lifetime
+
+Reproduce the gateway's outgoing request-history budget exhaustion. The current
+4,096-ID bound rejects later requests while leaving the socket reported as
+connected. Retain the bounded duplicate protection and original durable request
+IDs, but retire the exhausted connection through the existing close path so the
+service can show disconnection and an explicit reconnect can recover. Never
+replay, rewrite, or automatically retry a mutation. Verify pending request
+settlement, one closure notification, rejected-request non-dispatch, and a fresh
+connection's independent budget. Own only gateway client, focused gateway tests,
+and dedicated evidence; do not overlap Task 3's service edits.
