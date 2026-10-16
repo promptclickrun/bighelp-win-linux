@@ -57,7 +57,7 @@ test('a /command runs through slash.exec and shows its output, never as prompt t
   assert.equal((await f.service.handle({ kind: 'send', generation: s.generation, chatId: 'stored', text: '/help' })).ok, true);
   assert.deepEqual(f.calls, [['slash.exec', { session_id: 'runtime', profile: 'agent', command: '/help' }]]);
   const rows = f.service.snapshot().data.chats[0].transcript;
-  assert.deepEqual(rows.map(row => [row.direction, row.paragraphs[0]]), [['out', '/help'], ['in', '**Commands**: /help']]);
+  assert.deepEqual(rows.map(row => [row.direction, row.paragraphs[0]]), [['out', '/help'], ['in', '```text\n**Commands**: /help\n```']]);
 });
 
 test('skills fall back to command.dispatch and their prompt goes through the journaled send', async () => {
