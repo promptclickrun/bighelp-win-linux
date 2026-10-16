@@ -20,6 +20,32 @@ export type DesktopWorkspace = Readonly<{ profile: string }> & (
 export type HostInput = Readonly<{
   label: string; endpoint: string; authentication: 'dashboard' | 'provider'; token: string; allowPrivateHttp: boolean;
 }>;
+// Where to look for Hermes. Main turns this into exact origins and probes them
+// with no credentials. "saved" re-checks the saved computer (change sign-in).
+export type ProbeTargetInput = Readonly<{ kind: 'thisComputer'; port: number }> | Readonly<{ kind: 'address'; address: string }>
+  | Readonly<{ kind: 'saved' }>;
+// Write-only: the password or token crosses IPC once and is never returned.
+export type SignInInput = Readonly<{ probeId: string; label: string }> & (
+  | Readonly<{ method: 'automatic' }>
+  | Readonly<{ method: 'password'; provider: string; username: string; password: string }>
+  | Readonly<{ method: 'token'; token: string }>);
+export type SignInKind = 'automatic' | 'password' | 'accessToken' | 'sessionToken';
+// Safe display facts about the saved computer. Never an address or a secret.
+export type DesktopSavedHost = Readonly<{
+  label: string; thisComputer: boolean; signIn: SignInKind | null; account: string | null; plainHttp: boolean; version: string | null;
+}>;
+export type DesktopReconnect = Readonly<{ state: 'idle' | 'waiting' | 'trying' | 'signIn'; delaySeconds: number }>;
+// The result of the last probe: what this computer needs to sign in.
+export type DesktopSetup = Readonly<{
+  probeId: string; thisComputer: boolean; plainHttp: boolean; version: string | null; signInRequired: boolean;
+  methods: readonly ('automatic' | 'password' | 'token')[]; providers: readonly Readonly<{ id: string; name: string }>[];
+  replacing: boolean;
+}>;
+// Why protected storage could not open (Linux keyrings need guidance).
+export type StorageIssue = 'keyringMissing' | 'keyringLocked' | 'protectionUnavailable' | 'storageFailed';
+export type DesktopHosts = Readonly<{
+  saved: DesktopSavedHost | null; reconnect: DesktopReconnect; setup: DesktopSetup | null; storageIssue: StorageIssue | null;
+}>;
 export type DesktopSnapshot = Readonly<{
   // generation retires chat selections; connection retires the whole host lease.
   generation: number; connection: number; revision: number; status: 'disconnected' | 'connecting' | 'connected';
@@ -33,6 +59,7 @@ export type DesktopSnapshot = Readonly<{
   // Files chosen for the open chat's next message (names and sizes only).
   attachments: readonly PendingAttachment[];
   turn: Readonly<{ key: string | null; model: Readonly<{ name: string; provider: string; reasoning: string }> | null; status: string; todos: readonly TodoItem[]; context: Readonly<{ used: number; max: number }> | null; startedAt: number | null }>;
+  hosts?: DesktopHosts;
 }>;
 export type PendingAttachment = Readonly<{ id: string; name: string; size: number; kind: 'image' | 'file' }>;
 // Something that needs a person while bighelp runs. Main decides whether to show
@@ -48,6 +75,10 @@ export type DesktopAction =
   | Readonly<{ kind: 'refresh' }>
   | Readonly<{ kind: 'preferences'; changes: Partial<Preferences> }>
   | Readonly<{ kind: 'connect'; host: HostInput }>
+  | Readonly<{ kind: 'probeHost'; target: ProbeTargetInput }>
+  | (Readonly<{ kind: 'signIn' }> & SignInInput)
+  | Readonly<{ kind: 'cancelSetup' }> | Readonly<{ kind: 'forgetHost' }> | Readonly<{ kind: 'reconnectNow' }> | Readonly<{ kind: 'connectSaved' }>
+  | Readonly<{ kind: 'renameHost'; label: string }>
   | Readonly<{ kind: 'canonicalChat'; generation: number; profile: string; requestId: string }>
   | Readonly<{ kind: 'newChat'; generation: number; profile: string }>
   // profile: only for a chat found by host search that is not in the loaded list.
@@ -66,6 +97,15 @@ export type DesktopApi = Readonly<{
   snapshot(): Promise<DesktopResult>;
   connect(host: HostInput): Promise<DesktopResult>;
   disconnect(): Promise<DesktopResult>;
+  probeHost(target: ProbeTargetInput): Promise<DesktopResult>;
+  signIn(input: SignInInput): Promise<DesktopResult>;
+  cancelSetup(): Promise<DesktopResult>;
+  renameHost(label: string): Promise<DesktopResult>;
+  forgetHost(): Promise<DesktopResult>;
+  // Try the saved computer now, only while an automatic retry is waiting.
+  reconnectNow(): Promise<DesktopResult>;
+  // Connect the saved computer (after Disconnect or a failed connect).
+  connectSaved(): Promise<DesktopResult>;
   refresh(): Promise<DesktopResult>;
   preferences(changes: Partial<Preferences>): Promise<DesktopResult>;
   canonicalChat(generation: number, profile: string, requestId: string): Promise<DesktopResult>;
@@ -128,13 +168,53 @@ function text(value: unknown, max = 1024): string {
   return value;
 }
 
+// A computer name a person typed: one trimmed line.
+function hostName(value: unknown): string {
+  const label = text(value, 200).trim();
+  if (!label || label.length > 100 || /[\x00-\x1f\x7f]/u.test(label)) throw new TypeError('Invalid name');
+  return label;
+}
+
 // Validate every renderer operation again in main. There is no URL, method,
 // filesystem or shell dispatch except the explicit one-time host setup input.
 export function parseDesktopAction(value: unknown): DesktopAction {
   const input = object(value);
   const kind = input.kind;
-  if (kind === 'snapshot' || kind === 'disconnect' || kind === 'refresh') {
+  if (kind === 'snapshot' || kind === 'disconnect' || kind === 'refresh' || kind === 'cancelSetup' || kind === 'forgetHost'
+    || kind === 'reconnectNow' || kind === 'connectSaved') {
     keys(input, ['kind']); return { kind };
+  }
+  if (kind === 'probeHost') {
+    keys(input, ['kind', 'target']);
+    const target = object(input.target);
+    if (target.kind === 'saved') { keys(target, ['kind']); return { kind, target: { kind: 'saved' } }; }
+    if (target.kind === 'thisComputer') {
+      keys(target, ['kind', 'port']);
+      if (typeof target.port !== 'number' || !Number.isSafeInteger(target.port) || target.port < 1 || target.port > 65535) throw new TypeError('Invalid port');
+      return { kind, target: { kind: 'thisComputer', port: target.port } };
+    }
+    if (target.kind !== 'address') throw new TypeError('Invalid target');
+    keys(target, ['kind', 'address']);
+    return { kind, target: { kind: 'address', address: text(target.address, 2048) } };
+  }
+  if (kind === 'signIn') {
+    const probeId = text(input.probeId, 36);
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(probeId)) throw new TypeError('Invalid probe');
+    const label = hostName(input.label);
+    if (input.method === 'automatic') { keys(input, ['kind', 'probeId', 'label', 'method']); return { kind, probeId, label, method: 'automatic' }; }
+    if (input.method === 'password') {
+      keys(input, ['kind', 'probeId', 'label', 'method', 'provider', 'username', 'password']);
+      if (typeof input.provider !== 'string' || input.provider.length > 128 || /[^\x21-\x7e]/u.test(input.provider)) throw new TypeError('Invalid provider');
+      return { kind, probeId, label, method: 'password', provider: input.provider, username: text(input.username, 1024), password: text(input.password, 16384) };
+    }
+    if (input.method !== 'token') throw new TypeError('Invalid method');
+    keys(input, ['kind', 'probeId', 'label', 'method', 'token']);
+    const token = text(input.token, 8192);
+    if (!/^[\x21-\x7e]+$/u.test(token)) throw new TypeError('Invalid token');
+    return { kind, probeId, label, method: 'token', token };
+  }
+  if (kind === 'renameHost') {
+    keys(input, ['kind', 'label']); return { kind, label: hostName(input.label) };
   }
   if (kind === 'preferences') {
     keys(input, ['kind', 'changes']);
