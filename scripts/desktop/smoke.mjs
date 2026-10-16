@@ -98,7 +98,7 @@ try {
   check('preload object is frozen', await evaluate('Object.isFrozen(window.bighelpShell)'));
   check('no electron/ipc globals', await evaluate("!('ipcRenderer' in window) && !('electron' in window)"));
   check('desktop bridge exposes only finite operations', await evaluate(
-    "Object.isFrozen(window.bighelpDesktop) && Object.keys(window.bighelpDesktop).sort().join(',') === 'answer,call,cancelNavigation,canonicalChat,connect,copyText,disconnect,draft,interrupt,newChat,onCommand,openChat,openLink,preferences,refresh,send,snapshot,subscribe,workspace'"));
+    "Object.isFrozen(window.bighelpDesktop) && Object.keys(window.bighelpDesktop).sort().join(',') === 'answer,attach,call,cancelNavigation,canonicalChat,connect,copyText,detach,disconnect,draft,interrupt,newChat,onCommand,openChat,openLink,preferences,refresh,send,snapshot,subscribe,workspace'"));
   if (!flag('--fixture-preview')) {
     check('privileged service rejects stale or malformed actions', await evaluate(
       "window.bighelpDesktop.send(-1, 'not-a-chat', 'test').then(result => result.ok === false)"));
