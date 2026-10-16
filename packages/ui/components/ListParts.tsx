@@ -35,7 +35,7 @@ export function Caption(props: Readonly<{ children: string; tag?: string | undef
 }
 
 // Controlled when value/onChange are given; otherwise it keeps its own text.
-export function Search(props: Readonly<{ label: string; value?: string; onChange?: (text: string) => void }>): JSX.Element {
+export function Search(props: Readonly<{ label: string; value?: string; onChange?: (text: string) => void; nativeID?: string }>): JSX.Element {
   const { palette, font } = useTheme();
   const [own, setOwn] = useState('');
   const value = props.value ?? own;
@@ -44,6 +44,7 @@ export function Search(props: Readonly<{ label: string; value?: string; onChange
       paddingHorizontal: 10, borderRadius: 10, backgroundColor: palette.incoming }}>
       <Icon name="search" color={palette.muted} size={16} />
       <TextInput value={value} onChangeText={props.onChange ?? setOwn} placeholder={props.label} aria-label={props.label}
+        {...(props.nativeID ? { nativeID: props.nativeID } : {})}
         placeholderTextColor={palette.muted} maxLength={200}
         style={{ flex: 1, minWidth: 0, fontFamily: font, fontSize: 14, color: palette.ink, outlineStyle: 'none' }} />
     </View>

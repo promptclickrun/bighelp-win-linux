@@ -1,5 +1,6 @@
 // The Chats column: newest first in day groups, local filtering as you type,
 // Hermes' own search for two or more characters, and per-chat actions.
+import { CHAT_SEARCH_ID } from '../ids.ts';
 import type { JSX } from 'react';
 import { useEffect, useState } from 'react';
 import { View } from 'react-native-web';
@@ -53,7 +54,7 @@ export function ChatList(props: Readonly<{ data: ViewData; selectedChatId: strin
   );
   return (
     <>
-      <Search label="Search chats" value={query} onChange={setQuery} />
+      <Search label="Search chats" value={query} onChange={setQuery} nativeID={CHAT_SEARCH_ID} />
       {status ? <View role="status" aria-live="polite" style={{ paddingHorizontal: 12, paddingTop: 8 }}>
         <Label size={12} tone="muted">{status}</Label></View> : null}
       {data.chats.length === 0 && !searching ? <Empty>{connected ? 'No chats yet. Use New chat to start one.'
