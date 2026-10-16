@@ -2,9 +2,11 @@
 // its own module; main implements every entry (see main/calls/index.ts).
 import type { CallDefinition, CallFailure } from '../call.ts';
 import { HOST_CALLS } from './host.ts';
+import { SETTINGS_CALLS } from './settings.ts';
 
 export const CALLS = Object.freeze({
   ...HOST_CALLS,
+  ...SETTINGS_CALLS,
 });
 
 export type CallName = keyof typeof CALLS;
