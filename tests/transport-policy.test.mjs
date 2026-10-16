@@ -187,7 +187,11 @@ test('Basic is finite dashboard-only; Cloudflare requires TLS and excludes Basic
   assert.equal(state.sockets[0].plan.url, 'ws://127.0.0.1:9119/api/ws?token=synthetic%2B%2F%3D');
   assert.equal(state.sockets[0].plan.headers.Authorization, basic);
   assert.equal(state.sockets[0].plan.headers['X-Hermes-Session-Token'], 'synthetic+/=');
-  assert.deepEqual(state.sockets[0].plan.protocols, ['hermes-gateway-v1']);
+  // Hermes 0.21.7 accepts the dashboard-token path WITHOUT selecting a
+  // subprotocol (hermes_cli/web_server_chat.py sets one only for tickets). A
+  // standards-compliant client that offered one must then fail the handshake,
+  // which the live host reproduced. Dashboard sockets offer none.
+  assert.deepEqual(state.sockets[0].plan.protocols, []);
   assert.equal(state.http.length, 1); // Dashboard sockets never mint provider tickets.
   const cloudflare = { clientId: 'synthetic', clientSecret: 'synthetic' };
   assert.throws(() => harness({ ...local, proxy: { cloudflare } }));
