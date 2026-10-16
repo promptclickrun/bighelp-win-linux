@@ -267,7 +267,9 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
           } else {
             url += `?token=${encodeURIComponent(auth.token)}`;
             headers = authenticated;
-            protocols = Object.freeze(['hermes-gateway-v1']);
+            // Hermes selects hermes-gateway-v1 only on the ticket path. Offering it
+            // here makes a compliant client reject the server's protocol-less accept.
+            protocols = Object.freeze([]);
           }
           current(controller.signal);
           handle = await adapters.socket(Object.freeze({ url, headers, protocols,
