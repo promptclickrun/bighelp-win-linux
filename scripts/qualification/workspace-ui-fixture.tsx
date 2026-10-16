@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { ConnectedApp } from '../../packages/ui/App.tsx';
 import type { DesktopApi, DesktopResult, DesktopSnapshot, DesktopWorkspace, WorkspacePage } from '../../apps/desktop/src/shared/desktop-api.ts';
 import type { WorkspaceDays } from '../../packages/contracts/workspace.ts';
+import { DEFAULT_PREFERENCES } from '../../apps/desktop/src/shared/preferences.ts';
 
 const hostile = '<img src=x onerror="globalThis.fixtureExecuted=true"> javascript:alert(1) https://example.invalid/';
 const longTitle = `Synthetic full selectable title ${'long words '.repeat(12)}END`;
@@ -13,11 +14,12 @@ const agents = [
 ];
 type Mode = 'loaded' | 'empty' | 'unsupported' | 'failed' | 'removed';
 type Read = Readonly<{ generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays; snapshot: DesktopSnapshot; resolve: (result: DesktopResult) => void }>;
-let snapshot: DesktopSnapshot = { generation: 1, revision: 1, status: 'connected',
+let snapshot: DesktopSnapshot = { generation: 1, connection: 1, revision: 1, status: 'connected',
   data: { sample: true, host: { label: 'Synthetic interaction fixture', state: 'connected' }, agents,
     chats: [{ id: 'synthetic-chat', agentId: 'alpha', title: 'Synthetic chat', preview: '', transcript: [] }], workflows: [] },
   selectedChatId: 'synthetic-chat', running: false, canSend: true, notice: 'Synthetic fixture. Nothing leaves this renderer.',
-  storageAvailable: false, prompts: [], drafts: {}, workspace: null };
+  storageAvailable: false, prompts: [], drafts: {}, workspace: null, preferences: DEFAULT_PREFERENCES, attachments: [],
+  turn: { key: null, model: null, status: '', todos: [], context: null, startedAt: null } };
 const listeners = new Set<(value: DesktopSnapshot) => void>();
 const reads: Read[] = [];
 const calls = { send: 0, newChat: 0, canonicalChat: 0, boardMutation: 0, other: 0, draft: 0, openChat: 0 };
@@ -34,7 +36,10 @@ const api = Object.freeze<DesktopApi>({
   canonicalChat: async () => { calls.canonicalChat++; return { ok: false, message: 'No synthetic canonical navigation' }; },
   newChat: async () => { calls.newChat++; return { ok: false, message: 'No synthetic new chat' }; },
   send: async () => { calls.send++; return { ok: false, message: 'No synthetic sends' }; },
-  interrupt: forbidden, answer: forbidden,
+  interrupt: forbidden, answer: forbidden, preferences: forbidden, attach: forbidden, attachDropped: forbidden, detach: forbidden,
+  // Feature calls, links and copy are outside this synthetic page qualification.
+  call: async () => { calls.other++; return { ok: false, code: 'unavailable', message: 'Unavailable in synthetic qualification' }; },
+  openLink: async () => false, copyText: async () => false, onCommand: () => () => {},
   openChat: async (_generation, chatId) => { calls.openChat++; publish({ generation: snapshot.generation + 1, selectedChatId: chatId }); return { ok: true, snapshot }; },
   draft: async (_generation, chatId, text) => { calls.draft++; publish({ drafts: { ...snapshot.drafts, [chatId]: text } }); return { ok: true, snapshot }; },
 });

@@ -9,7 +9,7 @@
   },
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.mjs",
-    "typecheck": "tsc -p config/tsconfig.core.json && tsc -p config/tsconfig.desktop.json && tsc -p config/tsconfig.renderer.json",
+    "typecheck": "tsc -p config/tsconfig.core.json && tsc -p config/tsconfig.desktop.json && tsc -p config/tsconfig.renderer.json && tsc -p scripts/qualification/tsconfig.workspace-ui.json && tsc -p scripts/qualification/tsconfig.protected-storage.json",
     "desktop:build": "npm run typecheck && node scripts/desktop/build.mjs",
     "desktop:build:production": "npm run typecheck && node scripts/desktop/build.mjs --production",
     "desktop:package": "node scripts/desktop/package.mjs",

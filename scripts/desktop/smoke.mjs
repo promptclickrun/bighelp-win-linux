@@ -158,7 +158,7 @@ try {
     .every(label => text.includes(label)), '');
   const fixture = flag('--fixture-preview');
   check(fixture ? 'sample data is labelled' : 'no invented data without a computer',
-    fixture ? text.includes('Sample data') : text.includes('No computer connected yet') && !text.includes('Juniper'),
+    fixture ? text.includes('Sample data') : text.includes('Welcome to bighelp') && text.includes('Connect to Hermes') && !text.includes('Juniper'),
     fixture ? '' : text.slice(0, 1200));
 
   const click = label => evaluate(`(() => { const el = document.querySelector('[aria-label=${JSON.stringify(label)}]'); if (!el) return false; el.click(); return true; })()`);
