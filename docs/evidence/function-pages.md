@@ -249,3 +249,30 @@ Chromium DOM/focus/accessibility checks do not qualify physical screen readers,
 keyboard layouts, native undo/IME, OS protection availability or visual parity
 on Windows/Linux hardware. The prior disposable-host read-client evidence still
 qualifies unchanged clients separately; no host probe was repeated here.
+
+### Task 3 review follow-up — injection failure teardown
+
+Scoped review requested one P2 cleanup correction; test-only fix `21bc47e`
+protects bundle evaluation itself with runner `try/finally`. The fixture registers
+an independent cleanup callback before changing the live DOM, catches setup
+exceptions before its ready controller exists, restores the original exact
+`hidden`/`inert` attribute values, and removes the container/references. Cleanup
+is idempotent and restores the DOM even if React unmount throws. The runner now
+compares restored attributes against its pre-injection snapshot.
+
+`node --test tests/workspace-ui-smoke.test.mjs`: **9 passed**, zero failed/skipped.
+These focused deterministic fault checks execute the actual fixture lifecycle
+with rendering-only stubs, and exercise partial setup after hiding/inserting,
+render failure, repeated cleanup, unmount failure, CDP evaluation/protocol/
+transport errors and later interaction failure. They do not claim Electron
+failure injection or physical UI evidence; the ordinary `npm test` glob includes
+them for CI.
+
+After the fix, the same sandbox-enabled packaged Electron command above passed
+**133/133** again, with **29** controlled reads, Chrome **152.0.7977.149** /
+Electron **44.7.2**. DOM-only strict fixture compilation, both runner/test Node
+syntax checks and `git diff --check` passed. Output is retained locally at
+`/workspace/scratch/function-pages-electron-fix1-smoke.json`; screenshots in the
+same documented directory were refreshed. No product, dependency, privileged
+boundary, host or controller-owned overview file changed. No broad suite or
+package rebuild was repeated for this focused test-only correction.
