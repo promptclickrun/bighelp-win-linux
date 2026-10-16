@@ -194,7 +194,10 @@ test('the save capability writes only where the person chose, via a partial file
   assert.equal(await save('../../notes.md', async () => new TextEncoder().encode('hi')), 'notes.md');
   // The default path uses this OS's separators (the folder comes from the OS).
   assert.deepEqual(shown, { title: 'Save a copy', buttonLabel: 'Save', defaultPath: join('/Users/ana/Downloads', '_.._notes.md') });
-  assert.equal(log[0][0], 'write'); assert.match(log[0][1], /^\/Users\/ana\/Desktop\/\.notes\.md\.[0-9a-f-]{36}\.part$/u);
+  // The partial file sits beside the chosen file (OS separators).
+  const partial = join('/Users/ana/Desktop', '.notes.md.');
+  assert.equal(log[0][0], 'write'); assert.ok(log[0][1].startsWith(partial), log[0][1]);
+  assert.match(log[0][1].slice(partial.length), /^[0-9a-f-]{36}\.part$/u);
   assert.equal(log[0][2], 'hi'); assert.equal(log[0][3], 'wx');
   assert.deepEqual(log[1], ['rename', log[0][1], '/Users/ana/Desktop/notes.md']);
   const cancel = createSaveCopy({ downloads: () => '/d', files, showSaveDialog: async () => ({ canceled: true }) });
