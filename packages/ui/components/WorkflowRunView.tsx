@@ -121,6 +121,8 @@ export function WorkflowRunView(props: Readonly<{
 
         {gate === 'changes' ? <Banner tone="info" title="Waiting for your review"
           text="This run waits for you to review code changes. Reviewing code changes isn't available in this app yet." /> : null}
+        {value.state === 'waiting_for_you' && gate === 'none' ? <Banner tone="info" title="Waiting for you"
+          text={`This run waits for you at ${value.stageTitle}. That step can't be done in this app yet.`} /> : null}
         {signoff?.kind === 'file' && gate !== 'none' && gate !== 'changes' ? <Section title={`Your sign-off: ${stageTitle(signoff.stageKey)}`}>
           <Label size={13} tone="muted">{`The file from ${stageTitle(signoff.artifact.stageKey)}${signoff.artifact.wordCount ? `, ${signoff.artifact.wordCount.toLocaleString()} words` : ''}. Approve it, or send it back with notes.`}</Label>
           {signoff.reviewNotes.length ? <View role="list" style={{ gap: 4 }}>
