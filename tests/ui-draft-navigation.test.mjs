@@ -2,18 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 
+const childModuleFilter = /packages[\\/]ui[\\/](components[\\/].*|theme)\.tsx$/;
+function inertChildModule(path) {
+  const file = path.split(/[\\/]/).at(-1);
+  const names = file === 'ContextList.tsx' ? ['ContextList', 'PLACE_TITLES']
+    : file === 'primitives.tsx' ? ['Label', 'Notice', 'PageHead', 'Tag']
+    : file === 'Settings.tsx' ? ['SettingsOverview', 'SettingsPage']
+    : [file === 'theme.tsx' ? 'ThemeProvider' : file.replace('.tsx', '')];
+  return {contents: names.map(name => `export const ${name} = '${name}';`).join('\n'), loader: 'js'};
+}
+
 // Exercise App's actual callbacks, refs, reducer and effect lifecycle. Child
 // components are inert elements; no browser, physical input or IME is claimed.
 const compiled = await build({ entryPoints: ['packages/ui/App.tsx'], bundle: true, write: false,
   platform: 'node', format: 'cjs', jsx: 'automatic', packages: 'external', plugins: [{name: 'inert-children', setup(builder) {
-    builder.onLoad({filter: /packages\/ui\/(components\/.*|theme)\.tsx$/}, ({path}) => {
-      const names = path.endsWith('ContextList.tsx') ? ['ContextList', 'PLACE_TITLES']
-        : path.endsWith('primitives.tsx') ? ['Label', 'Notice', 'PageHead', 'Tag']
-        : path.endsWith('Settings.tsx') ? ['SettingsOverview', 'SettingsPage']
-        : [path.split('/').at(-1).replace('.tsx', '') === 'theme' ? 'ThemeProvider' : path.split('/').at(-1).replace('.tsx', '')];
-      return {contents: names.map(name => `export const ${name} = '${name}';`).join('\n'), loader: 'js'};
-    });
+    builder.onLoad({filter: childModuleFilter}, ({path}) => inertChildModule(path));
   }}] });
+
+test('inert child modules match Windows and POSIX paths with the same exports', async () => {
+  for (const file of ['theme.tsx', 'components/ContextList.tsx', 'components/primitives.tsx', 'components/Settings.tsx', 'components/Conversation.tsx']) {
+    const posix = `/workspace/bighelp/packages/ui/${file}`;
+    const windows = `D:\\a\\bighelp\\packages\\ui\\${file.replaceAll('/', '\\')}`;
+    assert.equal(childModuleFilter.test(posix), true);
+    assert.equal(childModuleFilter.test(windows), true);
+    assert.deepEqual(inertChildModule(windows), inertChildModule(posix));
+  }
+  // Exercise esbuild's own serialized filter against a Windows path on any OS.
+  const probe = await build({ stdin: { contents: "export { ThemeProvider } from 'windows-theme';" },
+    bundle: true, write: false, format: 'cjs', plugins: [{name: 'windows-path-probe', setup(builder) {
+      builder.onResolve({filter: /^windows-theme$/}, () => ({path: 'D:\\a\\bighelp\\packages\\ui\\theme.tsx', namespace: 'synthetic-windows'}));
+      builder.onLoad({filter: childModuleFilter}, ({path}) => inertChildModule(path));
+    }}] });
+  const module = {exports: {}};
+  new Function('module', 'exports', probe.outputFiles[0].text)(module, module.exports);
+  assert.equal(module.exports.ThemeProvider, 'ThemeProvider');
+});
 
 function harness() {
   const slots = []; let cursor = 0, changed = true, effects = [], tree;
