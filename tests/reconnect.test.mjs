@@ -120,3 +120,24 @@ test('a failed automatic connect at startup keeps trying; dispose stops it', asy
   assert.equal(again.snapshot().hosts.saved.label, 'Synthetic computer');
   again.dispose(); assert.equal(f.timers.pending.size, 0);
 });
+
+test('Disconnect during a connect already in flight never starts automatic retries', async () => {
+  for (const start of ['initialize', 'connectSaved']) {
+    const f = fixture();
+    await f.service.handle({ kind: 'connect', host });
+    f.service.dispose();
+    // connectSaved: start with the computer saved but not auto-connecting.
+    if (start === 'connectSaved') f.values.set('desktop:autoConnect', { revision: f.values.get('desktop:autoConnect').revision + 1, value: false });
+    let fail;
+    const again = createDesktopService({ repository: { read: async key => structuredClone(f.values.get(key) ?? null),
+      write: async (key, revision, value) => { const next = { revision: (revision ?? 0) + 1, value }; f.values.set(key, next); return next; } },
+      timers: f.timers, onChange() {}, connect: () => new Promise((_resolve, reject) => { fail = () => reject(Error('Synthetic offline')); }) });
+    if (start === 'connectSaved') { await again.initialize(); assert.equal(fail, undefined); }
+    const pending = start === 'initialize' ? again.initialize() : again.handle({ kind: 'connectSaved' });
+    await until(() => fail);
+    await again.handle({ kind: 'disconnect' });
+    fail(); await pending; await tick();
+    assert.equal(f.timers.pending.size, 0, start); assert.equal(again.snapshot().hosts.reconnect.state, 'idle', start);
+    again.dispose();
+  }
+});

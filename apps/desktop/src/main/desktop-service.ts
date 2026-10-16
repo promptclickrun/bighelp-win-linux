@@ -148,6 +148,9 @@ export function createDesktopService(adapters: Readonly<{
   const store = adapters.repository ? createHostStore(adapters.repository) : null;
   const setup = adapters.hostHttp ? createHostSetup({ http: adapters.hostHttp, now }) : null;
   let savedHost: SavedHost | null = null, hostVersion: string | null = null, openedCanonically: string | null = null;
+  // Bumped when the person disconnects or forgets: a connect already in flight
+  // must not start automatic retries afterwards.
+  let stops = 0;
   let reconnectState: ReconnectState = Object.freeze({ state: 'idle', delaySeconds: 0 });
   const reconnector = createReconnector({ timers: adapters.timers, attempt: () => reconnectAttempt(), onChange: state => {
     reconnectState = state;
@@ -488,10 +491,12 @@ export function createDesktopService(adapters: Readonly<{
   }
   // After a connect the person asked for: keep trying if Hermes is just not there.
   async function connectOrRetry(login: HostLogin): Promise<void> {
+    const stopped = stops;
     try { await connect(login); } catch (error) {
+      const wanted = stopped === stops && savedHost?.session === login.session;
       const kind = failureKind(error, login.session);
-      if (kind === 'retry' && savedHost?.session === login.session) { reconnector.start(); return; }
-      if (kind === 'signIn' && savedHost?.session === login.session) reconnector.requireSignIn();
+      if (kind === 'retry' && wanted) { reconnector.start(); return; }
+      if (kind === 'signIn' && wanted) reconnector.requireSignIn();
       throw error;
     }
   }
@@ -537,7 +542,7 @@ export function createDesktopService(adapters: Readonly<{
   // record and its saved chat list from this device. Hermes keeps every chat.
   async function forgetHost() {
     if (!store || !adapters.repository) throw Error('Secure storage unavailable');
-    reconnector.stop(); setup?.clear();
+    ++stops; reconnector.stop(); setup?.clear();
     retire(true); recovered = null; savedHost = null; hostVersion = null; openedCanonically = null; notice = ''; publish();
     await displayRecovery?.drain();
     await store.forget();
@@ -673,7 +678,7 @@ export function createDesktopService(adapters: Readonly<{
     if (action.kind === 'call') throw Error('Feature calls use their own channel');
     if (action.kind === 'snapshot') return;
     if (action.kind === 'connect') { reconnector.stop(); await connectPasted(action.host); return; }
-    if (action.kind === 'disconnect') { reconnector.stop(); retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
+    if (action.kind === 'disconnect') { ++stops; reconnector.stop(); retire(true); notice = ''; publish(); if (adapters.repository) await save('desktop:autoConnect', false); return; }
     if (action.kind === 'probeHost') { await probeHost(action.target); return; }
     if (action.kind === 'signIn') { await signIn(action); return; }
     if (action.kind === 'cancelSetup') { setup?.clear(); publish(); return; }
@@ -1051,8 +1056,9 @@ export function createDesktopService(adapters: Readonly<{
         else publish();
         if (shuttingDown || current !== hostGeneration || selection !== generation || enabled?.value !== true) return;
         if (!session) { reconnector.requireSignIn(); return; }
+        const stopped = stops;
         try { await connect({ record: stored.record, session }); } catch (error) {
-          if (shuttingDown || savedHost?.session !== session || status === 'connected') return;
+          if (shuttingDown || stopped !== stops || savedHost?.session !== session || status === 'connected') return;
           const kind = failureKind(error, session);
           if (kind === 'retry') reconnector.start(); else if (kind === 'signIn') reconnector.requireSignIn();
         }
