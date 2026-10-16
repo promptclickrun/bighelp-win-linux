@@ -43,6 +43,6 @@ The preceding `c877ee2` CI run failed only the 14 Windows draft-navigation harne
 
 ## Work still required
 
-Function-page implementation awaits a pick among the [static alternatives](../design/function-alternatives/index.html): A list/detail (recommended), B compact cards, or C table/inspector. [AGENTS.md](../../AGENTS.md) explicitly requires a pick before non-trivial visual/layout/copy work. The html-communication publishing skill was unavailable, and organization browser policy blocked local-HTML screenshots; only local HTML artifacts are provided.
+The user subsequently selected A list/detail on 2026-10-16. [Function-page evidence](function-pages.md) records the resulting Projects, Scheduled, Usage and agent Feed/Ideas/Goals read views and their separate checks. The historical build results above predate those UI changes. The [static alternatives](../design/function-alternatives/index.html) remain local design artifacts; no publication is claimed.
 
 The feature matrix still has incomplete requirements, including richer chat/media/cards, workspace writes, workflows/Kanban/IDE, host administration, voice and notifications. Windows 11 hardware, Linux Wayland/X11 sessions and an available Secret Service, keyboard/IME/accessibility/performance, successful AI/tool execution and a live capable plugin host remain unqualified. Signing, installer/update delivery and release require their own inputs and authorization. None of these are implied by passing synthetic tests, hosted CI or portable package assembly.

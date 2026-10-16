@@ -2,7 +2,7 @@
 
 Evidence recorded 2026-10-16. This is a bounded client implementation tested with
 synthetic source-shaped responses, a local HTTP server, and the disposable stock
-Hermes host identified below. It is not a claim of completed UI or platform parity.
+Hermes host identified below. The later [function-page increment](function-pages.md) adds read-only UI for these clients. Neither increment completes the feature rows or platform parity.
 
 ## Source and exact wire operations
 
