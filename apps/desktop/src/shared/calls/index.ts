@@ -2,9 +2,11 @@
 // its own module; main implements every entry (see main/calls/index.ts).
 import type { CallDefinition, CallFailure } from '../call.ts';
 import { HOST_CALLS } from './host.ts';
+import { KANBAN_CALLS } from './kanban.ts';
 
 export const CALLS = Object.freeze({
   ...HOST_CALLS,
+  ...KANBAN_CALLS,
 });
 
 export type CallName = keyof typeof CALLS;
