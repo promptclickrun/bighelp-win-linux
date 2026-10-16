@@ -105,3 +105,26 @@ test('a bare FastAPI Not Found reads as an older host', () => {
   assert.equal(callFailure(new HttpStatusError(404, 'That task no longer exists.'), false).message, 'That task no longer exists.');
   assert.equal(callFailure(new GatewayOperationError(-32601), false).code, 'unsupported');
 });
+
+test('older saved messages load 500 at a time and pair across pages', async () => {
+  const rows = Array.from({ length: 700 }, (_, index) => ({ id: index + 1, role: index % 2 ? 'assistant' : 'user', content: `m${index + 1}` }));
+  const f = setup();
+  const requests = [];
+  f.gateway.requestHttp = async op => {
+    if (op.kind !== 'route') return { body: { ok: true, auth_required: false } };
+    if (!op.path.endsWith('/messages')) throw new Error('not this route');
+    requests.push(op.query.offset);
+    const offset = Number(op.query.offset), newestFirst = [...rows].reverse().slice(offset, offset + 500);
+    return { body: { messages: newestFirst.reverse(), pagination: { order: 'latest', limit: 500, offset } } };
+  };
+  const s = await opened(f);
+  let snapshot = f.service.snapshot();
+  assert.equal(snapshot.earlier, true);
+  assert.equal(snapshot.data.chats.find(chat => chat.id === 'stored').transcript.filter(item => item.kind === 'message').length, 500);
+  await f.service.handle({ kind: 'loadEarlier', generation: s.generation, chatId: 'stored' });
+  snapshot = f.service.snapshot();
+  const messages = snapshot.data.chats.find(chat => chat.id === 'stored').transcript.filter(item => item.kind === 'message');
+  assert.equal(messages.length, 700); assert.equal(messages[0].paragraphs[0], 'm1');
+  assert.equal(snapshot.earlier, false);
+  assert.deepEqual(requests, ['0', '0', '500']);
+});

@@ -194,6 +194,7 @@ export function Conversation(props: Readonly<{
   onDropFiles?: ((files: readonly Readonly<{ name: string; bytes: Uint8Array }>[]) => void) | undefined;
   onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void;
   onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined; onCheckHistory?: (() => void) | undefined;
+  onLoadEarlier?: (() => void) | undefined;
   agentMenu?: ReactNode; options?: ChatOptions | undefined; turn?: TurnInfo | undefined; liveTurn?: string | null; actions?: MarkdownActions;
 }>): JSX.Element {
   const { palette } = useTheme();
@@ -208,7 +209,7 @@ export function Conversation(props: Readonly<{
   } else if (props.chat) {
     body = <Transcript chat={props.chat} options={{ showReasoning: options.showReasoning, foldFinishedTurns: options.foldFinishedTurns,
       liveTurn: props.running ? props.liveTurn ?? null : null, running: !!props.running, status: props.turn?.status ?? '', agentName: props.agent.name,
-      actions: props.actions ?? {}, onCheckHistory: props.onCheckHistory, chatId: props.chat.id }} />;
+      actions: props.actions ?? {}, onCheckHistory: props.onCheckHistory, chatId: props.chat.id, onLoadEarlier: props.onLoadEarlier }} />;
   } else {
     body = <Notice title={`New chat with ${props.agent.name}`} body="Nothing has been sent. Use New chat to start a conversation." />;
   }

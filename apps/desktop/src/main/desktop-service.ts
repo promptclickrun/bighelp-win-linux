@@ -132,6 +132,9 @@ export function createDesktopService(adapters: Readonly<{
   let base: readonly TranscriptItem[] = [];
   let live: LiveTurn = EMPTY_LIVE;
   let publishTimer: ReturnType<typeof setTimeout> | undefined;
+  // Saved history pages shown for the open chat, and whether older rows exist.
+  const HISTORY_PAGES = 6;
+  let historyPages = 1, earlierAvailable = false;
   // Host paths of agent-delivered files in the open chat, by opaque reference.
   const mediaPaths = new Map<string, string>();
   const recordMedia = (path: string) => { const ref = mediaRef(path); if (mediaPaths.size < 1024 || mediaPaths.has(ref)) mediaPaths.set(ref, path); return ref; };
@@ -172,6 +175,7 @@ export function createDesktopService(adapters: Readonly<{
       storageAvailable: !!adapters.repository, prompts: [...prompts].map(([id, entry]) => ({ id, prompt: entry.prompt })), drafts, workspace,
       preferences, attachments: staged && staged.chatId === selectedChatId
         ? staged.files.map(file => ({ id: file.id, name: file.name, size: file.bytes.byteLength, kind: file.kind })) : [],
+      earlier: earlierAvailable && !!owner && selectedChatId === owner.storedSessionId,
       turn: { key: live.turn, model: live.model, status: live.status, todos: live.todos, context: live.context, startedAt: live.startedAt },
       hosts: hostsView() });
   }
@@ -248,15 +252,29 @@ export function createDesktopService(adapters: Readonly<{
   }
   // REST rows carry tool results; the RPC projection is the fallback for older
   // hosts, unusual IDs or a page beyond the response bound.
+  // Pages of 500 newest-first rows, as many as the person asked to see (at most
+  // HISTORY_PAGES). Rows are decoded together so tool calls pair across pages.
   async function readHistory(captured: Owner, connection: Gateway): Promise<readonly TranscriptItem[]> {
     if (/^[A-Za-z0-9_.:-]+$/u.test(captured.storedSessionId) && captured.storedSessionId !== '.' && captured.storedSessionId !== '..') {
       try {
-        const response = await connection.requestHttp({ kind: 'route', method: 'GET', path: `/api/sessions/${encodeURIComponent(captured.storedSessionId)}/messages`,
-          query: { profile: captured.profileId, order: 'latest', limit: '500', include_compacted: 'true', inline_images: 'false' },
-          maxBytes: HISTORY_LIMITS.responseBytes });
-        return decodeRestHistory(response.body, Date.now(), recordMedia);
+        const rows: unknown[] = [];
+        let more = false;
+        for (let page = 0; page < historyPages; page++) {
+          const response = await connection.requestHttp({ kind: 'route', method: 'GET', path: `/api/sessions/${encodeURIComponent(captured.storedSessionId)}/messages`,
+            query: { profile: captured.profileId, order: 'latest', limit: '500', offset: String(page * 500), include_compacted: 'true', inline_images: 'false' },
+            maxBytes: HISTORY_LIMITS.responseBytes });
+          const messages = jsonObject(response.body) && Array.isArray(response.body.messages) ? response.body.messages : null;
+          if (!messages) throw Error('Invalid history page');
+          rows.push(...messages);
+          more = messages.length >= 500;
+          if (!more) break;
+        }
+        const items = decodeRestHistory({ messages: rows }, Date.now(), recordMedia);
+        earlierAvailable = more && historyPages < HISTORY_PAGES;
+        return items;
       } catch { if (owner !== captured || gateway !== connection) throw Error('Chat changed'); }
     }
+    earlierAvailable = false;
     return decodeRpcHistory(await connection.operation({ kind: 'sessionHistory', profile: captured.profileId, runtimeId: captured.runtimeId }), Date.now(), recordMedia);
   }
   function applyTranscript(chatId: string) {
@@ -637,6 +655,7 @@ export function createDesktopService(adapters: Readonly<{
     if (sending || !gateway || !data.agents.some(agent => agent.id === profile)) throw Error('Session unavailable');
     const connection = gateway, current = hostGeneration;
     navigating = true; reconciled = false; owner = null; selectedChatId = null; acceptedSends = []; clearPrompts(); ++generation; staged = null; mediaPaths.clear();
+    historyPages = 1; earlierAvailable = false;
     navigation = requestId ? {requestId, initiatingGeneration, generation} : null; publish();
     // Ordinary/saved-chat supersession admits no more entries from the older
     // canonical initiating generation, so its tombstones can be retired.
@@ -801,6 +820,13 @@ export function createDesktopService(adapters: Readonly<{
     if (action.kind === 'detach') {
       if (staged?.chatId === action.chatId) staged = { chatId: action.chatId, files: staged.files.filter(file => file.id !== action.attachmentId) };
       publish(); return;
+    }
+    if (action.kind === 'loadEarlier') {
+      if (!earlierAvailable || historyPages >= HISTORY_PAGES) return;
+      historyPages += 1;
+      try { await history(captured, connection); }
+      catch (error) { historyPages -= 1; throw error; }
+      return;
     }
     if (action.kind === 'interrupt') {
       await connection.operation({ kind: 'sessionInterrupt', profile: captured.profileId, runtimeId: captured.runtimeId }); return;

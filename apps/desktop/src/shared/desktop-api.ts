@@ -56,6 +56,8 @@ export type DesktopSnapshot = Readonly<{
   workspace: DesktopWorkspace | null;
   preferences: Preferences;
   // The open chat's reply in progress: still status words, to-dos, context use.
+  // Older saved messages exist beyond what the open chat shows.
+  earlier?: boolean;
   // Files chosen for the open chat's next message (names and sizes only).
   attachments: readonly PendingAttachment[];
   turn: Readonly<{ key: string | null; model: Readonly<{ name: string; provider: string; reasoning: string }> | null; status: string; todos: readonly TodoItem[]; context: Readonly<{ used: number; max: number }> | null; startedAt: number | null }>;
@@ -88,6 +90,7 @@ export type DesktopAction =
   | Readonly<{ kind: 'answer'; generation: number; promptId: string; answer: unknown }>
   | Readonly<{ kind: 'draft'; generation: number; chatId: string; text: string }>
   | Readonly<{ kind: 'attach'; generation: number; chatId: string }>
+  | Readonly<{ kind: 'loadEarlier'; generation: number; chatId: string }>
   | Readonly<{ kind: 'attachDropped'; generation: number; chatId: string; files: readonly Readonly<{ name: string; bytes: Uint8Array }>[] }>
   | Readonly<{ kind: 'detach'; generation: number; chatId: string; attachmentId: string }>
   | Readonly<{ kind: 'workspace'; generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays }>
@@ -118,6 +121,8 @@ export type DesktopApi = Readonly<{
   draft(generation: number, chatId: string, text: string): Promise<DesktopResult>;
   // Main opens the system file picker; the window only ever sees names and sizes.
   attach(generation: number, chatId: string): Promise<DesktopResult>;
+  // Older saved messages of the open chat (500 more at a time, up to 3,000).
+  loadEarlier(generation: number, chatId: string): Promise<DesktopResult>;
   // Files dropped on the conversation; read by the window only up to the size limit.
   attachDropped(generation: number, chatId: string, files: readonly Readonly<{ name: string; bytes: Uint8Array }>[]): Promise<DesktopResult>;
   detach(generation: number, chatId: string, attachmentId: string): Promise<DesktopResult>;
@@ -268,7 +273,7 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   if (kind === 'openChat' || kind === 'interrupt') {
     keys(input, ['kind', 'generation', 'chatId']); return { kind, generation, chatId: text(input.chatId) };
   }
-  if (kind === 'attach') {
+  if (kind === 'attach' || kind === 'loadEarlier') {
     keys(input, ['kind', 'generation', 'chatId']); return { kind, generation, chatId: text(input.chatId) };
   }
   if (kind === 'attachDropped') {

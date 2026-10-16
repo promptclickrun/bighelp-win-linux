@@ -193,6 +193,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           : snapshot.turn) : undefined} liveTurn={snapshot?.turn?.key ?? null}
         actions={api ? { openLink: url => { void api.openLink(url); }, copy: text => api.copyText(text) } : {}}
         onCheckHistory={api && snapshot && chat && act ? () => { void act(api.openChat(snapshot.generation, chat.id)); } : undefined}
+        onLoadEarlier={api && snapshot?.earlier && chat && act && snapshot.selectedChatId === chat.id
+          ? () => { void act(api.loadEarlier(snapshot.generation, chat.id)); } : undefined}
         headerActions={api && snapshot && chat && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
           ? <ModelButton chatId={chat.id} running={snapshot.running} current={snapshot.turn?.model ?? null} /> : null}
         onAttach={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id

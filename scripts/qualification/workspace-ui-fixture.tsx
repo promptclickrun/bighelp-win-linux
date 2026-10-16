@@ -92,7 +92,7 @@ const api = Object.freeze<DesktopApi>({
   canonicalChat: async () => { calls.canonicalChat++; return { ok: false, message: 'No synthetic canonical navigation' }; },
   newChat: async () => { calls.newChat++; return { ok: false, message: 'No synthetic new chat' }; },
   send: async () => { calls.send++; return { ok: false, message: 'No synthetic sends' }; },
-  interrupt: forbidden, answer: forbidden, preferences: forbidden, attach: forbidden, attachDropped: forbidden, detach: forbidden,
+  interrupt: forbidden, answer: forbidden, preferences: forbidden, attach: forbidden, attachDropped: forbidden, detach: forbidden, loadEarlier: forbidden,
   call: featureCall as DesktopApi['call'],
   // Links and copy are outside this synthetic page qualification.
   openLink: async () => { calls.other++; return false; }, copyText: async () => { calls.other++; return false; }, onCommand: () => () => {},

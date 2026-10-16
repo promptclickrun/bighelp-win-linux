@@ -20,6 +20,7 @@ type Tool = Extract<TranscriptItem, { kind: 'tool' }>;
 export type TranscriptOptions = Readonly<{
   showReasoning: boolean; foldFinishedTurns: boolean; liveTurn: string | null; running: boolean;
   status: string; agentName: string; actions: MarkdownActions; onCheckHistory?: (() => void) | undefined; chatId?: string;
+  onLoadEarlier?: (() => void) | undefined;
 }>;
 
 type Media = NonNullable<Message['media']>[number];
@@ -228,10 +229,20 @@ export function Transcript(props: Readonly<{ chat: ChatView; options: Transcript
     [props.chat.transcript, props.options.liveTurn, props.options.showReasoning]);
   // A new chat starts at its latest message.
   useLayoutEffect(() => { stick.current = true; const node = scroller.current; if (node) node.scrollTop = node.scrollHeight; }, [props.chat.id]);
+  // Sending, even from far up in older history, brings the new reply into view.
+  const lastSent = [...props.chat.transcript].reverse().find(item => item.kind === 'message' && item.direction === 'out')?.id;
+  const seenSent = useRef(lastSent);
+  useLayoutEffect(() => { if (lastSent !== seenSent.current) { seenSent.current = lastSent; stick.current = true; } }, [lastSent]);
+  // Older messages arrive above: keep the reader's place instead of jumping.
+  const firstRow = rows[0]?.id;
+  const anchor = useRef<Readonly<{ first: string | undefined; height: number }>>({ first: firstRow, height: 0 });
   // Follow new content only while the reader is at the bottom.
   useLayoutEffect(() => {
     const node = scroller.current; if (!node) return;
-    if (stick.current) node.scrollTop = node.scrollHeight; else setBehind(true);
+    const previous = anchor.current;
+    if (previous.first !== firstRow && previous.height && !stick.current) node.scrollTop += node.scrollHeight - previous.height;
+    else if (stick.current) node.scrollTop = node.scrollHeight; else setBehind(true);
+    anchor.current = { first: firstRow, height: node.scrollHeight };
   }, [rows, props.options.status]);
   useEffect(() => { if (stick.current) setBehind(false); }, [rows]);
   const lastText = [...props.chat.transcript].reverse().find(item => item.kind === 'message' && item.direction === 'in');
@@ -245,6 +256,15 @@ export function Transcript(props: Readonly<{ chat: ChatView; options: Transcript
         }}
         style={{ flex: 1, minHeight: 0, overflowY: 'auto', outline: 'none' }}>
         <View style={{ width: '100%', maxWidth: 820, alignSelf: 'center', gap: 10, paddingHorizontal: 24, paddingTop: 20, paddingBottom: 12 }}>
+          {props.options.onLoadEarlier ? (
+            <View style={{ alignSelf: 'center' }}>
+              <Pressable role="button" aria-label="Show earlier messages" onPress={props.options.onLoadEarlier}
+                style={({ hovered }) => ({ paddingVertical: 6, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: palette.line,
+                  backgroundColor: hovered ? palette.hover : palette.card, cursor: 'pointer' })}>
+                <Label size={13} weight="600">Show earlier messages</Label>
+              </Pressable>
+            </View>
+          ) : null}
           {rows.length === 0 && !props.options.running
             ? <View style={{ paddingVertical: 40, alignItems: 'center' }}><Label tone="muted">{`Say hello to ${props.options.agentName}.`}</Label></View> : null}
           {rows.map(row => <RowView key={row.id} row={row} options={props.options} />)}
