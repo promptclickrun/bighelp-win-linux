@@ -191,12 +191,15 @@ export function Conversation(props: Readonly<{
   agent: AgentView; chat: ChatView | null; host: HostView | null; tab: AgentTab; draft: string; hint: string;
   sample: boolean; canSend?: boolean; editable?: boolean; running?: boolean; board?: ReactNode; files?: ReactNode; requests?: ReactNode;
   headerActions?: ReactNode; attachments?: ReactNode; onAttach?: (() => void) | undefined;
+  onDropFiles?: ((files: readonly Readonly<{ name: string; bytes: Uint8Array }>[]) => void) | undefined;
   onSend?: (() => void) | undefined; onStop?: (() => void) | undefined; onNewChat?: (() => void) | undefined; onDraft: (text: string) => void;
   onTab: (tab: AgentTab) => void; onBack?: (() => void) | undefined; onCheckHistory?: (() => void) | undefined;
   options?: ChatOptions | undefined; turn?: TurnInfo | undefined; liveTurn?: string | null; actions?: MarkdownActions;
 }>): JSX.Element {
   const { palette } = useTheme();
+  const [dragging, setDragging] = useState(false);
   const options = props.options ?? DEFAULT_CHAT_OPTIONS;
+  const droppable = props.tab === 'chat' && !!props.onDropFiles;
   const context = options.nerdMode && props.turn?.context ? ` · context ${Math.round(props.turn.context.used / props.turn.context.max * 100)}% used` : '';
   const subline = props.sample ? `Sample data · ${props.host?.label ?? ''}` : `${props.host?.label ?? 'Not connected'}${props.chat && props.chat.title !== 'New chat' ? ` · ${props.chat.title}` : ''}${context}`;
   let body: JSX.Element;
@@ -222,7 +225,24 @@ export function Conversation(props: Readonly<{
         {props.headerActions}
         <IconButton icon="compose" label={`New chat with ${props.agent.name}`} onPress={props.onNewChat ?? (() => {})} disabled={!props.onNewChat} />
       </View>
+      <div onDragOver={event => { if (droppable && event.dataTransfer.types.includes('Files')) { event.preventDefault(); event.dataTransfer.dropEffect = 'copy'; setDragging(true); } }}
+        onDragLeave={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragging(false); }}
+        onDrop={event => {
+          if (!droppable) return;
+          event.preventDefault(); setDragging(false);
+          // Read at most one byte past the limit so oversize files get the size message.
+          const chosen = Array.from(event.dataTransfer.files).slice(0, 10);
+          void Promise.all(chosen.map(async file => ({ name: file.name, bytes: new Uint8Array(await file.slice(0, 8 * 1024 * 1024 + 1).arrayBuffer()) })))
+            .then(files => { if (files.length) props.onDropFiles?.(files); }, () => undefined);
+        }}
+        style={{ display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0, position: 'relative' }}>
       {body}
+      {dragging ? (
+        <div aria-hidden="true" style={{ position: 'absolute', inset: 8, borderRadius: 16, border: `2px dashed ${palette.action}`,
+          backgroundColor: palette.actionSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', opacity: 0.92 }}>
+          <Label weight="700" tone="action">Drop files to add them to your message</Label>
+        </div>
+      ) : null}
       {/* Keep the native editor node and its undo/IME state across agent tabs. */}
       <div hidden={props.tab !== 'chat'} inert={props.tab !== 'chat'} aria-hidden={props.tab !== 'chat'} style={{ display: props.tab === 'chat' ? 'contents' : 'none' }}>
         {props.requests}
@@ -230,6 +250,7 @@ export function Conversation(props: Readonly<{
         <Composer agentName={props.agent.name} draft={props.draft} onDraft={props.onDraft} hint={props.hint} editable={props.editable ?? true}
           canSend={props.canSend ?? false} running={props.running ?? false} onSend={props.onSend} onStop={props.onStop}
           enterToSend={options.enterToSend} busyMode={options.busyMode} attachments={props.attachments} onAttach={props.onAttach} chatId={props.chat?.id} />
+      </div>
       </div>
       <AgentTabs agentName={props.agent.name} active={props.tab} onTab={props.onTab} />
     </View>

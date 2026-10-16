@@ -160,6 +160,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           ? <ModelButton chatId={chat.id} running={snapshot.running} current={snapshot.turn?.model ?? null} /> : null}
         onAttach={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
           ? () => { void act(api.attach(snapshot.generation, chat.id)); } : undefined}
+        onDropFiles={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
+          ? files => { void act(api.attachDropped(snapshot.generation, chat.id, files)); } : undefined}
         attachments={snapshot?.attachments?.length && chat && snapshot.selectedChatId === chat.id ? <PendingAttachments files={snapshot.attachments}
           onRemove={api && act ? id => { void act(api.detach(snapshot.generation, chat.id, id)); } : undefined} /> : null}
         board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?

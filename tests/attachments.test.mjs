@@ -105,3 +105,18 @@ test('an empty message needs files; detach removes one choice', async () => {
   assert.equal((await f.service.handle({ kind: 'send', generation: s.generation, chatId: 'stored', text: '' })).ok, true);
   assert.equal(f.calls.find(call => call[0] === 'submit')[1], '');
 });
+
+test('dropped files use the same bounded path and the boundary refuses oversize or odd input', async () => {
+  const { parseDesktopAction } = await import('../apps/desktop/src/shared/desktop-api.ts');
+  assert.throws(() => parseDesktopAction({ kind: 'attachDropped', generation: 1, chatId: 'a', files: [] }));
+  assert.throws(() => parseDesktopAction({ kind: 'attachDropped', generation: 1, chatId: 'a', files: [{ name: 'x', bytes: 'not bytes' }] }));
+  assert.throws(() => parseDesktopAction({ kind: 'attachDropped', generation: 1, chatId: 'a', files: [{ name: 'x', bytes: new Uint8Array(8 * 1024 * 1024 + 2) }] }));
+  assert.throws(() => parseDesktopAction({ kind: 'attachDropped', generation: 1, chatId: 'a', files: Array.from({ length: 11 }, () => ({ name: 'x', bytes: new Uint8Array(1) })) }));
+  const f = setup(() => ({ attached: true, path: '/h/x.png' }));
+  const s = await opened(f);
+  await f.service.handle({ kind: 'attachDropped', generation: s.generation, chatId: 'stored', files: [{ name: 'big.zip', bytes: bytes(8 * 1024 * 1024 + 1) }, { name: 'a.png', bytes: bytes(2) }] });
+  assert.match(f.service.snapshot().notice, /8 MB/u);
+  assert.deepEqual(f.service.snapshot().attachments, []);
+  await f.service.handle({ kind: 'attachDropped', generation: s.generation, chatId: 'stored', files: [{ name: 'a.png', bytes: bytes(2) }] });
+  assert.deepEqual(f.service.snapshot().attachments.map(file => file.name), ['a.png']);
+});

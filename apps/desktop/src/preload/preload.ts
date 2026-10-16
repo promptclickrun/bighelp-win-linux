@@ -21,6 +21,7 @@ const api: DesktopApi = Object.freeze({
   answer: (generation, promptId, answer) => invoke({ kind: 'answer', generation, promptId, answer }),
   draft: (generation, chatId, text) => invoke({ kind: 'draft', generation, chatId, text }),
   attach: (generation, chatId) => invoke({ kind: 'attach', generation, chatId }),
+  attachDropped: (generation, chatId, files) => invoke({ kind: 'attachDropped', generation, chatId, files }),
   detach: (generation, chatId, attachmentId) => invoke({ kind: 'detach', generation, chatId, attachmentId }),
   workspace: (generation, profile, page, days) => invoke({ kind: 'workspace', generation, profile, page, days }),
   call: (connection, name, input) => ipcRenderer.invoke(CALL_CHANNEL, { kind: 'call', connection, name, input }),

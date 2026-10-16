@@ -512,9 +512,9 @@ export function createDesktopService(adapters: Readonly<{
       const key = `draft:${scope(captured.profileId, action.chatId)}`; await save(key, action.text);
       if (owner === captured) { drafts = { ...drafts, [action.chatId]: action.text }; publish(); } return;
     }
-    if (action.kind === 'attach') {
-      if (!adapters.pickFiles) throw new UserFacingError('Adding files is not available here.');
-      const chosen = await adapters.pickFiles();
+    if (action.kind === 'attach' || action.kind === 'attachDropped') {
+      if (action.kind === 'attach' && !adapters.pickFiles) throw new UserFacingError('Adding files is not available here.');
+      const chosen = action.kind === 'attachDropped' ? action.files : await adapters.pickFiles!();
       if (!chosen?.length || owner !== captured) return;
       const result = admit(staged?.chatId === action.chatId ? staged.files : [], chosen, () => randomUUID());
       staged = { chatId: action.chatId, files: result.files };

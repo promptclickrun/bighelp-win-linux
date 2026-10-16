@@ -56,6 +56,7 @@ export type DesktopAction =
   | Readonly<{ kind: 'answer'; generation: number; promptId: string; answer: unknown }>
   | Readonly<{ kind: 'draft'; generation: number; chatId: string; text: string }>
   | Readonly<{ kind: 'attach'; generation: number; chatId: string }>
+  | Readonly<{ kind: 'attachDropped'; generation: number; chatId: string; files: readonly Readonly<{ name: string; bytes: Uint8Array }>[] }>
   | Readonly<{ kind: 'detach'; generation: number; chatId: string; attachmentId: string }>
   | Readonly<{ kind: 'workspace'; generation: number; profile: string; page: WorkspacePage; days: WorkspaceDays }>
   | { [K in CallName]: Readonly<{ kind: 'call'; connection: number; name: K; input: CallInput<K> }> }[CallName];
@@ -76,6 +77,8 @@ export type DesktopApi = Readonly<{
   draft(generation: number, chatId: string, text: string): Promise<DesktopResult>;
   // Main opens the system file picker; the window only ever sees names and sizes.
   attach(generation: number, chatId: string): Promise<DesktopResult>;
+  // Files dropped on the conversation; read by the window only up to the size limit.
+  attachDropped(generation: number, chatId: string, files: readonly Readonly<{ name: string; bytes: Uint8Array }>[]): Promise<DesktopResult>;
   detach(generation: number, chatId: string, attachmentId: string): Promise<DesktopResult>;
   workspace(generation: number, profile: string, page: WorkspacePage, days: WorkspaceDays): Promise<DesktopResult>;
   call<K extends CallName>(connection: number, name: K, input: CallInput<K>): Promise<CallResult<K>>;
@@ -182,6 +185,16 @@ export function parseDesktopAction(value: unknown): DesktopAction {
   }
   if (kind === 'attach') {
     keys(input, ['kind', 'generation', 'chatId']); return { kind, generation, chatId: text(input.chatId) };
+  }
+  if (kind === 'attachDropped') {
+    keys(input, ['kind', 'generation', 'chatId', 'files']);
+    if (!Array.isArray(input.files) || !input.files.length || input.files.length > 10) throw new TypeError('Invalid files');
+    const files = input.files.map(entry => {
+      const file = object(entry); keys(file, ['name', 'bytes']);
+      if (!(file.bytes instanceof Uint8Array) || file.bytes.byteLength > 8 * 1024 * 1024 + 1) throw new TypeError('Invalid file');
+      return { name: text(file.name, 1024), bytes: new Uint8Array(file.bytes) };
+    });
+    return { kind, generation, chatId: text(input.chatId), files };
   }
   if (kind === 'detach') {
     keys(input, ['kind', 'generation', 'chatId', 'attachmentId']);
