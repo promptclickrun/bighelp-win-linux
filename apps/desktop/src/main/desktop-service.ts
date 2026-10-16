@@ -27,7 +27,7 @@ import { admit, referenceText } from '../../../../packages/domain/attachments.ts
 import { sendSpeakerNote } from './speaker-note.ts';
 import { mediaRef } from '../../../../packages/domain/media.ts';
 import type { StagedFile } from '../../../../packages/domain/attachments.ts';
-import { parseInteractivePrompt, encodeInteractiveAnswer } from '../../../../packages/contracts/prompts.ts';
+import { parseInteractivePrompt, encodeInteractiveAnswer, isInteractivePromptMethod, promptAlert } from '../../../../packages/contracts/prompts.ts';
 import type { InteractivePrompt } from '../../../../packages/contracts/prompts.ts';
 import type { Gateway } from '../../../../packages/hermes-client/gateway.ts';
 import { GatewayOperationError } from '../../../../packages/hermes-client/gateway.ts';
@@ -315,7 +315,7 @@ export function createDesktopService(adapters: Readonly<{
   }
   async function request(request: RpcServerRequest, signal: AbortSignal, current: number): Promise<ServerReply> {
     if (shuttingDown || current !== hostGeneration || !owner || signal.aborted) return { error: { code: -32000, message: 'Session unavailable' } };
-    if (request.method !== 'approval' && request.method !== 'clarify') return { error: { code: -32601, message: 'This prompt is not supported by this desktop build' } };
+    if (!isInteractivePromptMethod(request.method)) return { error: { code: -32601, message: 'This prompt is not supported by this desktop build' } };
     let prompt: InteractivePrompt;
     try { prompt = parseInteractivePrompt(request.method, request.params, owner.runtimeId); }
     catch { return { error: { code: -32602, message: 'Invalid prompt' } }; }
@@ -328,8 +328,7 @@ export function createDesktopService(adapters: Readonly<{
       };
       prompts.set(request.id, { prompt, resolve: reply => { signal.removeEventListener('abort', cancel); resolve(reply); }, cancel });
       signal.addEventListener('abort', cancel, { once: true }); publish();
-      if (owner) alert(prompt.kind === 'approval' ? 'approval' : 'question', owner.storedSessionId, owner.profileId,
-        prompt.kind === 'approval' ? prompt.description ?? prompt.command ?? '' : prompt.questions[0]?.question ?? '');
+      if (owner) { const note = promptAlert(prompt); alert(note.kind, owner.storedSessionId, owner.profileId, note.text); }
     });
   }
   async function restoreOffline(host: RecoveryHost, current: number) {
