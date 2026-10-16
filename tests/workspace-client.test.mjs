@@ -89,6 +89,11 @@ test('board verifies current context and returns only the requested kind without
   assert.equal(result.data.tab, 'goals'); assert.equal(result.data.items.length, 1); assert.equal(result.data.items[0].id, 'goal-one');
   assert.ok(!JSON.stringify(result).includes('never-')); assert.ok(!JSON.stringify(result).includes('test-user'));
   assert.ok(Object.isFrozen(result.data.items[0]));
+  // Only the base board is advertised here, so no feedback, answers or categories actions.
+  assert.deepEqual(result.data.features, { feedback: false, answers: false, goalCategories: false });
+  state.context.body.features = [...state.context.body.features, 'native-agent-board-feedback-v1', 'native-agent-board-answers-v1',
+    'native-agent-board-goal-categories-v1'];
+  assert.deepEqual((await client.board('goals')).data.features, { feedback: true, answers: true, goalCategories: true });
 });
 
 test('missing optional capabilities produce typed unsupported results without browsing side effects', async () => {

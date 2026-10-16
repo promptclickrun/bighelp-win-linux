@@ -30,10 +30,29 @@ export type WorkspaceScheduled = Readonly<{ tasks: readonly Readonly<{
   id: string; name: string; schedule: string; state: 'scheduled' | 'running' | 'paused' | 'completed' | 'error';
   enabled: boolean; nextRunAt?: string; lastResult?: string;
 }>[] }>;
-export type WorkspaceBoard = Readonly<{ tab: WorkspaceTab; items: readonly Readonly<{
+export type BoardRating = 'up' | 'down' | 'none';
+// What the person said to an idea. "not now" hides it for 30 days on the host.
+export type BoardAnswer = 'none' | 'yes' | 'goal' | 'not now';
+export type BoardLink = Readonly<{ url: string; title?: string }>;
+// rating..links are display-only additions from the bighelp plugin
+// (agent_board.py BoardStore._item). Unknown values are dropped, not guessed.
+export type WorkspaceBoardItem = Readonly<{
   id: string; kind: 'feed' | 'idea' | 'goal'; title: string; body?: string; status?: string;
   note?: string; category?: string; createdAt?: string; updatedAt?: string; read?: boolean; dismissed?: boolean;
-}>[] }>;
+  rating?: BoardRating; reason?: string; answer?: BoardAnswer; section?: string; icon?: string; source?: string;
+  links?: readonly BoardLink[];
+}>;
+// Which board actions the host's plugin advertises. Missing means not offered.
+export type WorkspaceBoardFeatures = Readonly<{ feedback: boolean; answers: boolean; goalCategories: boolean }>;
+export type WorkspaceBoard = Readonly<{ tab: WorkspaceTab; items: readonly WorkspaceBoardItem[]; features?: WorkspaceBoardFeatures }>;
+export const BOARD_FEATURES = Object.freeze({
+  board: 'native-agent-board-v1', feedback: 'native-agent-board-feedback-v1',
+  answers: 'native-agent-board-answers-v1', goalCategories: 'native-agent-board-goal-categories-v1',
+});
+export function boardFeatures(features: readonly string[]): WorkspaceBoardFeatures {
+  return Object.freeze({ feedback: features.includes(BOARD_FEATURES.feedback), answers: features.includes(BOARD_FEATURES.answers),
+    goalCategories: features.includes(BOARD_FEATURES.goalCategories) });
+}
 
 const invalid = (): never => { throw new TypeError('Invalid workspace response'); };
 function object(value: unknown): Record<string, unknown> {
@@ -218,20 +237,61 @@ export function decodeWorkspaceScheduled(value: unknown, profile: string): Works
   return Object.freeze({ tasks });
 }
 
-export function decodeWorkspaceBoard(value: unknown, profile: string, tab: WorkspaceTab): WorkspaceBoard {
-  workspaceProfile(profile); workspaceTab(tab);
+// Additive display text: a wrong type or unsafe character drops the field
+// instead of the whole board. Authority fields above stay strict.
+function displayText(value: unknown, max: number): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try { const result = text(value, max, true); return result.trim() ? result : undefined; } catch { return undefined; }
+}
+function boardLinks(value: unknown): readonly BoardLink[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const links: BoardLink[] = [];
+  for (const entry of value.slice(0, 8)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+    const raw = displayText((entry as Record<string, unknown>).url, 2048);
+    let url: URL;
+    try { if (raw === undefined) continue; url = new URL(raw); } catch { continue; }
+    if ((url.protocol !== 'https:' && url.protocol !== 'http:') || !url.hostname || url.username || url.password) continue;
+    const title = displayText((entry as Record<string, unknown>).title, 800);
+    links.push(Object.freeze({ url: url.href, ...optionalField('title', title) }));
+  }
+  return links.length ? Object.freeze(links) : undefined;
+}
+function boardItem(value: unknown, profile: string): WorkspaceBoardItem {
+  const row = object(value); profileEcho(row, profile);
+  const kind = row.kind;
+  if (kind !== 'feed' && kind !== 'idea' && kind !== 'goal') return invalid();
+  // rating replaces the older heart (liked); a heart alone still means thumbs up.
+  const ratings: readonly BoardRating[] = ['up', 'down', 'none'], answers: readonly BoardAnswer[] = ['none', 'yes', 'goal', 'not now'];
+  const rating = ratings.find(value => value === row.rating) ?? (row.liked === true ? 'up' : undefined);
+  const answer = answers.find(value => value === row.answer);
+  return Object.freeze({ id: identifier(row.id, 160), kind, title: text(row.title, 1000, true),
+    ...optionalField('body', optionalText(row.body, 65536)), ...optionalField('status', optionalText(row.status, 128)),
+    ...optionalField('note', optionalText(row.note, 8192)), ...optionalField('category', optionalText(row.category, 128)),
+    ...optionalField('createdAt', timestamp(row.createdAt)), ...optionalField('updatedAt', timestamp(row.updatedAt)),
+    ...optionalField('read', row.read === undefined ? undefined : boolean(row.read)),
+    ...optionalField('dismissed', row.dismissed === undefined ? undefined : boolean(row.dismissed)),
+    ...optionalField('rating', rating), ...optionalField('reason', rating === 'down' ? displayText(row.reason, 480) : undefined),
+    ...optionalField('answer', answer), ...optionalField('section', displayText(row.section, 240)),
+    ...optionalField('icon', displayText(row.icon, 64)), ...optionalField('source', displayText(row.source, 800)),
+    ...optionalField('links', boardLinks(row.links)) });
+}
+// Every kind, hidden items included (board/list with includeDismissed).
+export function decodeBoardItems(value: unknown, profile: string): readonly WorkspaceBoardItem[] {
+  workspaceProfile(profile);
   const payload = bounded(value); profileEcho(payload, profile);
-  const items = unique(rows(payload.items, 200).map(value => {
-    const row = object(value); profileEcho(row, profile);
-    const kind = row.kind;
-    if (kind !== 'feed' && kind !== 'idea' && kind !== 'goal') return invalid();
-    return Object.freeze({ id: identifier(row.id, 160), kind, title: text(row.title, 1000, true),
-      ...optionalField('body', optionalText(row.body, 65536)), ...optionalField('status', optionalText(row.status, 128)),
-      ...optionalField('note', optionalText(row.note, 8192)), ...optionalField('category', optionalText(row.category, 128)),
-      ...optionalField('createdAt', timestamp(row.createdAt)), ...optionalField('updatedAt', timestamp(row.updatedAt)),
-      ...optionalField('read', row.read === undefined ? undefined : boolean(row.read)),
-      ...optionalField('dismissed', row.dismissed === undefined ? undefined : boolean(row.dismissed)) });
-  }), item => item.id);
+  return unique(rows(payload.items, 200).map(row => boardItem(row, profile)), item => item.id);
+}
+// The confirmed item a board write returns: {agentId, item}.
+export function decodeBoardItem(value: unknown, profile: string): WorkspaceBoardItem {
+  workspaceProfile(profile);
+  const payload = bounded(value, 196608);
+  if (payload.agentId !== profile) return invalid();
+  return boardItem(payload.item, profile);
+}
+export function decodeWorkspaceBoard(value: unknown, profile: string, tab: WorkspaceTab): WorkspaceBoard {
+  workspaceTab(tab);
+  const items = decodeBoardItems(value, profile);
   const kind = tab === 'ideas' ? 'idea' : tab === 'goals' ? 'goal' : 'feed';
   return Object.freeze({ tab, items: Object.freeze(items.filter(item => item.kind === kind && item.dismissed !== true)) });
 }
@@ -239,7 +299,8 @@ export function decodeWorkspaceBoard(value: unknown, profile: string, tab: Works
 // The verified identity is trusted main-process input from /api/auth/me or the
 // dashboard-session sign-in. Plugin context can confirm it, never create it.
 export function decodeWorkspaceContext(value: unknown, identity: WorkspaceIdentity, etag: unknown,
-  cacheControl: unknown): Readonly<{ etag: string; runtimeId: string; board: boolean; pluginVersion: string; features: readonly string[] }> {
+  cacheControl: unknown): Readonly<{ etag: string; runtimeId: string; board: boolean; pluginVersion: string; features: readonly string[];
+    servingProfileId: string | null }> {
   const tag = workspaceETag(etag), payload = bounded(value, 16384);
   if (typeof cacheControl !== 'string' || cacheControl.length > 1024
     || !cacheControl.split(',').some(part => part.trim().toLowerCase() === 'no-store')) return invalid();
@@ -252,10 +313,11 @@ export function decodeWorkspaceContext(value: unknown, identity: WorkspaceIdenti
   }
   const features = rows(payload.features, 64).map(value => identifier(value, 128));
   if (!features.includes('native-context-v1') || new Set(features).size !== features.length) return invalid();
+  let servingProfileId: string | null = null;
   if (payload.servingProfileId !== null) {
-    workspaceProfile(payload.servingProfileId);
+    servingProfileId = workspaceProfile(payload.servingProfileId);
     if (!features.includes('serving-profile-v1')) return invalid();
   }
   return Object.freeze({ etag: tag, runtimeId, board: features.includes('native-agent-board-v1'), pluginVersion,
-    features: Object.freeze([...features]) });
+    features: Object.freeze([...features]), servingProfileId });
 }

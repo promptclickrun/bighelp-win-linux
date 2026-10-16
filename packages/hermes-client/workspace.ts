@@ -1,4 +1,4 @@
-import { decodeWorkspaceBoard, decodeWorkspaceContext, decodeWorkspaceProjects, decodeWorkspaceScheduled, decodeWorkspaceUsage,
+import { boardFeatures, decodeWorkspaceBoard, decodeWorkspaceContext, decodeWorkspaceProjects, decodeWorkspaceScheduled, decodeWorkspaceUsage,
   parseWorkspaceIdentity, parseWorkspaceOwner, sameWorkspaceOwner, workspaceDays, workspaceRequestId, workspaceTab } from '../contracts/workspace.ts';
 import type { WorkspaceBoard, WorkspaceDays, WorkspaceIdentity, WorkspaceOwner, WorkspaceProjects, WorkspaceResult,
   WorkspaceScheduled, WorkspaceTab, WorkspaceUsage } from '../contracts/workspace.ts';
@@ -86,7 +86,9 @@ export function createWorkspaceClient(adapters: WorkspaceAdapters) {
       try {
         const result = await call(() => adapters.http({ kind: 'workspaceBoard', agentId: owner.profileId, etag: context.etag, requestId }));
         if (result.etag !== context.etag || result.requestId !== requestId) throw new WorkspaceClientError('invalid-response');
-        return loaded(decode(() => decodeWorkspaceBoard(result.body, owner.profileId, selected)));
+        const board = decode(() => decodeWorkspaceBoard(result.body, owner.profileId, selected));
+        // Actions are offered exactly as the plugin advertises them, like the Mac app.
+        return loaded(Object.freeze({ ...board, features: boardFeatures(context.features) }));
       } catch (error) { return unavailable(error); }
     },
   });
