@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { validateTarget, validateAppSource, checksumManifest, regularFiles, validateRuntime } from '../scripts/desktop/package-policy.mjs';
+import { APP_ICON_FILES, validateTarget, validateAppSource, checksumManifest, regularFiles, validateRuntime } from '../scripts/desktop/package-policy.mjs';
+import { ICON_SIZES } from '../scripts/desktop/icons.mjs';
 import { writeBundledLicenses } from '../scripts/desktop/package-licenses.mjs';
 
 async function temporary(body) {
@@ -12,7 +13,8 @@ async function temporary(body) {
 }
 async function bundle(directory) {
   await mkdir(join(directory, 'renderer'));
-  for (const file of ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js']) await writeFile(join(directory, file), 'bundle');
+  await mkdir(join(directory, 'icons'));
+  for (const file of ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js', ...APP_ICON_FILES]) await writeFile(join(directory, file), 'bundle');
   await writeBundledLicenses(directory, directory, { main: { inputs: {} }, preload: { inputs: {} }, renderer: { inputs: {} } });
 }
 test('only qualified portable target combinations are accepted', () => {
@@ -21,15 +23,21 @@ test('only qualified portable target combinations are accepted', () => {
 });
 test('complete application resources pass; credentials, source and fixture files fail closed', async () => temporary(async directory => {
   await bundle(directory);
-  assert.equal((await validateAppSource(directory)).length, 6);
-  for (const file of ['.env', 'renderer/fixtures.json', 'main.ts', 'renderer/renderer.js.map']) {
+  assert.equal((await validateAppSource(directory)).length, 6 + APP_ICON_FILES.length);
+  for (const file of ['.env', 'renderer/fixtures.json', 'main.ts', 'renderer/renderer.js.map', 'icons/other.png', 'icons/bighelp.svg']) {
     await writeFile(join(directory, file), 'must not ship');
     await assert.rejects(validateAppSource(directory), /Unexpected file/u);
     await rm(join(directory, file));
   }
+  await rm(join(directory, 'icons/bighelp.ico'));
+  await assert.rejects(validateAppSource(directory), /Incomplete/u);
+  await writeFile(join(directory, 'icons/bighelp.ico'), 'bundle');
   await rm(join(directory, 'preload.cjs'));
   await assert.rejects(validateAppSource(directory), /Incomplete/u);
 }));
+test('the bundled icon list matches the generated icon sizes', () => {
+  assert.deepEqual(APP_ICON_FILES, [...ICON_SIZES.map(size => `icons/bighelp-${size}.png`), 'icons/bighelp.ico']);
+});
 test('source links are rejected before package copying', { skip: process.platform === 'win32' ? 'Creating symlinks requires runner-specific privilege; Linux exercises this policy' : false }, async () => temporary(async directory => {
   await writeFile(join(directory, 'secret'), 'secret');
   await symlink(join(directory, 'secret'), join(directory, 'linked'));

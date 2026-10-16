@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { build } from 'esbuild';
 import { collectBundledLicenses, writeBundledLicenses, validateBundledLicenses, licenseFiles } from '../scripts/desktop/package-licenses.mjs';
-import { validateAppSource, checksumManifest } from '../scripts/desktop/package-policy.mjs';
+import { APP_ICON_FILES, validateAppSource, checksumManifest } from '../scripts/desktop/package-policy.mjs';
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const hash = text => createHash('sha256').update(text).digest('hex');
@@ -67,7 +67,7 @@ test('license symlinks and linked dependency directories are rejected', { skip: 
 }));
 
 test('artifact policy requires full notices and rejects changed text or mismatched per-file hashes', async () => temporary(async directory => {
-  for (const file of ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js']) await source(directory, file, 'bundle');
+  for (const file of ['main.cjs', 'preload.cjs', 'renderer/index.html', 'renderer/renderer.js', ...APP_ICON_FILES]) await source(directory, file, 'bundle');
   await assert.rejects(validateAppSource(directory), /Incomplete application bundle/u);
   await writeBundledLicenses(directory, directory, graphs());
   await validateAppSource(directory);

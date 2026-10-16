@@ -11,6 +11,7 @@ import { createProtectedRepository } from '../../../../packages/platform/protect
 import { connectGateway } from '../../../../packages/hermes-client/gateway.ts';
 import { connectSocket } from '../../../../packages/platform/socket-transport.ts';
 import { createDesktopService } from './desktop-service.ts';
+import { applyAppIdentity, createDesktopShell } from './desktop-shell.ts';
 import { CALL_CHANNEL, COMMAND_CHANNEL, DESKTOP_CHANNEL, SHELL_CHANNEL, SNAPSHOT_CHANNEL, parseShellAction } from '../shared/desktop-api.ts';
 import { safeLink } from '../shared/links.ts';
 import type { AppCommand } from '../shared/links.ts';
@@ -20,8 +21,8 @@ protocol.registerSchemesAsPrivileged([{
   scheme: APP_SCHEME,
   privileges: { standard: true, secure: true, supportFetchAPI: false, corsEnabled: false, stream: false },
 }]);
-// Keep development data apart from any installed copy (docs/DECISIONS.md D8).
-app.setName('bighelp-desktop-dev');
+// Packaged builds are "bighelp"; development keeps its own name and data (D8).
+applyAppIdentity();
 app.enableSandbox();
 const primaryInstance = app.requestSingleInstanceLock();
 if (!primaryInstance) app.quit();
@@ -32,6 +33,7 @@ const rendererDirectory = join(bundleDirectory, 'renderer');
 let desktop: ReturnType<typeof createDesktopService> | undefined;
 let repository: Awaited<ReturnType<typeof createProtectedRepository>> | null = null;
 let quitting = false;
+const desktopShell = createDesktopShell({ bundleDirectory, openWindow: () => { createWindow(); } });
 
 function installSessionPolicy(): void {
   const current = session.defaultSession;
@@ -65,7 +67,7 @@ function installSessionPolicy(): void {
 function createWindow(): BrowserWindow {
   const preferences = secureWebPreferences(join(bundleDirectory, 'preload.cjs'), fixturePreview);
   const window = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 640, minHeight: 480, show: false, title: 'bighelp',
+    ...desktopShell.windowOptions(), minWidth: 640, minHeight: 480, show: false, title: 'bighelp',
     backgroundColor: '#FFF9F5', autoHideMenuBar: true,
     webPreferences: { ...preferences, additionalArguments: [...preferences.additionalArguments] },
   });
@@ -74,7 +76,8 @@ function createWindow(): BrowserWindow {
   contents.on('will-navigate', event => event.preventDefault());
   contents.on('will-redirect', event => event.preventDefault());
   contents.on('will-attach-webview', event => event.preventDefault());
-  window.once('ready-to-show', () => window.show());
+  // Placement, close-to-tray, text size and first show (or a hidden sign-in start).
+  desktopShell.attachWindow(window);
   void window.loadURL(`${APP_ORIGIN}/index.html`);
   return window;
 }
@@ -144,7 +147,9 @@ function applicationMenu(): Menu {
     { label: '&Edit', submenu: [{ role: 'undo' }, { role: 'redo' }, { type: 'separator' }, { role: 'cut' }, { role: 'copy' },
       { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' },
       { label: 'Write a message', accelerator: 'CmdOrCtrl+L', click: () => sendCommand('focusComposer') }] },
-    { label: '&View', submenu: [{ role: 'resetZoom' }, { role: 'zoomIn' }, { role: 'zoomIn', accelerator: 'CmdOrCtrl+=', visible: false },
+    // Actual size returns to the text size chosen in Settings.
+    { label: '&View', submenu: [{ label: 'Actual size', accelerator: 'CmdOrCtrl+0', click: () => desktopShell.resetZoom() },
+      { role: 'zoomIn' }, { role: 'zoomIn', accelerator: 'CmdOrCtrl+=', visible: false },
       { role: 'zoomOut' }, { type: 'separator' }, { role: 'togglefullscreen' }] },
     { label: '&Window', submenu: [{ role: 'minimize' }, { role: 'close' }] },
   ]);
@@ -165,8 +170,11 @@ app.whenReady().then(async () => {
   desktop = createDesktopService({ repository, pickFiles,
     connect: options => connectGateway({ ...options, socket: connectSocket }),
     onChange: snapshot => {
+      desktopShell.snapshotChanged(snapshot);
       for (const window of BrowserWindow.getAllWindows()) if (!window.webContents.isDestroyed()) window.webContents.send(SNAPSHOT_CHANNEL, snapshot);
     },
+    onPreferences: preferences => desktopShell.preferencesChanged(preferences),
+    notify: alert => desktopShell.notify(alert),
   });
   const trusted = (event: Electron.IpcMainInvokeEvent) => {
     const frame = event.senderFrame;
@@ -192,17 +200,16 @@ app.whenReady().then(async () => {
     return desktop.call(action);
   });
   createWindow();
-  void desktop.initialize();
+  void desktop.initialize().catch(() => undefined).then(() => desktopShell.initialized());
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(() => app.exit(1));
 
-// D3: closing the last window quits. Opt-in tray/background mode is a later slice.
+// D3: closing the window quits, unless opt-in tray mode hid it instead.
 app.on('window-all-closed', () => app.quit());
-app.on('second-instance', () => {
-  const window = BrowserWindow.getAllWindows()[0];
-  if (window) { if (window.isMinimized()) window.restore(); window.focus(); }
-});
+app.on('second-instance', (_event, argv) => desktopShell.secondInstance(argv));
 app.on('before-quit', event => {
+  // Quitting (menu, tray, OS shutdown) always closes the window and ends alerts.
+  desktopShell.beginExit();
   if (quitting || !repository) return;
   event.preventDefault(); quitting = true;
   const protectedRepository = repository;
