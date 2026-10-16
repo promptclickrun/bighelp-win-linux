@@ -1,4 +1,5 @@
 import { decodeRpcFrame, RPC_LIMITS } from '../contracts/rpc.ts';
+import { HTTP_TIMEOUT_MS, LONG_HTTP_TIMEOUT_MS } from './transport-policy.ts';
 import type { HttpPlan } from './transport-policy.ts';
 
 // Reuse the RPC scanner for duplicate decoded keys, depth, numbers and Unicode.
@@ -22,7 +23,8 @@ export async function boundedHttp(plan: HttpPlan, signal: AbortSignal): Promise<
   const abort = () => controller.abort();
   signal.addEventListener('abort', abort, { once: true });
   if (signal.aborted) abort();
-  const timer = setTimeout(abort, 20000);
+  const limit = plan.timeoutMs ?? HTTP_TIMEOUT_MS;
+  const timer = setTimeout(abort, Number.isSafeInteger(limit) && limit >= 1000 && limit <= LONG_HTTP_TIMEOUT_MS ? limit : HTTP_TIMEOUT_MS);
   let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
   try {
     if (!Number.isSafeInteger(plan.maxResponseBytes) || plan.maxResponseBytes < 1
