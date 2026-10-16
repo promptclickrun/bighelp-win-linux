@@ -1,6 +1,6 @@
 # Functional parity matrix
 
-Baseline: [Bighelp Mac Catalyst 2.4.0 (122)](../SOURCES.md). **No target feature is qualified or shipped.** A dependency-free ownership/send contract proof supporting F06/F12/F13 has started; see [P0 evidence](../P0_EVIDENCE.md). It does not implement those complete features. Windows and Linux share the requirement unless a platform replacement/gap is called out.
+Baseline: [Bighelp Mac Catalyst 2.4.0 (122)](../SOURCES.md). **No complete target feature is qualified or shipped.** The [connected development preview](../evidence/connected-runtime.md) implements parts of F01/F06/F11/F12/F13/F14 with protected persistence, real Hermes transport and text chat. [Read-only workspace clients](../evidence/workspace-client.md) support parts of F23/F25/F26/F28; their UI is pending. [Portable development packaging](../evidence/packaging.md) starts F57. These increments do not close the complete rows. Windows and Linux share the requirement unless a platform replacement/gap is called out.
 
 Disposition: **Port** = same task/contract; **Adapt** = OS-specific equivalent needed; **Gate** = feature/host-dependent; **Retain only** = compatibility contract, no new visible product; **Exclude** = not applicable to shipping Mac parity. Phases refer to the [plan](../IMPLEMENTATION_PLAN.md).
 
@@ -77,7 +77,7 @@ Disposition: **Port** = same task/contract; **Adapt** = OS-specific equivalent n
 | F52 | Optional Hermes achievements | Gate separate plugin | P6 | Catalog/badges, unavailable state, reviewed reset/rescan |
 | F53 | Local notifications while running; dedupe/quiet hours/deep links | Adapt + validate enrollment | P8 | OS actual delivery, current-chat suppression, grant/key/replay checks |
 | F54 | Notifications/credential renewal while windows closed or process exited | **Open platform/backend gap** | P0/P8 | Approved tray/helper/OS-push model; no false fully-quit delivery claim |
-| F55 | Calendar/reminders agent tools | **Open provider/OS gap**; no EventKit equivalent assumed | P0/P7 | Named supported stores, permissions, revision/uncertain-write behavior, explicit limitations |
+| F55 | Calendar/reminders agent tools | **Preview exception approved 2026-10-16:** unavailable for now; do not advertise | P0/P7 | Future support requires named stores, permissions, revision/uncertain-write behavior; see D4 |
 | F56 | Location and agent appearance tools | Adapt; gate feature; appearance unreleased plugin main | P7 | Current-chat/lock scope, approximate choice, literal mode/color and immediate revoke |
 | F57 | Desktop installers/updates/uninstall/data policy | Adapt (Sparkle/DMG not portable) | P9 | Signed publisher/update test, clean upgrades/rollback, isolated dev data |
 

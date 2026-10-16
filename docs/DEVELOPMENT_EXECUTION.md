@@ -25,6 +25,17 @@ The current shell is not a completed application. The 57-row feature matrix rema
 - Existing D1/D2/D3/D5/D6 decisions govern architecture, platform scope, background behavior, visual direction, and dependency versions. The user's implementation instruction authorizes development within those decisions.
 - Use Electron `safeStorage` as the existing platform facility for encrypted persistence; reject unavailable protection and Linux `basic_text`. This adds no dependency. Actual OS key-store qualification remains separate from injected-adapter tests.
 - Use the parallel-agent workflow only for independent file scopes or read-only protocol research. All integration and shared-interface changes are coordinated here.
+- User approved `ws@8.22.0` and `@types/ws@8.18.2` on 2026-10-16. The transport uses bounded `ws` framing; no custom WebSocket parser is shipped.
+- User chose to leave device calendar/reminder access unavailable for now. F55 is an explicit preview scope exception, not a simulated replacement for existing data stores.
+
+## Current evidence
+
+- Protected encrypted repositories, finite session/interactive prompt codecs, HTTP/WS gateway adapters, finite IPC, connected host/chat UI, and unsigned portable packaging are implemented.
+- 227 synthetic/local tests pass, including the final review regressions; strict TypeScript and production bundling pass. Production bundles exclude fixture data and renderer imports of privileged modules.
+- Disposable real Hermes `3b2f971133e4e011022ccf33dc6dc1c9050563d8`: dashboard auth, profile discovery, create, draft persistence, streaming admission, expected provider-free error, terminal/history reconciliation, disconnect and saved-session resume passed. No successful model turn is claimed.
+- Linux x64 unsigned portable archive produced and checksums verified. Final packaged headless Electron smoke passed 20/20 with the OS sandbox enabled; earlier development/fixture runs explicitly disabled it. Target Windows 11/Ubuntu Wayland/X11 and real OS key stores remain qualification requirements.
+- Source and security review found and fixed parent-directory durability, post-dispatch persistence failure, stale history overwrite, fast terminal/receipt ordering, stale startup, and newer-draft preservation issues. Pending prompts restored from validated `open_requests` after resume.
+- Read-only workspace clients and finite desktop actions cover Projects, basic usage, scheduled catalog and text-only Feed/Ideas/Goals. UI bodies await the static A/B/C pick; the publishing skill is unavailable and browser policy blocked local-HTML screenshots. Local HTML artifacts are reviewable in `docs/design/function-alternatives/`.
 
 ## Interface ownership
 
