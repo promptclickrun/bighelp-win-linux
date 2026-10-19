@@ -158,7 +158,7 @@ test('shell: function row detail and Back use the existing narrow panes without 
   let state = reduceShell(open(createShellState()), {type:'draft',chatId:'chat-1',text:'Keep this'});
   assert.equal(reduceShell(state, {type:'functionDetail'}), state);
   state = reduceShell(state, {type:'layout',layout:'narrow'});
-  for (const place of ['projects','scheduled','usage']) {
+  for (const place of ['projects','scheduled','usage','kanban']) {
     state = reduceShell(state, {type:'place',place});
     assert.deepEqual(visiblePanes(state), {list:true,detail:false});
     state = reduceShell(state, {type:'functionDetail'});

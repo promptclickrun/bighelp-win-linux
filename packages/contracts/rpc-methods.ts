@@ -24,7 +24,7 @@ export function encodeTextRequest(input: TextRequest): string {
   const value: unknown = JSON.parse(text);
   if (!jsonObject(value) || Object.keys(value).sort().join(',') !== 'id,jsonrpc,method,params'
     || value.jsonrpc !== '2.0' || value.method !== 'prompt.submit' || !jsonObject(value.params)
-    || Object.keys(value.params).sort().join(',') !== 'profile,session_id,text') throw new RpcProtocolError();
+    || Object.keys(value.params).sort().join(',') !== 'profile,queued,session_id,text' || value.params.queued !== true) throw new RpcProtocolError();
   rpcId(value.id);
   for (const identity of [value.params.session_id, value.params.profile]) {
     if (!boundedString(identity, 4096).trim()) throw new RpcProtocolError();

@@ -75,17 +75,24 @@ test('desktop policy: the content security policy blocks scripts and connections
 
 test('shell info: the preload exposes a frozen, finite description of the shell', () => {
   const linux = createShellInfo(['electron', FIXTURE_PREVIEW_ARG], 'linux');
-  assert.deepEqual(linux, { platform: 'linux', fixturePreview: true });
+  assert.deepEqual(linux, { platform: 'linux', fixturePreview: true, appVersion: '', system: '' });
   assert.equal(Object.isFrozen(linux), true);
-  assert.deepEqual(createShellInfo([], 'win32'), { platform: 'windows', fixturePreview: false });
-  assert.deepEqual(createShellInfo([], 'darwin'), { platform: 'other', fixturePreview: false });
+  assert.deepEqual(createShellInfo([], 'win32', { appVersion: '0.1.0', systemVersion: '10.0.26100', arch: 'x64' }),
+    { platform: 'windows', fixturePreview: false, appVersion: '0.1.0', system: 'Windows 10.0.26100 x64' });
+  assert.deepEqual(createShellInfo([], 'darwin'), { platform: 'other', fixturePreview: false, appVersion: '', system: '' });
+  // Only short printable facts: control characters are dropped, oversized values are left out.
+  assert.deepEqual(createShellInfo([], 'linux', { appVersion: '1.0\n(dev)', systemVersion: 'x'.repeat(200), arch: 'arm64' }),
+    { platform: 'linux', fixturePreview: false, appVersion: '1.0 (dev)', system: 'Linux arm64' });
 });
 
 test('shell info: the renderer accepts only the exact shape and otherwise assumes nothing', () => {
-  assert.deepEqual(parseShellInfo({ platform: 'windows', fixturePreview: true }), { platform: 'windows', fixturePreview: true });
-  const fallback = { platform: 'other', fixturePreview: false };
+  const valid = { platform: 'windows', fixturePreview: true, appVersion: '0.1.0 (development build)', system: 'Windows 10.0.26100 x64' };
+  assert.deepEqual(parseShellInfo(valid), valid);
+  const fallback = { platform: 'other', fixturePreview: false, appVersion: '', system: '' };
   for (const value of [undefined, null, 'linux', [], { platform: 'linux' }, { platform: 'mac', fixturePreview: false },
-    { platform: 'linux', fixturePreview: 'yes' }, { platform: 'linux', fixturePreview: false, token: 'x' }]) {
+    { platform: 'linux', fixturePreview: 'yes' }, { platform: 'linux', fixturePreview: false, token: 'x' },
+    { platform: 'windows', fixturePreview: true }, { ...valid, token: 'x' }, { ...valid, appVersion: 1 },
+    { ...valid, system: 'Linux\n6.8' }, { ...valid, appVersion: 'x'.repeat(65) }]) {
     assert.deepEqual(parseShellInfo(value), fallback, JSON.stringify(value));
   }
 });

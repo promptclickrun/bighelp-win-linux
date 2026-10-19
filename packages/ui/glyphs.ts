@@ -46,6 +46,7 @@ export const GLYPHS = Object.freeze({
   bell: [{ shape: "path", d: "M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z" }, { shape: "path", d: "M10 20.5h4" }],
   shield: [{ shape: "path", d: "M12 3.5 19.5 6v6c0 4.6-3.2 7.6-7.5 8.5-4.3-.9-7.5-3.9-7.5-8.5V6z" }],
   check: [{ shape: "path", d: "m5 12.5 4.5 4.5L19 7.5" }],
+  model: [{ shape: "rect", x: "6", y: "6", width: "12", height: "12", rx: "2.5" }, { shape: "path", d: "M9.5 2.5v3.5M14.5 2.5v3.5M9.5 18v3.5M14.5 18v3.5M2.5 9.5H6M2.5 14.5H6M18 9.5h3.5M18 14.5h3.5" }, { shape: "rect", x: "9.5", y: "9.5", width: "5", height: "5", rx: "1" }],
   attach: [{ shape: "path", d: "M19 11.5 12 18.5a4.6 4.6 0 0 1-6.5-6.5l7.3-7.3a3 3 0 0 1 4.3 4.3l-7.2 7.2a1.5 1.5 0 0 1-2.1-2.1L14.5 7.5" }],
 } satisfies Record<string, readonly GlyphPart[]>);
 export type GlyphName = keyof typeof GLYPHS;

@@ -1,5 +1,7 @@
 # Keep documentation and byte-sensitive JSON fixtures stable on Windows too.
 * text=auto eol=lf
+*.png binary
+*.ico binary
 
 # Pinned reference prose retains upstream whitespace; authored docs are checked normally.
 docs/upstream/bighelp/** -whitespace

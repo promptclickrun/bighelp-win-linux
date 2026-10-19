@@ -1,20 +1,39 @@
 // Main-only display recovery. None of these records authorize host operations.
 import { createHash } from 'node:crypto';
 import { createDisplayCache, normalizeDisplayCache } from '../../../../packages/platform/display-cache.ts';
-import type { DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
+import type { CachedTranscriptItem, DisplayCacheData, DisplayCacheScope } from '../../../../packages/platform/display-cache.ts';
 import type { ProtectedValue } from '../../../../packages/platform/protected-repository.ts';
 import type { JsonValue } from '../../../../packages/contracts/rpc.ts';
 import { jsonObject } from '../../../../packages/contracts/rpc.ts';
-import { parseEndpoint } from '../../../../packages/platform/transport-policy.ts';
-import type { HostInput } from '../shared/desktop-api.ts';
-import type { ViewData, ChatView } from '../../../../packages/ui/view-model.ts';
+import { displayCacheKey } from '../../../../packages/platform/display-cache.ts';
+import type { ViewData, ChatView, TranscriptItem } from '../../../../packages/ui/view-model.ts';
+
+// The offline cache keeps a plain reading copy: text and tool labels only.
+// Reasoning, notices, tool input/output and delivery state are not retained.
+export function cacheTranscript(items: readonly TranscriptItem[]): CachedTranscriptItem[] {
+  const result: CachedTranscriptItem[] = [];
+  for (const item of items) {
+    if (item.kind === 'day') result.push({ kind: 'day', id: item.id, label: item.label });
+    else if (item.kind === 'message') {
+      // Unconfirmed or still-streaming rows are not saved history.
+      if (item.delivery !== undefined || item.streaming) throw new TypeError('Not authoritative history');
+      result.push({ kind: 'message', id: item.id, direction: item.direction, paragraphs: [...item.paragraphs] });
+    }
+    else if (item.kind === 'tool') result.push({ kind: 'tool', id: item.id, label: item.label, detail: item.detail });
+  }
+  return result;
+}
 
 type Repository = Readonly<{ read(key: string): Promise<ProtectedValue | null>;
-  write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue> }>;
+  write(key: string, revision: number | null, value: JsonValue): Promise<ProtectedValue>;
+  remove?(key: string, revision: number | null): Promise<void> }>;
+// The saved computer as display recovery sees it: its exact origin and the
+// authority it was signed in as (null until a pasted token is first verified).
+// Never a token: a rotating "this computer" token must not lose the cache.
+export type RecoveryHost = Readonly<{ label: string; origin: string; principalId: string | null }>;
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-export function recoveryBinding(host: HostInput): string {
-  const endpoint = parseEndpoint(host.endpoint, host.allowPrivateHttp ? host.endpoint.replace(/\/$/u, '') : undefined);
-  return hash(JSON.stringify([endpoint.origin, host.authentication, host.token]));
+export function recoveryBinding(host: RecoveryHost): string {
+  return hash(JSON.stringify([host.origin, host.principalId ?? 'unverified']));
 }
 function pointer(value: JsonValue): Readonly<{ version: 1; fingerprint: string; hostId: string; principalId: string }> {
   if (!jsonObject(value) || Object.keys(value).sort().join(',') !== 'fingerprint,hostId,principalId,version' || value.version !== 1
@@ -107,14 +126,13 @@ export function createChatDisplayRecovery(repository: Repository) {
   }
   return Object.freeze({
     async drain(): Promise<void> { while (worker) await worker; },
-    async restore(host: HostInput, isCurrent: () => boolean): Promise<Readonly<{scope: DisplayCacheScope; data: DisplayCacheData}> | null> {
+    async restore(host: RecoveryHost, isCurrent: () => boolean): Promise<Readonly<{scope: DisplayCacheScope; data: DisplayCacheData}> | null> {
       try {
+        if (host.principalId === null) return null;
         const stored = await repository.read('desktop:cacheOwner');
         if (!isCurrent() || !stored) return null;
         const saved = pointer(stored.value), fingerprint = recoveryBinding(host);
-        const endpoint = parseEndpoint(host.endpoint, host.allowPrivateHttp ? host.endpoint.replace(/\/$/u, '') : undefined);
-        if (saved.fingerprint !== fingerprint || saved.hostId !== hash(endpoint.origin)
-          || (host.authentication === 'dashboard' ? saved.principalId !== `dashboard:${hash(host.token)}` : saved.principalId.startsWith('dashboard:'))) return null;
+        if (saved.fingerprint !== fingerprint || saved.hostId !== hash(host.origin) || saved.principalId !== host.principalId) return null;
         const scope = { hostId: saved.hostId, principalId: saved.principalId };
         const record = await cache.read(scope);
         // Renderer chat IDs are globally unique within the selected authority.
@@ -122,7 +140,23 @@ export function createChatDisplayRecovery(repository: Repository) {
         return { scope, data: record.data };
       } catch { return null; }
     },
-    activate(host: HostInput, input: DisplayCacheScope, isCurrent: () => boolean) {
+    // Forget the saved computer: drop its display cache and the owner pointer.
+    // Call after the live owner is retired and drain() has finished.
+    async forget(): Promise<void> {
+      if (active) { retire(active); active = null; }
+      const remove = async (key: string) => {
+        const current = await repository.read(key);
+        if (!current) return;
+        if (repository.remove) await repository.remove(key, current.revision);
+        else await repository.write(key, current.revision, null);
+      };
+      const stored = await repository.read('desktop:cacheOwner');
+      if (!stored) return;
+      try { const saved = pointer(stored.value); await remove(displayCacheKey({ hostId: saved.hostId, principalId: saved.principalId })); }
+      catch { /* An unreadable pointer still goes below. */ }
+      await remove('desktop:cacheOwner');
+    },
+    activate(host: RecoveryHost, input: DisplayCacheScope, isCurrent: () => boolean) {
       if (active) retire(active);
       const scope = { ...input };
       const empty = normalizeDisplayCache(scope, { hostLabel: host.label, profiles: [], sessions: [] });
@@ -147,7 +181,7 @@ export function createChatDisplayRecovery(repository: Repository) {
           // Only fenced authoritative history from the current catalog is admitted.
           update(state, () => ({ ...state.data, sessions: state.data.sessions.map(session =>
             session.profileId === chat.agentId && session.storedSessionId === chat.id
-              ? { ...session, preview: chat.preview, transcript: chat.transcript, historyUpdatedAt: Date.now() } : session) }));
+              ? { ...session, preview: chat.preview, transcript: cacheTranscript(chat.transcript), historyUpdatedAt: Date.now() } : session) }));
         },
       });
     },

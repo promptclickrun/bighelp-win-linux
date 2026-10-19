@@ -35,7 +35,7 @@ export function Noodle(props: Readonly<{ size?: number }>): JSX.Element {
   );
 }
 
-type Tone = 'ink' | 'muted' | 'action' | 'onAction' | 'onOutgoing' | 'warnInk';
+export type Tone = 'ink' | 'muted' | 'action' | 'onAction' | 'onOutgoing' | 'warnInk' | 'danger' | 'onDanger' | 'successInk';
 export function Label(props: Readonly<{
   children: ReactNode; tone?: Tone; size?: number; weight?: '400' | '600' | '700' | '800'; oneLine?: boolean;
   selectable?: boolean; heading?: number; mono?: boolean; style?: StyleProp; nativeID?: string;
@@ -115,12 +115,13 @@ export function PageHead(props: Readonly<{ title: string; onBack?: (() => void) 
 }
 
 // Plain-words empty or unbuilt state. No spinner, no invented progress.
-export function Notice(props: Readonly<{ title: string; body: string; mark?: boolean }>): JSX.Element {
+export function Notice(props: Readonly<{ title: string; body: string; mark?: boolean; action?: ReactNode }>): JSX.Element {
   return (
     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 32, gap: 8 }}>
       {props.mark ? <Noodle size={40} /> : null}
       <Label heading={2} size={17} weight="700" style={{ textAlign: 'center' }}>{props.title}</Label>
       <Label tone="muted" style={{ textAlign: 'center', maxWidth: 420 }}>{props.body}</Label>
+      {props.action ? <View style={{ marginTop: 8 }}>{props.action}</View> : null}
     </View>
   );
 }

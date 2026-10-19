@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
+import { readFileSync } from 'node:fs';
 
 const childModuleFilter = /packages[\\/]ui[\\/](components[\\/].*|theme)\.tsx$/;
 function inertChildModule(path) {
-  const file = path.split(/[\\/]/).at(-1);
-  const names = file === 'ContextList.tsx' ? ['ContextList', 'PLACE_TITLES']
-    : file === 'primitives.tsx' ? ['Label', 'Notice', 'PageHead', 'Tag']
-    : file === 'Settings.tsx' ? ['SettingsOverview', 'SettingsPage']
-    : [file === 'theme.tsx' ? 'ThemeProvider' : file.replace('.tsx', '')];
+  // Export every name the real module exports, each as an inert string element.
+  const relative = path.replaceAll('\\', '/').split('packages/ui/').at(-1);
+  const source = readFileSync(new URL(`../packages/ui/${relative}`, import.meta.url), 'utf8');
+  const names = [...source.matchAll(/^export (?:function|const) (\w+)/gmu)].map(match => match[1]);
   return {contents: names.map(name => `export const ${name} = '${name}';`).join('\n'), loader: 'js'};
 }
 
@@ -38,6 +38,9 @@ test('inert child modules match Windows and POSIX paths with the same exports', 
   assert.equal(module.exports.ThemeProvider, 'ThemeProvider');
 });
 
+// HostConnection runs every connection change through App's draft-flushing navigate.
+const hostChange = (h, kind) => { const host = h.find('HostConnection'); host.beforeChange(() => { void host.api[kind]({}); }); };
+
 function harness() {
   const slots = []; let cursor = 0, changed = true, effects = [], tree;
   const hooks = {
@@ -46,6 +49,8 @@ function harness() {
       return [slots[index], value => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; changed = true; }]; },
     useReducer(reduce, initial, init) { const index = cursor++; if (!(index in slots)) slots[index] = init(initial);
       return [slots[index], action => { const next = reduce(slots[index], action); if (next !== slots[index]) { slots[index] = next; changed = true; } }]; },
+    createContext(value) { return { Provider: 'Provider', value }; }, useContext(context) { cursor++; return context?.value ?? null; },
+    useCallback(callback) { cursor++; return callback; },
     useEffect(effect, deps) { const index = cursor++, old = slots[index];
       if (!old || deps.some((dep, i) => !Object.is(dep, old.deps[i]))) {
         effects.push(() => { old?.cleanup?.(); slots[index] = {deps, cleanup: effect()}; });
@@ -170,14 +175,14 @@ test('leaving chat cancels delayed navigation and persists without reopening cha
   } finally { h.unmount(); }
 });
 
-for (const action of ['onConnect','onDisconnect']) test(`explicit host ${action} waits for the original protected draft`, async () => {
+for (const action of ['connect','disconnect']) test(`explicit host ${action} waits for the original protected draft`, async () => {
   const h = harness();
   try {
     const release = h.hold(); h.find('Conversation').onDraft('Original only'); h.find('Rail').onHost();
-    h.find('HostConnection')[action]({}); await h.settle();
+    hostChange(h, action); await h.settle();
     assert.ok(!h.calls.some(call => call.kind === 'connect' || call.kind === 'disconnect'));
     release(); await h.settle(); assert.equal(h.saved.get('original:A'), 'Original only'); assert.equal(h.saved.get('replacement:A'), undefined);
-    assert.equal(h.calls.at(-1).kind, action === 'onConnect' ? 'connect' : 'disconnect');
+    assert.equal(h.calls.at(-1).kind, action);
   } finally { h.unmount(); }
 });
 
@@ -198,7 +203,7 @@ test('draft acknowledgement fences authority replacement before React commits it
   const h = harness();
   try {
     const release = h.hold(); h.find('Conversation').onDraft('Old text'); h.find('Rail').onHost();
-    h.find('HostConnection').onDisconnect();
+    hostChange(h, 'disconnect');
     h.replaceAuthority(false); release();
     await new Promise(resolve => setImmediate(resolve));
     assert.ok(!h.calls.some(call => call.kind === 'disconnect'));
@@ -243,9 +248,9 @@ test('failed draft persistence prevents explicit host replacement and remains re
   const h = harness();
   try {
     h.fail(true); h.find('Conversation').onDraft('Retry safely'); h.find('Rail').onHost(); await h.settle();
-    h.find('HostConnection').onConnect({}); await h.settle();
+    hostChange(h, 'connect'); await h.settle();
     assert.ok(!h.calls.some(call => call.kind === 'connect'));
-    h.fail(false); h.find('HostConnection').onConnect({}); await h.settle();
+    h.fail(false); hostChange(h, 'connect'); await h.settle();
     assert.equal(h.saved.get('original:A'), 'Retry safely'); assert.equal(h.saved.get('replacement:A'), undefined);
     assert.equal(h.calls.at(-1).kind, 'connect');
   } finally { h.unmount(); }
@@ -287,6 +292,18 @@ test('board tab cancels held canonical navigation without reverting to Chat on i
  }finally{h.unmount();}
 });
 
+
+test('board chat prefills open a new chat and only fill in its message box; Files gets its own page',async()=>{
+ const h=harness();const text='Yes, go ahead with this idea: “Plan meals”.';
+ try{h.find('Conversation').onTab('ideas');await h.settle();
+  h.find('Conversation').board.props.onStartChat(text);await h.settle();
+  assert.deepEqual(h.calls.slice(-2).map(call=>[call.kind,call.chatId??call.id,call.text]),[['newChat','C',undefined],['draft','C',text]]);
+  const conversation=h.find('Conversation');assert.equal(conversation.tab,'chat');assert.equal(conversation.draft,text);
+  assert.ok(!h.calls.some(call=>call.kind==='send'),'nothing is sent');
+  h.find('Conversation').onTab('files');await h.settle();
+  const files=h.find('Conversation').files;assert.equal(files.type,'AgentFiles');assert.equal(files.props.profile,'agent');
+ }finally{h.unmount();}
+});
 
 test('board integration retains the exact selected agent and never falls back to another catalog entry',async()=>{
  const h=harness();try{h.replaceAgents([{id:'agent',name:'Same name',color:'blue'},{id:'other',name:'Same name',color:'red'}]);h.find('Conversation').onTab('ideas');await h.settle();assert.equal(h.find('Conversation').board.props.profile,'agent');

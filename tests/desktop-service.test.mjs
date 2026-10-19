@@ -80,6 +80,7 @@ test('older history responses cannot erase newer completed turns',async()=>{
  f.gateway.operation=async op=>{assert.equal(op.kind,'sessionHistory');return new Promise(resolve=>replies.push(resolve));};
  const idle={kind:'event',params:{type:'session.info',session_id:'runtime',payload:{running:false}}};
  f.callbacks.onEvent(idle);f.callbacks.onEvent(idle);
+ while(replies.length<2)await new Promise(resolve=>setImmediate(resolve));
  replies[1]({count:1,messages:[{row_id:2,role:'assistant',text:'Newest reply'}]});await new Promise(resolve=>setImmediate(resolve));
  replies[0]({count:0,messages:[]});await new Promise(resolve=>setImmediate(resolve));
  assert.match(JSON.stringify(f.service.snapshot().data.chats),/Newest reply/);
@@ -106,6 +107,7 @@ test('unrelated metadata does not invalidate the only required history response'
  f.gateway.operation=()=>new Promise(resolve=>{reply=resolve;});
  f.callbacks.onEvent({kind:'event',params:{type:'session.info',session_id:'runtime',payload:{running:false}}});
  f.callbacks.onEvent({kind:'event',params:{type:'message.reaction',session_id:'runtime',payload:{}}});
+ while(!reply)await new Promise(resolve=>setImmediate(resolve));
  reply({count:0,messages:[]});await new Promise(resolve=>setImmediate(resolve));
  assert.equal(f.service.snapshot().canSend,true);
 });

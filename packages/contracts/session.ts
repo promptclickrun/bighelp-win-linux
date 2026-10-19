@@ -1,5 +1,7 @@
 import { boundedString, decodeRpcFrame, encodeBoundedJson, jsonObject, RpcProtocolError, rpcId, RPC_LIMITS } from './rpc.ts';
 import type { JsonObject } from './rpc.ts';
+import { catalogAgent, decodeProfileRoster } from './agents.ts';
+import type { CatalogAgent } from './agents.ts';
 const fail = (): never => { throw new RpcProtocolError(); };
 export function contractText(value: unknown, max = 512, empty = false): string {
  const text = boundedString(value,max); if ((!empty && !text) || text.includes('\0')) return fail(); return text;
@@ -33,11 +35,16 @@ export function encodeSessionOperation(id:string, operation:DesktopRpcOperation)
 function rows(value:unknown,max:number):readonly unknown[] { if(!Array.isArray(value)||value.length>max) return fail();return value; }
 function display(value:unknown,fallback='',max=65536):string { return typeof value==='string'?contractText(value,max,true)||fallback:fallback; }
 function unique<T extends {id:string}>(items:T[]):readonly Readonly<T>[] { if(new Set(items.map(x=>x.id)).size!==items.length) return fail();return Object.freeze(items.map(x=>Object.freeze(x))); }
-export function decodeProfiles(value:unknown):readonly Readonly<{id:string;name:string;summary:string}>[] {
- const obj=bounded(value);return unique(rows(obj.profiles,256).map(value=>{const row=contractObject(value);const id=coordinate(row.name);return {id,name:display(row.display_name,id),summary:''};}));
+// Shown name: ui_meta["hermes-bots"].title, then display_name, then the ID (packages/contracts/agents.ts).
+export function decodeProfiles(value:unknown):readonly CatalogAgent[] {
+ return Object.freeze(decodeProfileRoster(value).map(catalogAgent));
 }
-export function decodeSessionList(value:unknown,profile:string):readonly Readonly<{id:string;profile:string;title:string;preview:string}>[] {
- coordinate(profile);const obj=bounded(value);return unique(rows(obj.sessions,200).map(value=>{const row=contractObject(value);coordinate(row.id);if(row.profile!==undefined&&row.profile!==profile)return fail();return {id:coordinate(row.resolved_id??row.id),profile,title:display(row.title,'Untitled chat'),preview:display(row.preview)};}));
+// Hermes stores float epoch seconds; 0/absent/garbage is "unknown", never "now".
+export function epochMs(value:unknown):number|null {
+ if(typeof value!=='number'||!Number.isFinite(value)||value<=0)return null;const ms=Math.round(value*1000);return ms<Date.UTC(9999,0,1)?ms:null;
+}
+export function decodeSessionList(value:unknown,profile:string):readonly Readonly<{id:string;profile:string;title:string;preview:string;startedAt:number|null}>[] {
+ coordinate(profile);const obj=bounded(value);return unique(rows(obj.sessions,200).map(value=>{const row=contractObject(value);coordinate(row.id);if(row.profile!==undefined&&row.profile!==profile)return fail();return {id:coordinate(row.resolved_id??row.id),profile,title:display(row.title,'Untitled chat'),preview:display(row.preview),startedAt:epochMs(row.started_at)};}));
 }
 export type OpenServerRequest = Readonly<{id:string;method:string;params:JsonObject}>;
 // Hermes snapshots omit jsonrpc; validate the entire snapshot before dispatch.

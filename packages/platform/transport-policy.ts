@@ -7,20 +7,70 @@ export type HttpOperation =
   | Readonly<{ kind: 'workspaceScheduled'; profile: string }>
   | Readonly<{ kind: 'canonicalSessionDetail'; profile: string; storedSessionId: string }>
   | Readonly<{ kind: 'workspaceBoard'; agentId: string; etag: string; requestId: string }>
-  | Readonly<{ kind: 'templateList'; agentId: string; etag: string; requestId: string }>;
-export type HttpResult = Readonly<{ body: unknown; etag?: string; requestId?: string; cacheControl?: string }>;
-// Status only: never preserve a transport error, URL, response body or headers.
+  | Readonly<{ kind: 'templateList'; agentId: string; etag: string; requestId: string }>
+  | RouteOperation;
+export type RouteMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+// A fixed host route assembled by a main-process feature client from validated
+// segments. Never built from renderer text; never an auth/gateway/secret route.
+export type RouteOperation = Readonly<{
+  kind: 'route'; method: RouteMethod; path: string; query?: Readonly<Record<string, string>>;
+  body?: string; maxBytes: number; native?: Readonly<{ etag: string; requestId: string }>;
+  // Only for host operations that answer after long work (cron Run now). Bounded.
+  timeoutMs?: number;
+}>;
+// Default and ceiling for one HTTP exchange. A longer wait is never retried.
+export const HTTP_TIMEOUT_MS = 20000;
+export const LONG_HTTP_TIMEOUT_MS = 15 * 60 * 1000;
+export type HttpResult = Readonly<{ body: unknown; status?: number; etag?: string; requestId?: string; cacheControl?: string }>;
+// Status plus, at most, one short plain-text host explanation. Never a transport
+// error, URL, headers or raw body. code is the bighelp plugin's fixed error
+// identifier ("board_item_unavailable") when the reply carried one; never free text.
 export class HttpStatusError extends Error {
   readonly status: number;
-  constructor(status: number) {
+  readonly detail: string;
+  readonly code: string;
+  // Something in front of Hermes (a proxy) asked for its own credentials.
+  readonly challenged: boolean;
+  constructor(status: number, detail = '', code = '', challenged = false) {
     super('Host request refused');
     if (!Number.isInteger(status) || status < 100 || status > 599) throw new TypeError('Invalid HTTP status');
-    this.name = 'HttpStatusError'; this.status = status;
+    this.name = 'HttpStatusError'; this.status = status; this.detail = safeDetail(detail); this.code = errorCodeText(code);
+    this.challenged = challenged === true;
   }
 }
+function errorCodeText(value: unknown): string {
+  return typeof value === 'string' && /^[a-z][a-z0-9_]{0,63}$/u.test(value) ? value : '';
+}
+// The plugin's error envelope: {error: {code, message, retryable, details}}.
+function errorCode(body: unknown): string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+  const error = (body as Record<string, unknown>).error;
+  if (!error || typeof error !== 'object' || Array.isArray(error)) return '';
+  return errorCodeText((error as Record<string, unknown>).code);
+}
+// Host validation messages help people fix input ("Invalid cron expression").
+// Keep a bounded single line; drop anything that looks like markup.
+export function safeDetail(value: unknown): string {
+  if (typeof value !== 'string' || !value.isWellFormed() || /[<>]/u.test(value)) return '';
+  const line = value.replace(/[\x00-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]+/gu, ' ').replace(/\s+/gu, ' ').trim();
+  return line.length > 300 ? `${line.slice(0, 297)}...` : line;
+}
+function errorDetail(body: unknown): string {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return '';
+  const fields = body as Record<string, unknown>;
+  for (const key of ['detail', 'error', 'message']) {
+    const value = fields[key];
+    if (typeof value === 'string') return safeDetail(value);
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      const nested = (value as Record<string, unknown>).message;
+      if (typeof nested === 'string') return safeDetail(nested);
+    }
+  }
+  return '';
+}
 export type HttpPlan = Readonly<{
-  url: string; method: 'GET' | 'POST'; headers: Readonly<Record<string, string>>;
-  body?: string; redirect: 'error'; credentials: 'omit'; maxResponseBytes: number;
+  url: string; method: RouteMethod; headers: Readonly<Record<string, string>>;
+  body?: string; redirect: 'error'; credentials: 'omit'; maxResponseBytes: number; timeoutMs?: number;
 }>;
 export type SocketPlan = Readonly<{
   url: string; headers: Readonly<Record<string, string>>; protocols: readonly string[];
@@ -40,6 +90,16 @@ export type TransportAdapters = Readonly<{
   isCurrent(): boolean;
   // Monotonic milliseconds, including time spent waiting for a ticket response.
   now(): number;
+  // Optional sign-in renewal owned by main. Without it the configured token is used as is.
+  credential?: CredentialSource;
+}>;
+// The token for this host lease, kept in main. current() may first renew a bearer
+// token that is about to expire. renew() is asked once after Hermes turns a token
+// away (401 without a proxy challenge); it returns a different token or null.
+// Hermes checks sign-in before any route runs, so one resend is safe.
+export type CredentialSource = Readonly<{
+  current(): Promise<string>;
+  renew(rejected: string): Promise<string | null>;
 }>;
 
 function record(value: unknown): Record<string, unknown> {
@@ -151,9 +211,83 @@ function proxyHeaders(value: unknown, endpoint: Endpoint, auth: Authentication):
   return Object.freeze(headers);
 }
 
+const ROUTE_METHODS: readonly RouteMethod[] = Object.freeze(['GET', 'POST', 'PUT', 'PATCH', 'DELETE']);
+// Credential flows, gateway lifecycle, raw configuration and environment secrets
+// have dedicated reviewed paths or are out of scope for feature clients.
+const DENIED_ROUTES = /^\/api\/(?:auth|gateway|env|ops|hermes\/update)(?:\/|$)|^\/api\/config\/raw(?:\/|$)|^\/api\/ws(?:\/|$)/u;
+// The plugin's canonical request ID (native_api.py _REQUEST_ID): lowercase, RFC
+// 4122 version 1-5 and variant 8-b, as crypto.randomUUID() makes. A looser ID
+// is refused with 422 after the request was sent.
+export const NATIVE_REQUEST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u;
+const UUID = NATIVE_REQUEST_ID;
+const NATIVE_ETAG = /^"sha256:[0-9a-f]{64}"$/u;
+// Proxies that compress a reply rewrite its ETag: Cloudflare Tunnel marks it weak
+// (W/"sha256:…") and Caddy's encode adds the coding inside the quotes
+// ("sha256:…-gzip"). It names the same context. Only these exact wrappers are
+// removed (DirectHermesNativeContext.swift contextTag); requests send the clean tag.
+export function canonicalNativeETag(value: unknown): string | null {
+  if (typeof value !== 'string' || value.length > 96) return null;
+  const tag = value.startsWith('W/') ? value.slice(2) : value;
+  const coded = /^("sha256:[0-9a-f]{64})-(?:gzip|zstd|br|deflate)"$/u.exec(tag);
+  const clean = coded ? `${coded[1]}"` : tag;
+  return NATIVE_ETAG.test(clean) ? clean : null;
+}
+function routePath(value: unknown): string {
+  const path = text(value, 2048);
+  if (!/^\/api(?:\/(?:[A-Za-z0-9_.~:@-]|%[0-9A-F]{2})+)+$/u.test(path) || DENIED_ROUTES.test(path)) throw new TypeError('Invalid route');
+  for (const segment of path.split('/').slice(1)) {
+    let decoded: string;
+    try { decoded = decodeURIComponent(segment); } catch { throw new TypeError('Invalid route'); }
+    if (decoded === '.' || decoded === '..' || /[/\\\x00-\x1f\x7f]/u.test(decoded)) throw new TypeError('Invalid route');
+  }
+  return path;
+}
+function parseRoute(input: Record<string, unknown>): RouteOperation {
+  exactKeys(input, ['kind', 'method', 'path', 'query', 'body', 'maxBytes', 'native', 'timeoutMs']);
+  const method = input.method;
+  if (typeof method !== 'string' || !ROUTE_METHODS.includes(method as RouteMethod)) throw new TypeError('Invalid method');
+  const path = routePath(input.path);
+  const maxBytes = input.maxBytes;
+  if (typeof maxBytes !== 'number' || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > 4 * 1024 * 1024 - 256) throw new TypeError('Invalid response bound');
+  let query: Readonly<Record<string, string>> | undefined;
+  if (input.query !== undefined) {
+    const entries = Object.entries(record(input.query));
+    if (entries.length > 16) throw new TypeError('Invalid query');
+    const copied: Record<string, string> = Object.create(null);
+    for (const [key, entry] of entries) {
+      if (!/^[a-z][a-z0-9_]{0,63}$/u.test(key) || typeof entry !== 'string' || entry.length > 1024
+        || !entry.isWellFormed() || /[\x00-\x1f\x7f]/u.test(entry)) throw new TypeError('Invalid query');
+      copied[key] = entry;
+    }
+    query = Object.freeze(copied);
+  }
+  let body: string | undefined;
+  if (input.body !== undefined) {
+    if (method === 'GET' || typeof input.body !== 'string' || input.body.length > 1024 * 1024 || !input.body.isWellFormed()) throw new TypeError('Invalid body');
+    const parsed: unknown = JSON.parse(input.body);
+    if (!parsed || typeof parsed !== 'object') throw new TypeError('Invalid body');
+    body = input.body;
+  }
+  let native: RouteOperation['native'];
+  if (input.native !== undefined) {
+    const correlation = record(input.native);
+    exactKeys(correlation, ['etag', 'requestId']);
+    const etag = text(correlation.etag, 73), requestId = text(correlation.requestId, 36);
+    if (!NATIVE_ETAG.test(etag) || !UUID.test(requestId) || !path.startsWith('/api/plugins/loopdy/')) throw new TypeError('Invalid native preconditions');
+    native = Object.freeze({ etag, requestId });
+  }
+  const timeoutMs = input.timeoutMs;
+  if (timeoutMs !== undefined && (typeof timeoutMs !== 'number' || !Number.isSafeInteger(timeoutMs)
+    || timeoutMs < 1000 || timeoutMs > LONG_HTTP_TIMEOUT_MS)) throw new TypeError('Invalid timeout');
+  return Object.freeze({ kind: 'route', method: method as RouteMethod, path, maxBytes,
+    ...(query === undefined ? {} : { query }), ...(body === undefined ? {} : { body }), ...(native === undefined ? {} : { native }),
+    ...(timeoutMs === undefined ? {} : { timeoutMs }) });
+}
+
 export function parseHttpOperation(value: unknown): HttpOperation {
   const input = record(value);
   switch (input.kind) {
+    case 'route': return parseRoute(input);
     case 'status': case 'providers': case 'identity': case 'health': case 'nativeContext':
       exactKeys(input, ['kind']);
       return Object.freeze({ kind: input.kind });
@@ -179,8 +313,7 @@ export function parseHttpOperation(value: unknown): HttpOperation {
       if (agentId.trim() !== agentId) throw new TypeError('Invalid agent identity');
       const etag = text(input.etag, 73);
       const requestId = text(input.requestId, 36);
-      if (!/^"sha256:[0-9a-f]{64}"$/u.test(etag)
-          || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(requestId)) {
+      if (!NATIVE_ETAG.test(etag) || !UUID.test(requestId)) {
         throw new TypeError('Invalid native preconditions');
       }
       return Object.freeze({ kind: input.kind, agentId, etag, requestId });
@@ -194,8 +327,16 @@ function checkResponse(value: unknown, plan: HttpPlan): Record<string, unknown> 
   if (response.redirected !== false || response.url !== plan.url) throw new Error('Redirect or destination mismatch');
   if (typeof response.status !== 'number' || !Number.isInteger(response.status)
       || response.status < 100 || response.status > 599) throw new Error('Host request failed');
-  if (response.status < 200 || response.status >= 300) throw new HttpStatusError(response.status);
+  if (response.status < 200 || response.status >= 300) {
+    const headers = response.headers && typeof response.headers === 'object' ? response.headers as Record<string, unknown> : {};
+    throw new HttpStatusError(response.status, errorDetail(response.body), errorCode(response.body), headers['www-authenticate'] !== undefined);
+  }
   return response;
+}
+function credentialToken(value: unknown): string {
+  const token = headerValue(value);
+  if (/\s/u.test(token)) throw new TypeError('Invalid authentication token');
+  return token;
 }
 
 // Each instance captures one verified owner binding and copied credential values.
@@ -206,15 +347,46 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
   const endpoint = parseEndpoint(config.endpoint, config.approvedPrivateHttpOrigin);
   const auth = parseAuthentication(config.authentication);
   const proxy = proxyHeaders(config.proxy ?? {}, endpoint, auth);
-  const authenticated = Object.freeze({ ...proxy, ...(auth.kind === 'provider'
-    ? { Authorization: `Bearer ${auth.token}` } : { 'X-Hermes-Session-Token': auth.token }) });
+  const credential = adapters.credential;
+  const headersFor = (token: string): Readonly<Record<string, string>> => Object.freeze({ ...proxy, ...(auth.kind === 'provider'
+    ? { Authorization: `Bearer ${token}` } : { 'X-Hermes-Session-Token': token }) });
   function current(signal: AbortSignal): void {
     if (signal.aborted || !adapters.isCurrent()) throw new Error('Transport cancelled or stale');
   }
-  function plan(path: string, method: 'GET' | 'POST', headers: Readonly<Record<string, string>>,
-    maxResponseBytes: number, body?: string): HttpPlan {
+  // Renewal failures are not transport details; never surface their cause.
+  async function token(signal: AbortSignal): Promise<string> {
+    if (!credential) return auth.token;
+    let value: unknown;
+    try { value = await credential.current(); } catch { throw new Error('Host sign-in unavailable'); }
+    current(signal);
+    return credentialToken(value);
+  }
+  async function renewed(rejected: string, signal: AbortSignal): Promise<string | null> {
+    if (!credential) return null;
+    let value: unknown;
+    try { value = await credential.renew(rejected); } catch { return null; }
+    current(signal);
+    if (value === null) return null;
+    const fresh = credentialToken(value);
+    return fresh === rejected ? null : fresh;
+  }
+  // One request, then at most one resend with a renewed token after Hermes turned
+  // the first one away. A proxy challenge or any other status is final.
+  async function sendSigned(build: (authenticated: Readonly<Record<string, string>>) => HttpPlan,
+    signal: AbortSignal): Promise<Record<string, unknown>> {
+    // No await without a renewal source: dispatch stays in the caller's turn.
+    const used = credential ? await token(signal) : auth.token;
+    try { return await send(build(headersFor(used)), signal); } catch (error) {
+      if (!(error instanceof HttpStatusError) || error.status !== 401 || error.challenged) throw error;
+      const fresh = await renewed(used, signal);
+      if (fresh === null) throw error;
+      return send(build(headersFor(fresh)), signal);
+    }
+  }
+  function plan(path: string, method: RouteMethod, headers: Readonly<Record<string, string>>,
+    maxResponseBytes: number, body?: string, timeoutMs?: number): HttpPlan {
     return Object.freeze({ url: endpoint.origin + path, method, headers, maxResponseBytes,
-      redirect: 'error', credentials: 'omit', ...(body === undefined ? {} : { body }) });
+      redirect: 'error', credentials: 'omit', ...(body === undefined ? {} : { body }), ...(timeoutMs === undefined ? {} : { timeoutMs }) });
   }
   async function send(request: HttpPlan, signal: AbortSignal): Promise<Record<string, unknown>> {
     current(signal);
@@ -224,14 +396,21 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
       return checkResponse(response, request);
     } catch (error) {
       // Never return the adapter's URL/header-bearing exception or cause.
-      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status);
+      if (error instanceof HttpStatusError) throw new HttpStatusError(error.status, error.detail, error.code, error.challenged);
       throw new Error('Host request failed or retired');
     }
   }
-  async function request(value: unknown, signal: AbortSignal): Promise<HttpResult> {
-    const operation = parseHttpOperation(value);
+  function prepare(operation: HttpOperation, authenticated: Readonly<Record<string, string>>): HttpPlan {
     let prepared: HttpPlan;
     switch (operation.kind) {
+      case 'route': {
+        const search = operation.query ? new URLSearchParams(Object.entries(operation.query)).toString() : '';
+        const headers: Record<string, string> = { ...authenticated };
+        if (operation.body !== undefined) headers['Content-Type'] = 'application/json';
+        if (operation.native) { headers['If-Match'] = operation.native.etag; headers['X-Loopdy-Request-ID'] = operation.native.requestId; }
+        prepared = plan(operation.path + (search ? `?${search}` : ''), operation.method, Object.freeze(headers), operation.maxBytes, operation.body, operation.timeoutMs);
+        break;
+      }
       case 'status': prepared = plan('/api/status', 'GET', authenticated, 65536); break;
       case 'providers': prepared = plan('/api/auth/providers', 'GET', authenticated, 65536); break;
       case 'identity': prepared = plan('/api/auth/me', 'GET', authenticated, 65536); break;
@@ -256,12 +435,25 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
         }), 196608, JSON.stringify({ agentId: operation.agentId }));
         break;
     }
-    const response = await send(prepared, signal);
+    return prepared;
+  }
+  async function request(value: unknown, signal: AbortSignal): Promise<HttpResult> {
+    const operation = parseHttpOperation(value);
+    const response = await sendSigned(authenticated => prepare(operation, authenticated), signal);
     current(signal);
+    if (operation.kind === 'route') {
+      if (operation.native) {
+        const headers = record(response.headers ?? {});
+        if (headers['x-loopdy-request-id'] !== operation.native.requestId) throw new Error('Native response correlation mismatch');
+        const etag = canonicalNativeETag(headers.etag) ?? undefined;
+        return Object.freeze({ body: response.body, status: response.status as number, requestId: operation.native.requestId, ...(etag ? { etag } : {}) });
+      }
+      return Object.freeze({ body: response.body, status: response.status as number });
+    }
     if (operation.kind === 'nativeContext' || operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
       const headers = record(response.headers);
-      const etag = text(headers.etag, 73);
-      if (!/^"sha256:[0-9a-f]{64}"$/u.test(etag)) throw new Error('Invalid native response ETag');
+      const etag = canonicalNativeETag(headers.etag);
+      if (etag === null) throw new Error('Invalid native response ETag');
       if (operation.kind === 'templateList' || operation.kind === 'workspaceBoard') {
         if (etag !== operation.etag || headers['x-loopdy-request-id'] !== operation.requestId) {
           throw new Error('Native response correlation mismatch');
@@ -302,7 +494,8 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
           if (auth.kind === 'provider') {
             const started = adapters.now();
             if (!Number.isFinite(started) || started < 0) throw new Error('Invalid clock');
-            const response = await send(plan('/api/auth/ws-ticket', 'POST', Object.freeze({
+            // A fresh ticket for every socket. A refused mint renews the sign-in once.
+            const response = await sendSigned(authenticated => plan('/api/auth/ws-ticket', 'POST', Object.freeze({
               ...authenticated, 'Content-Type': 'application/json',
             }), 16384, '{}'), controller.signal);
             const body = record(response.body);
@@ -316,8 +509,9 @@ export function createTransportPolicy(configuration: unknown, adapters: Transpor
             headers = proxy;
             protocols = Object.freeze(['hermes-gateway-v1', `hermes-gateway-ticket.${ticket}`]);
           } else {
-            url += `?token=${encodeURIComponent(auth.token)}`;
-            headers = authenticated;
+            const used = credential ? await token(controller.signal) : auth.token;
+            url += `?token=${encodeURIComponent(used)}`;
+            headers = headersFor(used);
             // Hermes selects hermes-gateway-v1 only on the ticket path. Offering it
             // here makes a compliant client reject the server's protocol-less accept.
             protocols = Object.freeze([]);

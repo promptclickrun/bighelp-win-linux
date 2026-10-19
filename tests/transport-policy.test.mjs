@@ -4,7 +4,7 @@ import { createTransportPolicy, parseEndpoint, parseHttpOperation } from '../pac
 
 const endpoint = 'https://hermes.example:9443';
 const etag = `"sha256:${'a'.repeat(64)}"`;
-const requestId = '01234567-89ab-cdef-0123-456789abcdef';
+const requestId = '01234567-89ab-4def-8123-456789abcdef';
 const config = { endpoint, authentication: { kind: 'provider', token: 'synthetic-bearer' } };
 const signal = () => new AbortController().signal;
 function deferred() {
@@ -390,4 +390,55 @@ test('adapter failure cannot return a credential-bearing HTTP error to its calle
     assert.equal(error.message.includes('secret.example'), false);
     return true;
   });
+});
+
+const nativeRoute = { kind: 'route', method: 'POST', path: '/api/plugins/loopdy/native/board/update', body: '{}', maxBytes: 4096 };
+test('proxy-wrapped native ETags are read as the canonical context tag, never sent wrapped', async () => {
+  for (const wrapped of ['W/' + etag, etag.replace(/"$/u, '-gzip"'), 'W/' + etag.replace(/"$/u, '-zstd"'),
+    etag.replace(/"$/u, '-br"'), etag.replace(/"$/u, '-deflate"')]) {
+    const { policy, adapters, state } = harness();
+    adapters.http = async plan => { state.http.push({ plan }); return { status: 200, url: plan.url, redirected: false, body: { ok: true },
+      headers: { etag: wrapped, 'x-loopdy-request-id': requestId, 'cache-control': 'no-store' } }; };
+    assert.equal((await policy.request({ kind: 'nativeContext' }, signal())).etag, etag, wrapped);
+    assert.deepEqual(await policy.request({ kind: 'templateList', agentId: 'agent', etag, requestId }, signal()),
+      { body: { ok: true }, etag, requestId });
+    assert.equal((await policy.request({ ...nativeRoute, native: { etag, requestId } }, signal())).etag, etag);
+    const posts = state.http.filter(entry => entry.plan.method === 'POST');
+    assert.equal(posts.length, 2);
+    for (const { plan } of posts) assert.equal(plan.headers['If-Match'], etag);
+  }
+  for (const wrapped of ['W/W/' + etag, etag.replace(/"$/u, '-gzip-gzip"'), etag.replace(/"$/u, '-lz4"'), 'w/' + etag,
+    etag.toUpperCase(), ` ${etag}`, etag.replace(/"$/u, '";gzip'), `W/${etag}-gzip`, '*']) {
+    const { policy, adapters } = harness();
+    adapters.http = async plan => ({ status: 200, url: plan.url, redirected: false, body: {},
+      headers: { etag: wrapped, 'x-loopdy-request-id': requestId, 'cache-control': 'no-store' } });
+    await assert.rejects(policy.request({ kind: 'nativeContext' }, signal()), wrapped);
+    await assert.rejects(policy.request({ kind: 'templateList', agentId: 'agent', etag, requestId }, signal()), wrapped);
+    const routed = await policy.request({ ...nativeRoute, native: { etag, requestId } }, signal());
+    assert.equal(routed.etag, undefined, `${wrapped} is not a context tag`);
+  }
+});
+
+test('native request IDs must be canonical version 1-5 UUIDs, as the plugin requires', () => {
+  const operation = { kind: 'templateList', agentId: 'agent', etag, requestId };
+  for (const id of ['01234567-89ab-cdef-0123-456789abcdef', '01234567-89ab-0def-8123-456789abcdef',
+    '01234567-89ab-6def-8123-456789abcdef', '01234567-89ab-4def-c123-456789abcdef', '01234567-89ab-4def-7123-456789abcdef',
+    '0123456789ab4def8123456789abcdef', '{01234567-89ab-4def-8123-456789abcdef}']) {
+    assert.throws(() => parseHttpOperation({ ...operation, requestId: id }), id);
+    assert.throws(() => parseHttpOperation({ ...nativeRoute, native: { etag, requestId: id } }), id);
+  }
+  for (const id of [requestId, crypto.randomUUID(), '01234567-89ab-1def-a123-456789abcdef', '01234567-89ab-5def-b123-456789abcdef']) {
+    assert.ok(parseHttpOperation({ ...operation, requestId: id }), id);
+    assert.ok(parseHttpOperation({ ...nativeRoute, native: { etag, requestId: id } }), id);
+  }
+});
+
+test('plugin error codes survive only as fixed identifiers', async () => {
+  for (const [body, code] of [[{ error: { code: 'board_item_unavailable', message: 'That item is no longer available.' } }, 'board_item_unavailable'],
+    [{ error: { code: 'Bad Code', message: 'x' } }, ''], [{ error: { code: 'x'.repeat(65) } }, ''], [{ detail: 'stock' }, ''], [null, '']]) {
+    const { policy, adapters } = harness();
+    adapters.http = async plan => ({ status: 404, url: plan.url, redirected: false, body });
+    await assert.rejects(policy.request({ ...nativeRoute, native: { etag, requestId } }, signal()),
+      error => error.status === 404 && error.code === code);
+  }
 });

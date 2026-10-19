@@ -30,6 +30,8 @@ The current shell is not a completed application. The 57-row feature matrix rema
 
 ## Current evidence
 
+- **Beta 0.9.0-beta.1 (2026-10-16):** the app is ready for experimental use; see the [beta guide](BETA.md), [beta readiness evidence](evidence/beta-readiness.md) and the [feature matrix coverage](parity/FEATURE_MATRIX.md#beta-090-beta1-coverage). 640 tests, five strict compiler projects and 26/28/169 Electron smoke checks pass locally; real AI turns, tools, approvals, attachments and commands were verified against a disposable Hermes with a local model. Physical Windows/Linux qualification, signing and updates remain open.
+
 - The approved A read pages at `007f5e5` passed 364 application tests, all three strict compiler projects, production Linux packaging, 82 package-file checksums plus the archive checksum, and 20 sandbox-enabled packaged smoke checks. New renderer interaction and native CI results are recorded separately in [function-page evidence](evidence/function-pages.md).
 
 - Protected encrypted repositories, finite session/interactive prompt codecs, HTTP/WS gateway adapters, finite IPC, connected host/chat UI, and unsigned portable packaging are implemented.

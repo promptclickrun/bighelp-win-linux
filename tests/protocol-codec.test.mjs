@@ -108,11 +108,13 @@ test('finite method builders reject arbitrary operations and extra text fields',
   assert.deepEqual(JSON.parse(encodeProbe('a', 'client.capabilities')).params, { server_requests: true });
   for (const method of ['gateway.capabilities', 'gateway.ping']) assert.deepEqual(JSON.parse(encodeProbe('a', method)).params, {});
   assert.throws(() => encodeProbe('a', 'shell.exec'), RpcProtocolError);
-  const request = { jsonrpc: '2.0', id: 'a', method: 'prompt.submit', params: { session_id: 'runtime', profile: 'default', text: 'Hello' } };
+  const request = { jsonrpc: '2.0', id: 'a', method: 'prompt.submit', params: { session_id: 'runtime', profile: 'default', text: 'Hello', queued: true } };
   assert.deepEqual(JSON.parse(encodeTextRequest(request)), request);
   for (const input of [
     { ...request, method: 'session.interrupt' }, { ...request, extra: true },
-    { ...request, params: { ...request.params, queued: true } },
+    { ...request, params: { ...request.params, queued: false } },
+    { ...request, params: { session_id: 'runtime', profile: 'default', text: 'Hello' } },
+    { ...request, params: { ...request.params, images: [] } },
     { ...request, params: { ...request.params, text: 'x'.repeat(1024 * 1024 + 1) } },
   ]) assert.throws(() => encodeTextRequest(input), RpcProtocolError);
   assert.deepEqual(parseGatewayCapabilities({ per_session_exclusive_submit: false, future: true }), { perSessionExclusiveSubmit: false });

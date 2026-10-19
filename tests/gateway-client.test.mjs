@@ -85,7 +85,7 @@ test('canonical mutation errors preserve finite codes and lost acknowledgements 
  }
 });
 
-const textRequest=id=>({jsonrpc:'2.0',id,method:'prompt.submit',params:{profile:'default',session_id:'live',text:'Synthetic request'}});
+const textRequest=id=>({jsonrpc:'2.0',id,method:'prompt.submit',params:{profile:'default',session_id:'live',text:'Synthetic request',queued:true}});
 async function outgoingFixture() {
  let frame,closed,lifetime,autoReply=true,closeCount=0,notificationCount=0;const sent=[];
  const gateway=await connectGateway({configuration,isCurrent:()=>true,onRequest:async()=>({result:{}}),onEvent(){},onClosed(){notificationCount++;},

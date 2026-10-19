@@ -1,8 +1,8 @@
-import { createTransportPolicy } from '../platform/transport-policy.ts';
-import type { HttpPlan, SocketPlan, HttpOperation, HttpResult } from '../platform/transport-policy.ts';
+import { createTransportPolicy, safeDetail } from '../platform/transport-policy.ts';
+import type { CredentialSource, HttpPlan, SocketPlan, HttpOperation, HttpResult } from '../platform/transport-policy.ts';
 import { boundedHttp } from '../platform/http-transport.ts';
-import { decodeRpcFrame, encodeServerReply } from '../contracts/rpc.ts';
-import type { RpcEvent, RpcServerRequest, ServerReply, RpcResult, RpcFailure } from '../contracts/rpc.ts';
+import { decodeRpcFrame, encodeBoundedJson, encodeServerReply, jsonObject, RPC_LIMITS } from '../contracts/rpc.ts';
+import type { JsonObject, RpcEvent, RpcServerRequest, ServerReply, RpcResult, RpcFailure } from '../contracts/rpc.ts';
 import { encodeProbe, encodeTextRequest, parseGatewayCapabilities } from '../contracts/rpc-methods.ts';
 import { decodeOpenRequests, encodeSessionOperation } from '../contracts/session.ts';
 import type { DesktopRpcOperation } from '../contracts/session.ts';
@@ -10,20 +10,32 @@ import type { TextRequest } from '../domain/text-send.ts';
 export type GatewaySocket = { send(text: string): void; close(): void };
 export type Gateway = Readonly<{
  operation(operation: DesktopRpcOperation): Promise<unknown>;
+ // Main-process feature clients only: a method from their fixed list with
+ // params they built from validated input. Never reachable from IPC directly.
+ call(method: string, params: JsonObject, options?: CallOptions): Promise<unknown>;
  submitText(request: TextRequest): Promise<unknown>;
  restoreRequests(requests: unknown, runtimeId: string): void;
  close(): void; readonly exclusiveSubmit: boolean;
  requestHttp(operation: HttpOperation): Promise<HttpResult>;
 }>;
 type Reply = RpcResult | RpcFailure;
+export type CallOptions = Readonly<{ mutation?: boolean; timeoutMs?: number; maxBytes?: number }>;
+// Attachment staging is the only caller that needs more than the general budget.
+const LARGE_OUTBOUND_BYTES = RPC_LIMITS.attachmentOutboundBytes;
 // Preserve only finite error authority. Never expose raw host messages through IPC.
 export class GatewayOperationError extends Error {
  readonly code: number;
- constructor(code: number) { super('Host operation failed'); this.code = code; this.name = 'GatewayOperationError'; }
+ readonly reason: string;
+ readonly detail: string;
+ constructor(code: number, reason = '', detail = '') {
+  super('Host operation failed'); this.code = code; this.reason = reason; this.detail = safeDetail(detail); this.name = 'GatewayOperationError';
+ }
 }
 type Pending = { resolve(reply: Reply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; mutation: boolean };
 export async function connectGateway(options: Readonly<{
  configuration: unknown; isCurrent(): boolean;
+ // Main-owned sign-in renewal for this lease (fresh/rotated token, never logged).
+ credential?: CredentialSource;
  http?: (plan: HttpPlan, signal: AbortSignal) => Promise<unknown>;
  socket(plan: SocketPlan, signal: AbortSignal, onFrame: (frame: unknown) => void, onClosed: () => void): Promise<GatewaySocket>;
  onEvent(event: RpcEvent): void;
@@ -50,14 +62,14 @@ export async function connectGateway(options: Readonly<{
  }
  function current(): boolean { if (closed) return false; if (!options.isCurrent()) { close(); return false; } return true; }
  function send(text: string): void { if (!current() || !handle) throw new Error('Gateway unavailable'); try { handle.send(text); } catch { close(); throw new Error('outcome-unknown'); } }
- function request(id: string, wire: string, mutation: boolean): Promise<Reply> {
+ function request(id: string, wire: string, mutation: boolean, timeoutMs = 20000): Promise<Reply> {
   if (!current() || !handle) return Promise.reject(new Error('Gateway unavailable'));
   // Keep every dispatched ID until retirement; never evict uncertain mutations.
   if (used.size >= 4096) { close(); return Promise.reject(new Error('Gateway unavailable')); }
   if (used.has(id) || pending.size >= 64) return Promise.reject(new Error('Gateway unavailable'));
   used.add(id);
   return new Promise((resolve, reject) => {
-   const timer = setTimeout(() => { if (!current()) return; const entry = pending.get(id); if (!entry) return; pending.delete(id); reject(new Error(mutation ? 'outcome-unknown' : 'request-timeout')); close(); }, 20000);
+   const timer = setTimeout(() => { if (!current()) return; const entry = pending.get(id); if (!entry) return; pending.delete(id); reject(new Error(mutation ? 'outcome-unknown' : 'request-timeout')); close(); }, timeoutMs);
    pending.set(id, { resolve, reject, timer, mutation });
    try { send(wire); } catch { /* close settles all pending requests. */ }
   });
@@ -121,6 +133,7 @@ export async function connectGateway(options: Readonly<{
  let policy: ReturnType<typeof createTransportPolicy>;
  try { policy = createTransportPolicy(options.configuration, {
   http: options.http ?? boundedHttp, isCurrent: options.isCurrent, now: () => performance.now(),
+  ...(options.credential ? { credential: options.credential } : {}),
   socket: async (plan, signal, callback) => {
    const opened = await options.socket(plan, signal, callback, () => { close(); });
    handle = opened;
@@ -130,7 +143,10 @@ export async function connectGateway(options: Readonly<{
  }); } catch { close(); throw new Error('Gateway unavailable'); }
  try { policyHandle = await policy.createSocketAttempt(frame).open(lifetime.signal); if (!current()) throw new Error(); await completion; }
  catch { close(); throw new Error('Gateway unavailable'); }
- function result(reply: Reply): unknown { if (reply.kind === 'error') throw new GatewayOperationError(reply.code); return reply.result; }
+ function result(reply: Reply): unknown {
+  if (reply.kind === 'error') throw new GatewayOperationError(reply.code, typeof reply.reason === 'string' ? reply.reason.slice(0, 64) : '', reply.message);
+  return reply.result;
+ }
  return Object.freeze({
   restoreRequests(requests: unknown, runtimeId: string): void {
    if (!current() || !connected) throw new Error('Gateway unavailable');
@@ -150,6 +166,18 @@ export async function connectGateway(options: Readonly<{
    const id = nextId(), wire = encodeSessionOperation(id, operation);
    const mutation = ['sessionCreate', 'sessionResume', 'sessionInterrupt', 'canonicalSessionCreate', 'canonicalSessionTitle', 'canonicalSessionDiscard'].includes(operation.kind);
    const reply = await request(id, wire, mutation);
+   if (!current()) throw new Error(mutation ? 'outcome-unknown' : 'Gateway unavailable');
+   return result(reply);
+  },
+  async call(method: string, params: JsonObject, options: CallOptions = {}): Promise<unknown> {
+   if (!current() || !connected) throw new Error('Gateway unavailable');
+   if (typeof method !== 'string' || !/^[a-z][a-z_]*(?:\.[a-z][a-z_]*){0,3}$/u.test(method) || method.length > 64 || !jsonObject(params)) throw new Error('Invalid host call');
+   const timeoutMs = options.timeoutMs ?? 20000, maxBytes = options.maxBytes ?? RPC_LIMITS.outboundBytes;
+   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000 || timeoutMs > 180000
+     || !Number.isSafeInteger(maxBytes) || maxBytes < 1 || maxBytes > LARGE_OUTBOUND_BYTES) throw new Error('Invalid host call');
+   const id = nextId(), mutation = options.mutation ?? true;
+   const wire = encodeBoundedJson({ jsonrpc: '2.0', id, method, params }, maxBytes);
+   const reply = await request(id, wire, mutation, timeoutMs);
    if (!current()) throw new Error(mutation ? 'outcome-unknown' : 'Gateway unavailable');
    return result(reply);
   },

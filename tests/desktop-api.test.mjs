@@ -18,7 +18,9 @@ test('desktop boundary copies host inputs and preserves exact message text', () 
 });
 test('desktop boundary requires generation and bounds user input', () => {
   for (const generation of [-1, NaN, '1', Infinity, 1.2]) assert.throws(() => parseDesktopAction({kind:'openChat',generation,chatId:'a'}));
-  for (const text of [' ', '\ud800', 'x'.repeat(262145)]) assert.throws(() => parseDesktopAction({kind:'send',generation:1,chatId:'a',text}));
+  for (const text of ['\ud800', 'x'.repeat(262145), 'a\0b']) assert.throws(() => parseDesktopAction({kind:'send',generation:1,chatId:'a',text}));
+  // Empty text is allowed at the boundary only for file-only sends; main refuses it otherwise.
+  assert.equal(parseDesktopAction({kind:'send',generation:1,chatId:'a',text:' '}).text, ' ');
   assert.equal(parseDesktopAction({kind:'draft',generation:1,chatId:'a',text:''}).text,'');
 });
 test('desktop prompt answer rejects object gadgets and unbounded answer maps', () => {

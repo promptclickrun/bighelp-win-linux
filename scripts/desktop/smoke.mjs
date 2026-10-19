@@ -38,7 +38,7 @@ const child = spawn(electronPath, [
   `--remote-debugging-port=${port}`, '--remote-debugging-address=127.0.0.1',
   ...(flag('--no-os-sandbox') ? ['--no-sandbox'] : []), ...(flag('--headless') ? ['--ozone-platform=headless', '--disable-gpu'] : []),
   ...(executableIndex >= 0 ? [] : [main]), ...(flag('--fixture-preview') ? ['--fixture-preview'] : []),
-], { env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, LOCALAPPDATA: profile,
+], { env: { ...process.env, XDG_CONFIG_HOME: profile, APPDATA: profile, LOCALAPPDATA: profile, BIGHELP_DEV_APP_DATA: profile,
   ELECTRON_RUN_AS_NODE: undefined, ELECTRON_DISABLE_SECURITY_WARNINGS: '' }, stdio: ['ignore', 'pipe', 'pipe'] });
 let stderr = '';
 child.stderr.on('data', chunk => { stderr += chunk; });
@@ -94,11 +94,12 @@ try {
   check('renderer has no Node require/process/module', await evaluate(
     "typeof require === 'undefined' && typeof process === 'undefined' && typeof module === 'undefined'"));
   const info = await evaluate('JSON.stringify(window.bighelpShell)');
-  check('preload exposes only {platform, fixturePreview}', /^\{"platform":"(windows|linux|other)","fixturePreview":(true|false)\}$/u.test(info ?? ''), info);
+  check('preload exposes only {platform, fixturePreview, appVersion, system}',
+    /^\{"platform":"(windows|linux|other)","fixturePreview":(true|false),"appVersion":"[\x20-\x21\x23-\x5b\x5d-\x7e]*","system":"[\x20-\x21\x23-\x5b\x5d-\x7e]*"\}$/u.test(info ?? ''), info);
   check('preload object is frozen', await evaluate('Object.isFrozen(window.bighelpShell)'));
   check('no electron/ipc globals', await evaluate("!('ipcRenderer' in window) && !('electron' in window)"));
   check('desktop bridge exposes only finite operations', await evaluate(
-    "Object.isFrozen(window.bighelpDesktop) && Object.keys(window.bighelpDesktop).sort().join(',') === 'answer,cancelNavigation,canonicalChat,connect,disconnect,draft,interrupt,newChat,openChat,refresh,send,snapshot,subscribe,workspace'"));
+    "Object.isFrozen(window.bighelpDesktop) && Object.keys(window.bighelpDesktop).sort().join(',') === 'answer,attach,attachDropped,call,cancelNavigation,cancelSetup,canonicalChat,connect,connectSaved,copyText,detach,disconnect,draft,forgetHost,interrupt,loadEarlier,newChat,onCommand,openChat,openLink,preferences,probeHost,reconnectNow,refresh,renameHost,send,signIn,snapshot,subscribe,workspace'"));
   if (!flag('--fixture-preview')) {
     check('privileged service rejects stale or malformed actions', await evaluate(
       "window.bighelpDesktop.send(-1, 'not-a-chat', 'test').then(result => result.ok === false)"));
@@ -157,7 +158,7 @@ try {
     .every(label => text.includes(label)), '');
   const fixture = flag('--fixture-preview');
   check(fixture ? 'sample data is labelled' : 'no invented data without a computer',
-    fixture ? text.includes('Sample data') : text.includes('No computer connected yet') && !text.includes('Juniper'),
+    fixture ? text.includes('Sample data') : text.includes('Welcome to bighelp') && text.includes('Connect to Hermes') && !text.includes('Juniper'),
     fixture ? '' : text.slice(0, 1200));
 
   const click = label => evaluate(`(() => { const el = document.querySelector('[aria-label=${JSON.stringify(label)}]'); if (!el) return false; el.click(); return true; })()`);

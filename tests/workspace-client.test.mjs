@@ -9,7 +9,7 @@ import { boundedHttp } from '../packages/platform/http-transport.ts';
 const owner = Object.freeze({ hostId: 'host-one', principalId: 'principal-one', profileId: 'agent', authGeneration: 1, connectionGeneration: 2 });
 const identity = Object.freeze({ kind: 'provider', providerId: 'test-provider', userId: 'test-user' });
 const etag = `"sha256:${'a'.repeat(64)}"`;
-const requestId = '01234567-89ab-cdef-0123-456789abcdef';
+const requestId = '01234567-89ab-4def-8123-456789abcdef';
 const context = () => ({ body: { schemaVersion: 1, pluginVersion: 'synthetic', runtimeId: 'runtime-one', servingProfileId: 'default',
   principal: { provider: identity.providerId, userId: identity.userId, displayName: 'Synthetic' },
   features: ['native-context-v1', 'serving-profile-v1', 'native-agent-board-v1'] }, etag, cacheControl: 'no-store' });
@@ -89,6 +89,11 @@ test('board verifies current context and returns only the requested kind without
   assert.equal(result.data.tab, 'goals'); assert.equal(result.data.items.length, 1); assert.equal(result.data.items[0].id, 'goal-one');
   assert.ok(!JSON.stringify(result).includes('never-')); assert.ok(!JSON.stringify(result).includes('test-user'));
   assert.ok(Object.isFrozen(result.data.items[0]));
+  // Only the base board is advertised here, so no feedback, answers or categories actions.
+  assert.deepEqual(result.data.features, { feedback: false, answers: false, goalCategories: false });
+  state.context.body.features = [...state.context.body.features, 'native-agent-board-feedback-v1', 'native-agent-board-answers-v1',
+    'native-agent-board-goal-categories-v1'];
+  assert.deepEqual((await client.board('goals')).data.features, { feedback: true, answers: true, goalCategories: true });
 });
 
 test('missing optional capabilities produce typed unsupported results without browsing side effects', async () => {

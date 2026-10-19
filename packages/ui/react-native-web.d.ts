@@ -27,7 +27,7 @@ declare module 'react-native-web' {
     backgroundColor?: Color; opacity?: number; boxShadow?: string;
     borderWidth?: number; borderTopWidth?: number; borderRightWidth?: number; borderBottomWidth?: number;
     borderLeftWidth?: number; borderColor?: Color; borderTopColor?: Color; borderRightColor?: Color;
-    borderBottomColor?: Color; borderStyle?: 'solid' | 'dashed';
+    borderBottomColor?: Color; borderLeftColor?: Color; borderStyle?: 'solid' | 'dashed';
     borderRadius?: number; borderTopLeftRadius?: number; borderTopRightRadius?: number;
     borderBottomLeftRadius?: number; borderBottomRightRadius?: number;
     // text

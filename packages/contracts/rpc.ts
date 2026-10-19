@@ -13,6 +13,8 @@ export const RPC_LIMITS = Object.freeze({
   inboundBytes: 4 * 1024 * 1024, lineObjects: 4096, depth: 64,
   methodBytes: 256, idBytes: 1024, messageBytes: 4096,
   outboundBytes: 2 * 1024 * 1024, serverResponseBytes: 2 * 1024 * 1024,
+  // Only validated attachment staging may use this larger outbound budget.
+  attachmentOutboundBytes: 12 * 1024 * 1024,
 });
 
 export class RpcProtocolError extends Error {
@@ -163,7 +165,7 @@ export function decodeRpcFrame(input: unknown): readonly RpcFrame[] {
 // Serialize caller-owned unknown data with a byte budget before allocating the
 // full wire string. No toJSON, accessors, unsupported values, or cycles.
 export function encodeBoundedJson(input: unknown, maximumBytes: number): string {
-  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > RPC_LIMITS.inboundBytes) return invalid();
+  if (!Number.isSafeInteger(maximumBytes) || maximumBytes < 1 || maximumBytes > Math.max(RPC_LIMITS.inboundBytes, RPC_LIMITS.attachmentOutboundBytes)) return invalid();
   let remaining = maximumBytes;
   const chunks: string[] = [];
   const ancestors = new Set<object>();

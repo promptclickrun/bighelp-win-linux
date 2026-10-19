@@ -7,28 +7,40 @@ import { ScrollView, View, useColorScheme, useWindowDimensions } from 'react-nat
 import { createShellState, reduceShell, showsAgentTabs, visiblePanes } from '../domain/shell.ts';
 import type { Place, SettingsSection } from '../domain/shell.ts';
 import { ContextList, PLACE_TITLES } from './components/ContextList.tsx';
+import { AddAgentButton, AgentManager, AgentMenu } from './components/AgentManager.tsx';
 import { AgentBoard } from './components/AgentBoard.tsx';
+import { ChatMenu } from './components/ChatMenu.tsx';
+import { AgentFiles } from './components/AgentFiles.tsx';
 import { Conversation } from './components/Conversation.tsx';
+import { PendingAttachments } from './components/PendingAttachments.tsx';
+import { ModelButton } from './components/ModelButton.tsx';
 import { Label, Notice, PageHead, Tag } from './components/primitives.tsx';
+import { Button } from './components/controls.tsx';
 import { Rail } from './components/Rail.tsx';
-import { SettingsOverview, SettingsPage } from './components/Settings.tsx';
+import { SettingsOverview } from './components/Settings.tsx';
+import { SettingsPage } from './components/SettingsPage.tsx';
 import { ThemeProvider } from './theme.tsx';
 import { LAYOUT, PALETTES, fontStack } from './tokens.ts';
 import type { DesktopApi, DesktopSnapshot, DesktopResult } from '../../apps/desktop/src/shared/desktop-api.ts';
+import type { ShellInfo } from '../../apps/desktop/src/shared/shell-info.ts';
 import { HostConnection } from './components/HostConnection.tsx';
 import { WorkspaceFunctionPage } from './components/WorkspaceFunctionPage.tsx';
+import { VaultPage } from './components/VaultPage.tsx';
 import { InteractiveRequests } from './components/InteractiveRequests.tsx';
+import { KanbanPage } from './components/KanbanPage.tsx';
+import { WorkflowsPage } from './components/WorkflowsPage.tsx';
 import { EMPTY_DATA } from './view-model.ts';
+import { HostProvider } from './host.tsx';
 import type { ViewData } from './view-model.ts';
 import { agentById, chatById, composerStatus } from './view-model.ts';
+import type { AppCommand } from '../../apps/desktop/src/shared/links.ts';
+import { CHAT_SEARCH_ID, COMPOSER_ID } from './ids.ts';
 
 // Full sentences, so nothing reads as "Usage aren't built yet".
 const UNBUILT: Readonly<Partial<Record<Place, string>>> = Object.freeze({
-  kanban: "Kanban isn't built yet", workflows: "Workflow pages aren't built yet",
-  vault: "The vault isn't built yet",
 });
 
-export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean> }>): JSX.Element {
+export function App(props: Readonly<{ data: ViewData; platform: string; api?: DesktopApi; snapshot?: DesktopSnapshot; error?: string; act?: (operation: Promise<DesktopResult>) => Promise<boolean>; shell?: ShellInfo | undefined }>): JSX.Element {
   const [state, dispatch] = useReducer(reduceShell, undefined, createShellState);
   const sending = useRef(false);
   const pendingNavigation = useRef<Readonly<{generation: number; requestId: string}> | null>(null);
@@ -66,17 +78,25 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
     const chat = id ? chatById(props.data, id) : null;
     if (chat && !suppressNavigation.current) dispatch({ type: 'openChat', chatId: chat.id, agentId: chat.agentId });
   }, [props.snapshot?.selectedChatId, generation]);
+  // Application menu shortcuts (Ctrl+N, Ctrl+K, Ctrl+, and Ctrl+L).
+  const commandTarget = useRef<(command: AppCommand) => void>(() => {});
+  useEffect(() => typeof props.api?.onCommand === 'function' ? props.api.onCommand(command => commandTarget.current(command)) : undefined, [props.api]);
   const { width } = useWindowDimensions();
   const system = useColorScheme();
   const narrow = width < LAYOUT.narrowBreakpoint;
   useEffect(() => { dispatch({ type: 'layout', layout: narrow ? 'narrow' : 'wide' }); }, [narrow]);
 
-  const theme = state.appearance === 'automatic' ? (system === 'dark' ? 'dark' : 'light') : state.appearance;
+  // Connected builds keep these choices in main; the sample preview keeps them in memory.
+  const appearance = props.snapshot?.preferences?.appearance ?? state.appearance;
+  const nerdMode = props.snapshot?.preferences?.nerdMode ?? state.nerdMode;
+  const theme = appearance === 'automatic' ? (system === 'dark' ? 'dark' : 'light') : appearance;
   const palette = PALETTES[theme];
   const font = fontStack(props.platform);
   const { data } = props;
   const panes = visiblePanes(state);
-  const hint = props.snapshot ? (props.error || props.snapshot.notice || (props.snapshot.canSend ? 'Ready to send.' : 'Waiting for a connected chat.')) : composerStatus(data).hint;
+  // Quiet when ready; otherwise say why sending waits.
+  const hint = props.snapshot ? (props.error || props.snapshot.notice || (props.snapshot.canSend ? ''
+    : props.snapshot.status === 'connected' ? (props.snapshot.running ? '' : 'Getting the chat ready…') : 'Connect to your computer to send.')) : composerStatus(data).hint;
   const back = narrow ? () => { leaveChat(); dispatch({ type: 'back' }); } : undefined;
   const openSection = (section: SettingsSection | null) => dispatch({ type: 'settingsSection', section });
 
@@ -120,16 +140,73 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       if (saved && mounted.current && navigationSequence.current === request && currentGeneration.current === expected) perform();
     });
   };
+  // Same flow as the conversation's compose button: save drafts, then open.
+  const startChat = api && snapshot?.status === 'connected' && act ? (profile: string) => navigate(() => {
+    pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, profile));
+  }) : undefined;
+  // Feed, Ideas and Goals actions ("Discuss", "Let's do it", "Create a goal")
+  // open a new chat with the agent and fill in the message box. Nothing is sent:
+  // the person reads it, edits it and presses Send, so no AI credits are spent here.
+  const startChatWith = (agentId: string, text: string) => {
+    if (!api || !snapshot || !act) {
+      // Sample preview: fill in the message box that the Chat tab shows.
+      const shown = state.place === 'chats' ? chatById(data, state.selectedChatId) : null;
+      dispatch({ type: 'draft', chatId: shown?.agentId === agentId ? shown.id : `new:${agentId}`, text });
+      dispatch({ type: 'agentTab', tab: 'chat' }); return;
+    }
+    if (snapshot.status !== 'connected') return;
+    const from = snapshot.generation;
+    navigate(() => {
+      pendingNavigation.current = null; suppressNavigation.current = false;
+      const opened: { snapshot: DesktopSnapshot | null } = { snapshot: null };
+      void act(api.newChat(from, agentId).then(result => { if (result.ok) opened.snapshot = result.snapshot; return result; })).then(ok => {
+        const next = opened.snapshot, chatId = next?.selectedChatId;
+        if (!ok || !next || !chatId || next.status !== 'connected' || !mounted.current) return;
+        void act(api.draft(next.generation, chatId, text));
+      });
+    });
+  };
   let detail: JSX.Element;
   const agentId = state.place === 'chats' ? (chatById(data, state.selectedChatId)?.agentId ?? null) : state.selectedAgentId;
   const agent = agentById(data, agentId);
+  commandTarget.current = command => {
+    if (command === 'focusComposer') { document.getElementById(COMPOSER_ID)?.focus(); return; }
+    if (command === 'settings') { leaveChat(); dispatch({ type: 'place', place: 'settings' }); return; }
+    if (command === 'search') {
+      leaveChat(); dispatch({ type: 'place', place: 'chats' });
+      setTimeout(() => document.getElementById(CHAT_SEARCH_ID)?.focus(), 0); return;
+    }
+    const target = agent ?? data.agents[0];
+    if (target && api && snapshot?.status === 'connected' && act) {
+      navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, target.id)); });
+    }
+  };
   if (showsAgentTabs(state) && agent) {
     const chat = state.place === 'chats' ? chatById(data, state.selectedChatId) : null;
     const draftKey = chat?.id ?? `new:${agent.id}`;
     detail = (
       <Conversation agent={agent} chat={chat} host={data.host} tab={state.agentTab} sample={data.sample}
+        options={snapshot?.preferences ? { showReasoning: snapshot.preferences.showReasoning, foldFinishedTurns: snapshot.preferences.foldFinishedTurns,
+          enterToSend: snapshot.preferences.enterToSend, busyMode: snapshot.preferences.busyMode, nerdMode } : undefined}
+        turn={snapshot?.turn && snapshot.selectedChatId === chat?.id ? (snapshot.prompts.length
+          ? { ...snapshot.turn, status: snapshot.prompts.some(item => item.prompt.kind === 'approval') ? 'Waiting for your OK' : 'Waiting for your answer' }
+          : snapshot.turn) : undefined} liveTurn={snapshot?.turn?.key ?? null}
+        actions={api ? { openLink: url => { void api.openLink(url); }, copy: text => api.copyText(text) } : {}}
+        onCheckHistory={api && snapshot && chat && act ? () => { void act(api.openChat(snapshot.generation, chat.id)); } : undefined}
+        onLoadEarlier={api && snapshot?.earlier && chat && act && snapshot.selectedChatId === chat.id
+          ? () => { void act(api.loadEarlier(snapshot.generation, chat.id)); } : undefined}
+        headerActions={api && snapshot && chat && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
+          ? <ModelButton chatId={chat.id} running={snapshot.running} current={snapshot.turn?.model ?? null} /> : null}
+        onAttach={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
+          ? () => { void act(api.attach(snapshot.generation, chat.id)); } : undefined}
+        onDropFiles={api && snapshot && chat && act && snapshot.status === 'connected' && snapshot.selectedChatId === chat.id
+          ? files => { void act(api.attachDropped(snapshot.generation, chat.id, files)); } : undefined}
+        attachments={snapshot?.attachments?.length && chat && snapshot.selectedChatId === chat.id ? <PendingAttachments files={snapshot.attachments}
+          onRemove={api && act ? id => { void act(api.detach(snapshot.generation, chat.id, id)); } : undefined} /> : null}
         board={state.agentTab === 'feed' || state.agentTab === 'ideas' || state.agentTab === 'goals' ?
-          <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
+          <AgentBoard key={`${generation}:${agent.id}:${state.agentTab}`} profile={agent.id} page={state.agentTab} data={data} api={api} snapshot={snapshot} narrow={narrow}
+            onStartChat={text => startChatWith(agent.id, text)} /> : null}
+        files={state.agentTab === 'files' ? <AgentFiles key={`${agent.id}:files`} profile={agent.id} data={data} api={api} snapshot={snapshot} narrow={narrow} /> : null}
         draft={snapshot ? (dirty.current.get(draftKey) ?? snapshot.drafts[draftKey] ?? '') : state.drafts[draftKey] ?? ''} hint={hint} onBack={back}
         onDraft={text => {
           if (snapshot && (snapshot.status !== 'connected' || snapshot.selectedChatId !== chat?.id)) return;
@@ -143,7 +220,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         editable={!snapshot || (snapshot.status === 'connected' && snapshot.selectedChatId === chat?.id)}
         canSend={!sendPending && !!snapshot?.canSend && snapshot.selectedChatId === chat?.id}
         running={!!snapshot?.running && snapshot.selectedChatId === chat?.id}
-        onNewChat={api && snapshot?.status === 'connected' && act ? () => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, agent.id)); }) : undefined}
+        onNewChat={startChat ? () => startChat(agent.id) : undefined}
+        menu={chat && snapshot?.status === 'connected' ? <ChatMenu chat={chat} hostLabel={data.host?.label ?? 'your computer'} /> : null}
         onSend={api && snapshot && chat && act ? () => {
           if (sending.current) return;
           const text = dirty.current.get(chat.id) ?? snapshot.drafts[chat.id] ?? '';
@@ -152,7 +230,7 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           sending.current = true; setSendPending(true);
           void (async () => {
             try {
-            if (!snapshot.canSend || snapshot.selectedChatId !== chatId || !text.trim()) return;
+            if (!snapshot.canSend || snapshot.selectedChatId !== chatId || (!text.trim() && !snapshot.attachments?.length)) return;
             if (!await persistDraft(chatId, text) || currentGeneration.current !== expectedGeneration) return;
             if (await act(api.send(expectedGeneration, chatId, text)) && currentGeneration.current === expectedGeneration) {
               if (dirty.current.get(chatId) === text) dirty.current.set(chatId, '');
@@ -163,7 +241,8 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
           })();
         } : undefined}
         onStop={api && snapshot && chat && act ? () => { void act(api.interrupt(snapshot.generation, chat.id)); } : undefined}
-        requests={api && snapshot && act ? <InteractiveRequests key={snapshot.generation} prompts={snapshot.prompts} disabled={snapshot.status !== 'connected'} onAnswer={(id, answer) => { void act(api.answer(snapshot.generation, id, answer)); }} /> : null}
+        requests={api && snapshot && act ? <InteractiveRequests key={snapshot.generation} prompts={snapshot.prompts} agentName={agent.name} disabled={snapshot.status !== 'connected'} onAnswer={(id, answer) => { void act(api.answer(snapshot.generation, id, answer)); }} /> : null}
+        agentMenu={<AgentMenu agent={agent} header />}
         onTab={tab => {
           if (tab !== 'chat') leaveChat();
           else suppressNavigation.current = false;
@@ -171,16 +250,17 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
         }} />
     );
   } else if (state.place === 'settings' && state.settingsSection !== null) {
-    detail = <SettingsPage section={state.settingsSection} appearance={state.appearance} host={data.host}
-      hostContent={api && snapshot && act ? <HostConnection snapshot={snapshot} error={props.error ?? ''} onConnect={host => navigate(() => { void act(api.connect(host)); })} onDisconnect={() => navigate(() => { void act(api.disconnect()); })} onRefresh={() => { void act(api.refresh()); }} /> : undefined}
-      onAppearance={value => dispatch({ type: 'appearance', value })} onBack={() => openSection(null)} />;
+    detail = <SettingsPage section={state.settingsSection} appearance={appearance} host={data.host} shell={props.shell}
+      desktop={api && snapshot && act ? { api, snapshot, act } : undefined}
+      hostContent={api && snapshot ? <HostConnection api={api} snapshot={snapshot} platform={props.platform} beforeChange={navigate} /> : undefined}
+      onAppearance={value => { dispatch({ type: 'appearance', value }); if (api && act) void act(api.preferences({ appearance: value })); }} onBack={() => openSection(null)} />;
   } else if (state.place === 'settings') {
     detail = (
       <View style={{ flex: 1, minWidth: 0 }}>
         <PageHead title="Settings" />
         <ScrollView style={{ flex: 1 }}>
-          <SettingsOverview nerdMode={state.nerdMode} onOpen={openSection}
-            onNerdMode={on => dispatch({ type: 'nerdMode', on })} />
+          <SettingsOverview nerdMode={nerdMode} onOpen={openSection}
+            onNerdMode={on => { dispatch({ type: 'nerdMode', on }); if (api && act) void act(api.preferences({ nerdMode: on })); }} />
         </ScrollView>
       </View>
     );
@@ -192,24 +272,45 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
       </View>
     );
   } else if (!data.host) {
-    detail = <Notice mark title="No computer connected yet"
-      body={api ? "Open Settings → Hosts to connect to Hermes." : "bighelp works with the Hermes agent on your computer. This preview does not connect."} />;
+    detail = <Notice mark title={snapshot?.status === 'connecting' ? 'Connecting…' : 'Welcome to bighelp'}
+      body={api ? 'bighelp is a window onto the Hermes agent running on your computer or another computer you use. Connect to start chatting.'
+        : 'bighelp works with the Hermes agent on your computer. This preview does not connect.'}
+      action={api && snapshot?.status !== 'connecting' ? <Button label="Connect to Hermes" tone="primary" onPress={() => {
+        leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts');
+      }} /> : undefined} />;
   } else {
-    detail = <Notice title={state.place === 'agents' ? 'Pick an agent' : 'Pick a chat'} body="It opens here." />;
+    const first = data.agents[0];
+    detail = <Notice title={state.place === 'agents' ? 'Pick an agent' : 'Pick a chat'}
+      body={state.place === 'agents' ? 'Its chat opens here.' : data.chats.length ? 'It opens here, or start a new one.' : 'Start your first chat.'}
+      action={state.place === 'chats' && first && api && snapshot?.status === 'connected' && act ? <Button label={`New chat with ${first.name}`} tone="primary"
+        onPress={() => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; void act(api.newChat(snapshot.generation, first.id)); })} /> : undefined} />;
   }
 
   const functionPage = state.place === 'projects' || state.place === 'scheduled' || state.place === 'usage' ? state.place : null;
+  const ownPage = functionPage !== null || state.place === 'kanban' || state.place === 'vault' || state.place === 'workflows';
+  // Delete refuses while this agent is replying in the open chat.
+  const replyingAgentId = snapshot?.running && snapshot.selectedChatId ? chatById(data, snapshot.selectedChatId)?.agentId ?? null : null;
   return (
     <ThemeProvider value={{ theme, palette, font }}>
+      <AgentManager agents={data.agents}
+        nerdMode={nerdMode} replyingAgentId={replyingAgentId}
+        onDeleted={id => { if (narrow && state.selectedAgentId === id) dispatch({ type: 'back' }); }}>
       <View style={{ flex: 1, flexDirection: 'row', backgroundColor: palette.page, minHeight: 0 }}>
         <Rail place={state.place} host={data.host} onPlace={place => { leaveChat(); dispatch({ type: 'place', place }); }}
           onHost={() => { leaveChat(); dispatch({ type: 'place', place: 'settings' }); openSection('hosts'); }} />
         {functionPage ? <WorkspaceFunctionPage key={functionPage} page={functionPage} data={data} api={api} snapshot={snapshot}
           narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
-        {!functionPage && panes.list && !(narrow && state.place === 'settings') ? (
+        {state.place === 'kanban' ? <KanbanPage key={`kanban:${snapshot?.connection ?? 'none'}`} host={api && snapshot && act ? { api, snapshot, act } : null}
+          data={data} narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
+        {state.place === 'vault' ? <VaultPage key={`vault:${snapshot?.connection ?? 'none'}`} data={data} nerdMode={nerdMode} narrow={narrow} panes={panes}
+          onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
+        {state.place === 'workflows' ? <WorkflowsPage key={`workflows:${snapshot?.connection ?? 'none'}`} host={api && snapshot && act ? { api, snapshot, act } : null}
+          data={data} nerdMode={nerdMode} narrow={narrow} panes={panes} onOpenDetail={() => dispatch({ type: 'functionDetail' })} onBack={back} /> : null}
+        {!ownPage && panes.list && !(narrow && state.place === 'settings') ? (
           <ContextList place={state.place} data={data} selectedChatId={state.selectedChatId} selectedAgentId={state.selectedAgentId}
-            nerdMode={state.nerdMode} settingsSection={state.settingsSection} narrow={narrow}
-            onOpenChat={(chatId, owner) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
+            nerdMode={nerdMode} settingsSection={state.settingsSection} narrow={narrow} onNewChat={startChat}
+            addAgent={<AddAgentButton />} agentMenu={agent => <AgentMenu agent={agent} />}
+            onOpenChat={(chatId, owner, searched) => navigate(() => { pendingNavigation.current = null; suppressNavigation.current = false; if (api && snapshot && act) { void act(searched ? api.openChat(snapshot.generation, chatId, owner) : api.openChat(snapshot.generation, chatId)); } else dispatch({ type: 'openChat', chatId, agentId: owner }); })}
             onOpenAgent={id => navigate(() => {
               suppressNavigation.current = false;
               dispatch({ type: 'openAgent', agentId: id });
@@ -221,15 +322,16 @@ export function App(props: Readonly<{ data: ViewData; platform: string; api?: De
               }
             })} onSettingsSection={openSection} />
         ) : null}
-        {!functionPage && (panes.detail || (narrow && state.place === 'settings')) ? detail : null}
+        {!ownPage && (panes.detail || (narrow && state.place === 'settings')) ? detail : null}
         {props.error ? <View role="status" style={{ position: 'absolute', bottom: 4, left: 80, right: 8, backgroundColor: palette.card, padding: 8 }}><Label>{props.error}</Label></View> : null}
       </View>
+      </AgentManager>
     </ThemeProvider>
   );
 }
 
 // Only safe display snapshots cross this boundary. Credentials never return here.
-export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string }>): JSX.Element {
+export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string; shell?: ShellInfo | undefined }>): JSX.Element {
   const [snapshot, setSnapshot] = useState<DesktopSnapshot>();
   const [error, setError] = useState('');
   const latest = useRef(-1);
@@ -239,6 +341,13 @@ export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string
     catch { setError('The desktop connection is unavailable.'); }
     return false;
   };
+  // The network coming back may end an offline wait early. Main ignores this
+  // unless an automatic reconnect is already waiting (never after Disconnect).
+  useEffect(() => {
+    const online = () => { void props.api.reconnectNow().catch(() => {}); };
+    window.addEventListener('online', online);
+    return () => window.removeEventListener('online', online);
+  }, [props.api]);
   useEffect(() => {
     let mounted = true;
     const off = props.api.subscribe(next => { if (mounted) accept(next); });
@@ -246,5 +355,7 @@ export function ConnectedApp(props: Readonly<{ api: DesktopApi; platform: string
     return () => { mounted = false; off(); };
   }, [props.api]);
   if (!snapshot) return <div role="status">{error || 'Opening bighelp…'}</div>;
-  return <App data={snapshot.data ?? EMPTY_DATA} platform={props.platform} api={props.api} snapshot={snapshot} error={error} act={act} />;
+  return <HostProvider value={{ api: props.api, snapshot, act }}>
+    <App data={snapshot.data ?? EMPTY_DATA} platform={props.platform} api={props.api} snapshot={snapshot} error={error} act={act} shell={props.shell} />
+  </HostProvider>;
 }
