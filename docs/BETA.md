@@ -6,11 +6,11 @@ This is an **experimental beta**. It is unsigned, it has no automatic updates, a
 
 ## Install
 
-Builds are unsigned portable archives produced by the repository's CI (`bighelp-beta-<version>-<os>-x64`). Each comes with a `.sha256` file; check it before running.
+Download the unsigned portable archives from the [0.9.0-beta.1 release](https://github.com/promptclickrun/bighelp-win-linux/releases/tag/v0.9.0-beta.1) (`bighelp-beta-<version>-<os>-x64`). Each comes with a `.sha256` file; check it before running. These production packages exclude development sample data. See the [README](../README.md#download) for checksum commands and step-by-step installation.
 
 **Windows 11 (x64)**
 1. Unzip `bighelp-beta-…-win32-x64.zip` to a folder you own (for example `Documents\bighelp`).
-2. Run `bighelp.exe`. Windows SmartScreen warns because the app is not signed: choose **More info → Run anyway**.
+2. Run `bighelp.exe`. If Windows warns, follow [Windows download warnings](../README.md#windows-download-warnings). After verifying and scanning the download, an unknown-app SmartScreen warning may be acknowledged with **More info → Run anyway**. A named antivirus detection needs investigation, not a blanket exclusion or disabled protection.
 3. To remove it, quit bighelp and delete the folder. Your saved sign-in and drafts live in `%APPDATA%\bighelp` (delete it too for a clean removal).
 
 **Ubuntu 24.04 (x64) and similar**
