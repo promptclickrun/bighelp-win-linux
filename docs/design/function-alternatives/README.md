@@ -25,7 +25,7 @@ A is the recommended default because it carries D's list/detail proportions dire
 
 The `html-communication` skill was unavailable when these alternatives were prepared. **Nothing was published.** These are local review artifacts, not product implementation or parity evidence. The user subsequently selected A before function-body implementation.
 
-Visual capture was attempted with the installed Chromium, but its organization policy blocks `file://` navigation ("This page is blocked. Your organization doesn’t allow you to view this site"). No rendered mock screenshots or browser layout verification are claimed. The block-page evidence is saved outside the repository at `/workspace/scratch/function-mocks/chromium-file-policy.png`; it is not committed. The HTML remains the review source.
+Visual capture was attempted with the installed Chromium, but its organization policy blocks `file://` navigation ("This page is blocked. Your organization doesn’t allow you to view this site"). No rendered mock screenshots or browser layout verification are claimed. The block-page evidence is saved outside the repository at `<scratch>/function-mocks/chromium-file-policy.png`; it is not committed. The HTML remains the review source.
 
 Static validation checked all four HTML documents: local links resolve, application elements are inert, scripts/forms/inputs/remote resources are absent, and each alternative contains two labeled frames with exactly one Settings entry per frame. No live-host or native-platform behavior was tested.
 

@@ -42,7 +42,7 @@ Adapted from Bighelp's contributor/agent contracts at the commit in `docs/SOURCE
 - Never touch production hosts, cloud services, the daily-driver Mac app, releases, or user data without explicit permission. Name the target first.
 - Never run a fresh `HERMES_HOME` against a shared Hermes checkout. Use a disposable clone and `HERMES_DISABLE_LAZY_INSTALLS=1`. Do not call `/api/gateway/restart` from tests; it can affect unrelated gateways.
 - Keep temporary clones, recordings, test profiles, screenshots, installers, and caches outside the source tree; remove only what you created when finished. Keep purposeful small contract fixtures.
-- Do not commit secrets, real host addresses, cloud resource IDs, private logs, user content, or build outputs, even in this private repo.
+- Do not commit secrets, real host addresses, cloud resource IDs, private logs, user content, or build outputs, even in this repo.
 - Windows/Linux signing and releases require separate authorization. This is not an iOS project; do not use App Store Connect or TestFlight here.
 
 ## Git and reviews
