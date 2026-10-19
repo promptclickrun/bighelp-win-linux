@@ -14,7 +14,7 @@ Date: **2026-10-15**. Scope: this repository's documentation and pinned referenc
 - Confirmed all 16 generated-UI vectors named by their manifest exist. Their domain validators were **not** run.
 - Compared 43 workflow fixtures to the app baseline: 40 match, with three additive differences documented in the [fixture README](fixtures/README.md).
 - Scanned documentation/imports for common credential and deployed-resource-ID patterns; no production credentials/configuration markers found. Synthetic notification test keys remain clearly labeled. Pattern scanning is not a comprehensive security audit.
-- Verified the GitHub repository is private and its `origin` is `promptclickrun/bighelp-win-linux`.
+- Verified the GitHub repository's `origin` is `promptclickrun/bighelp-win-linux`.
 - Checked the staged diff for whitespace errors. Imported upstream prose intentionally retains its original whitespace; `.gitattributes` excludes those two reference directories from whitespace lint and keeps text/JSON checkout line endings stable across platforms.
 
 Python's already-available `jsonschema` package was used for schema checks; no project runtime dependencies or OS toolchains were installed. Temporary source clones and one-off audit scripts are not product files and are removed after verification.
