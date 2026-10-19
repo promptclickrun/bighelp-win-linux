@@ -1,6 +1,6 @@
 # Finite session and interactive prompt codecs
 
-Source evidence: shipping Catalyst app at `promptclickrun/bighelp` commit `d62a545386fb1b63f8ca33365766a46b3b1bd636`, inspected read-only under `/workspace/scratch/bighelp-protocol-reference`.
+Source evidence: shipping Catalyst app at `promptclickrun/bighelp` commit `d62a545386fb1b63f8ca33365766a46b3b1bd636`, inspected read-only under `<scratch>/bighelp-protocol-reference`.
 
 - `Bighelp/DirectHermes/DirectHermesWorkspaceStore.swift:500,545,864,894`: profiles.list, session.list, create and catalog presentation. Canonical profile name is routing identity; display_name is only a label. Summary is empty because this source does not define a profile summary.
 - `Bighelp/DirectHermes/DirectHermesReleaseContract.swift:63`: resume request and strict adoption of runtime, info/profile and agreeing durable aliases. Returned successor durable ID is authoritative.

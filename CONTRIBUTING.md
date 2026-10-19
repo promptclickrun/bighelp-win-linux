@@ -1,6 +1,6 @@
 # Contributing
 
-Start with [AGENTS.md](AGENTS.md) and the [implementation plan](docs/IMPLEMENTATION_PLAN.md). This private repository contains the conversion plan and a dependency-free executable contract foundation, not yet a runnable desktop application.
+Start with [AGENTS.md](AGENTS.md) and the [implementation plan](docs/IMPLEMENTATION_PLAN.md). This repository contains the bighelp desktop app for Windows and Linux (Electron and React Native Web), its protocol contracts and synthetic fixtures, and the planning documents.
 
 ## Contracts
 

@@ -195,7 +195,7 @@ The fixture does not change CSP, sandbox or browser connection policy.
 
 Local commands and results:
 
-- `node scripts/desktop/smoke.mjs --headless --workspace-fixture --executable artifacts/bighelp-development-linux-x64/electron --screenshots /workspace/scratch/function-pages-electron`: **133 passed, zero failed**, comprising 26 ordinary packaged checks and 107 synthetic interaction checks; **29** explicitly controlled workspace reads.
+- `node scripts/desktop/smoke.mjs --headless --workspace-fixture --executable artifacts/bighelp-development-linux-x64/electron --screenshots <scratch>/function-pages-electron`: **133 passed, zero failed**, comprising 26 ordinary packaged checks and 107 synthetic interaction checks; **29** explicitly controlled workspace reads.
 - `node scripts/desktop/smoke.mjs --headless --executable artifacts/bighelp-development-linux-x64/electron`: **26 passed, zero failed**, opt-in fixture stage absent.
 - `node node_modules/typescript/bin/tsc -p scripts/qualification/tsconfig.workspace-ui.json`: passed, strict DOM-only project with `types: []` and no emitted files.
 - `node --check scripts/desktop/smoke.mjs`, `node --check scripts/qualification/workspace-ui-smoke.mjs` and `git diff --check`: passed.
@@ -238,7 +238,7 @@ has no board-write capability. The synthetic reopen advances generation, matchin
 main's `open()` lifecycle even when reopening the already-selected chat.
 
 Ten local screenshots (two ordinary no-host, eight synthetic) are retained under
-`/workspace/scratch/function-pages-electron` for controller inspection. They are
+`<scratch>/function-pages-electron` for controller inspection. They are
 synthetic Electron UI evidence and do not claim actual-host or physical-machine
 behavior. Native Windows/Ubuntu CI is configured to compile the fixture and run
 this optional stage after ordinary packaged checks using the existing sandboxed
@@ -272,7 +272,7 @@ After the fix, the same sandbox-enabled packaged Electron command above passed
 **133/133** again, with **29** controlled reads, Chrome **152.0.7977.149** /
 Electron **44.7.2**. DOM-only strict fixture compilation, both runner/test Node
 syntax checks and `git diff --check` passed. Output is retained locally at
-`/workspace/scratch/function-pages-electron-fix1-smoke.json`; screenshots in the
+`<scratch>/function-pages-electron-fix1-smoke.json`; screenshots in the
 same documented directory were refreshed. No product, dependency, privileged
 boundary, host or controller-owned overview file changed. No broad suite or
 package rebuild was repeated for this focused test-only correction.
